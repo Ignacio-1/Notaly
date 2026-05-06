@@ -356,28 +356,31 @@ class AppPromedios:
     def eliminar_entidad(self, tipo, id_ent, nombre_curso=None):
         if not messagebox.askyesno("Confirmar", f"¿Eliminar permanentemente este {tipo}?"): return
         col = self.colegio_seleccionado
-        if tipo == "colegio": del self.datos[K_COLEGIOS][id_ent]; self.mostrar_pantalla_colegios()
-        elif tipo == "curso": del self.datos[K_COLEGIOS][col][K_CURSOS][id_ent]; self.mostrar_pantalla_cursos(col)
+        
+        # --- Fase 1: Modificar los datos en memoria ---
+        if tipo == "colegio":
+            del self.datos[K_COLEGIOS][id_ent]
+        elif tipo == "curso":
+            del self.datos[K_COLEGIOS][col][K_CURSOS][id_ent]
         elif tipo == "alumno":
-            # 1. Borramos al alumno seleccionado
             del self.datos[K_COLEGIOS][col][K_CURSOS][nombre_curso][K_ALUMNOS][id_ent]
-            
-            # 2. Obtenemos los alumnos que quedaron
             alumnos_restantes = self.datos[K_COLEGIOS][col][K_CURSOS][nombre_curso][K_ALUMNOS]
-            
-            # 3. Los ordenamos por su ID anterior para no mezclar los nombres
             ids_viejos_ordenados = sorted(alumnos_restantes.keys(), key=int)
-            
-            # 4. Creamos un nuevo diccionario con la numeración limpia (1, 2, 3...)
             alumnos_reordenados = {}
             for nuevo_id, viejo_id in enumerate(ids_viejos_ordenados, start=1):
                 alumnos_reordenados[str(nuevo_id)] = alumnos_restantes[viejo_id]
-            
-            # 5. Guardamos la lista nueva y actualizamos la pantalla
             self.datos[K_COLEGIOS][col][K_CURSOS][nombre_curso][K_ALUMNOS] = alumnos_reordenados
-            self.mostrar_apartado_curso(nombre_curso)
-        
+
+        # --- Fase 2: Persistir los cambios en el disco ---
         guardar_datos(self.datos)
+
+        # --- Fase 3: Actualizar la interfaz de usuario ---
+        if tipo == "colegio":
+            self.mostrar_pantalla_colegios()
+        elif tipo == "curso":
+            self.mostrar_pantalla_cursos(col)
+        elif tipo == "alumno":
+            self.mostrar_apartado_curso(nombre_curso)
 
     def guardar_notas_cuadricula(self, nombre_curso):
         col = self.colegio_seleccionado
