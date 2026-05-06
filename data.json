@@ -1,0 +1,2162 @@
+{
+    "colegios": {
+        "MASSA": {
+            "cursos": {
+                "3A": {
+                    "nombres_columnas": {
+                        "Primer trimestre": [
+                            "1",
+                            "P2",
+                            "P3",
+                            "Extra"
+                        ],
+                        "Segundo trimestre": [
+                            "P1",
+                            "P2",
+                            "P3",
+                            "Extra"
+                        ],
+                        "Tercer trimestre": [
+                            "P1",
+                            "P2",
+                            "P3",
+                            "Extra"
+                        ]
+                    },
+                    "alumnos": {
+                        "1": {
+                            "nombre": "Olmedo Ignacio",
+                            "trimestres": {
+                                "Primer trimestre": {
+                                    "principales": [
+                                        6.0,
+                                        6.0,
+                                        6.0
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Segundo trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Tercer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                }
+                            }
+                        },
+                        "2": {
+                            "nombre": "",
+                            "trimestres": {
+                                "Primer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Segundo trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Tercer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                }
+                            }
+                        },
+                        "3": {
+                            "nombre": "",
+                            "trimestres": {
+                                "Primer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Segundo trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Tercer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                }
+                            }
+                        },
+                        "4": {
+                            "nombre": "Gimenez Delfina",
+                            "trimestres": {
+                                "Primer trimestre": {
+                                    "principales": [
+                                        6.0,
+                                        6.0,
+                                        6.0
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Segundo trimestre": {
+                                    "principales": [
+                                        7.0,
+                                        8.0,
+                                        10.0
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Tercer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                }
+                            }
+                        },
+                        "5": {
+                            "nombre": "",
+                            "trimestres": {
+                                "Primer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Segundo trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Tercer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                }
+                            }
+                        },
+                        "6": {
+                            "nombre": "",
+                            "trimestres": {
+                                "Primer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Segundo trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Tercer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                }
+                            }
+                        },
+                        "7": {
+                            "nombre": "",
+                            "trimestres": {
+                                "Primer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Segundo trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Tercer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                }
+                            }
+                        },
+                        "8": {
+                            "nombre": "",
+                            "trimestres": {
+                                "Primer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Segundo trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Tercer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                }
+                            }
+                        },
+                        "9": {
+                            "nombre": "",
+                            "trimestres": {
+                                "Primer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Segundo trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Tercer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                }
+                            }
+                        },
+                        "10": {
+                            "nombre": "",
+                            "trimestres": {
+                                "Primer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Segundo trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Tercer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                }
+                            }
+                        },
+                        "11": {
+                            "nombre": "",
+                            "trimestres": {
+                                "Primer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Segundo trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Tercer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                }
+                            }
+                        },
+                        "12": {
+                            "nombre": "",
+                            "trimestres": {
+                                "Primer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Segundo trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Tercer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                }
+                            }
+                        },
+                        "13": {
+                            "nombre": "",
+                            "trimestres": {
+                                "Primer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Segundo trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Tercer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                }
+                            }
+                        },
+                        "14": {
+                            "nombre": "",
+                            "trimestres": {
+                                "Primer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Segundo trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Tercer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                }
+                            }
+                        },
+                        "15": {
+                            "nombre": "",
+                            "trimestres": {
+                                "Primer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Segundo trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Tercer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                }
+                            }
+                        },
+                        "16": {
+                            "nombre": "",
+                            "trimestres": {
+                                "Primer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Segundo trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Tercer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                }
+                            }
+                        },
+                        "17": {
+                            "nombre": "",
+                            "trimestres": {
+                                "Primer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Segundo trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Tercer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                }
+                            }
+                        },
+                        "18": {
+                            "nombre": "",
+                            "trimestres": {
+                                "Primer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Segundo trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Tercer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                }
+                            }
+                        },
+                        "19": {
+                            "nombre": "",
+                            "trimestres": {
+                                "Primer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Segundo trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Tercer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                }
+                            }
+                        },
+                        "20": {
+                            "nombre": "",
+                            "trimestres": {
+                                "Primer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Segundo trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Tercer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                }
+                            }
+                        },
+                        "21": {
+                            "nombre": "",
+                            "trimestres": {
+                                "Primer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Segundo trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Tercer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                }
+                            }
+                        },
+                        "22": {
+                            "nombre": "",
+                            "trimestres": {
+                                "Primer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Segundo trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Tercer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                }
+                            }
+                        },
+                        "23": {
+                            "nombre": "",
+                            "trimestres": {
+                                "Primer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Segundo trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Tercer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                }
+                            }
+                        },
+                        "24": {
+                            "nombre": "",
+                            "trimestres": {
+                                "Primer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Segundo trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Tercer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                }
+                            }
+                        },
+                        "25": {
+                            "nombre": "",
+                            "trimestres": {
+                                "Primer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Segundo trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Tercer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                }
+                            }
+                        },
+                        "26": {
+                            "nombre": "",
+                            "trimestres": {
+                                "Primer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Segundo trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Tercer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                }
+                            }
+                        },
+                        "27": {
+                            "nombre": "",
+                            "trimestres": {
+                                "Primer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Segundo trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Tercer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                }
+                            }
+                        },
+                        "28": {
+                            "nombre": "",
+                            "trimestres": {
+                                "Primer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Segundo trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Tercer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                }
+                            }
+                        },
+                        "29": {
+                            "nombre": "",
+                            "trimestres": {
+                                "Primer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Segundo trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Tercer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                }
+                            }
+                        },
+                        "30": {
+                            "nombre": "",
+                            "trimestres": {
+                                "Primer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Segundo trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Tercer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                }
+                            }
+                        },
+                        "31": {
+                            "nombre": "",
+                            "trimestres": {
+                                "Primer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Segundo trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Tercer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                }
+                            }
+                        },
+                        "32": {
+                            "nombre": "",
+                            "trimestres": {
+                                "Primer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Segundo trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Tercer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                }
+                            }
+                        },
+                        "33": {
+                            "nombre": "",
+                            "trimestres": {
+                                "Primer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Segundo trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Tercer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                }
+                            }
+                        },
+                        "34": {
+                            "nombre": "",
+                            "trimestres": {
+                                "Primer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Segundo trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Tercer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                }
+                            }
+                        },
+                        "35": {
+                            "nombre": "",
+                            "trimestres": {
+                                "Primer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Segundo trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Tercer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                }
+                            }
+                        },
+                        "36": {
+                            "nombre": "",
+                            "trimestres": {
+                                "Primer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Segundo trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Tercer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                }
+                            }
+                        },
+                        "37": {
+                            "nombre": "",
+                            "trimestres": {
+                                "Primer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Segundo trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Tercer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                }
+                            }
+                        },
+                        "38": {
+                            "nombre": "",
+                            "trimestres": {
+                                "Primer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Segundo trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Tercer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                }
+                            }
+                        },
+                        "39": {
+                            "nombre": "",
+                            "trimestres": {
+                                "Primer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Segundo trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Tercer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                },
+                "5A": {
+                    "nombres_columnas": {
+                        "Primer trimestre": [
+                            "P1",
+                            "P2",
+                            "P3",
+                            "Extra"
+                        ],
+                        "Segundo trimestre": [
+                            "P1",
+                            "P2",
+                            "P3",
+                            "Extra"
+                        ],
+                        "Tercer trimestre": [
+                            "P1",
+                            "P2",
+                            "P3",
+                            "Extra"
+                        ]
+                    },
+                    "alumnos": {
+                        "1": {
+                            "nombre": "",
+                            "trimestres": {
+                                "Primer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Segundo trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Tercer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                }
+                            }
+                        },
+                        "2": {
+                            "nombre": "",
+                            "trimestres": {
+                                "Primer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Segundo trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Tercer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                }
+                            }
+                        },
+                        "3": {
+                            "nombre": "",
+                            "trimestres": {
+                                "Primer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Segundo trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Tercer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                }
+                            }
+                        },
+                        "4": {
+                            "nombre": "",
+                            "trimestres": {
+                                "Primer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Segundo trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Tercer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                }
+                            }
+                        },
+                        "5": {
+                            "nombre": "",
+                            "trimestres": {
+                                "Primer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Segundo trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Tercer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                }
+                            }
+                        },
+                        "6": {
+                            "nombre": "",
+                            "trimestres": {
+                                "Primer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Segundo trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Tercer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                }
+                            }
+                        },
+                        "7": {
+                            "nombre": "",
+                            "trimestres": {
+                                "Primer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Segundo trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Tercer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                }
+                            }
+                        },
+                        "8": {
+                            "nombre": "",
+                            "trimestres": {
+                                "Primer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Segundo trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Tercer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                }
+                            }
+                        },
+                        "9": {
+                            "nombre": "",
+                            "trimestres": {
+                                "Primer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Segundo trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Tercer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                }
+                            }
+                        },
+                        "10": {
+                            "nombre": "",
+                            "trimestres": {
+                                "Primer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Segundo trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Tercer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                }
+                            }
+                        },
+                        "11": {
+                            "nombre": "",
+                            "trimestres": {
+                                "Primer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Segundo trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Tercer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                }
+                            }
+                        },
+                        "12": {
+                            "nombre": "",
+                            "trimestres": {
+                                "Primer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Segundo trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Tercer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                }
+                            }
+                        },
+                        "13": {
+                            "nombre": "",
+                            "trimestres": {
+                                "Primer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Segundo trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Tercer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                }
+                            }
+                        },
+                        "14": {
+                            "nombre": "",
+                            "trimestres": {
+                                "Primer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Segundo trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Tercer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                }
+                            }
+                        },
+                        "15": {
+                            "nombre": "",
+                            "trimestres": {
+                                "Primer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Segundo trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Tercer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                }
+                            }
+                        },
+                        "16": {
+                            "nombre": "",
+                            "trimestres": {
+                                "Primer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Segundo trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Tercer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                }
+                            }
+                        },
+                        "17": {
+                            "nombre": "",
+                            "trimestres": {
+                                "Primer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Segundo trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Tercer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                }
+                            }
+                        },
+                        "18": {
+                            "nombre": "",
+                            "trimestres": {
+                                "Primer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Segundo trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Tercer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                }
+                            }
+                        },
+                        "19": {
+                            "nombre": "",
+                            "trimestres": {
+                                "Primer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Segundo trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Tercer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                }
+                            }
+                        },
+                        "20": {
+                            "nombre": "",
+                            "trimestres": {
+                                "Primer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Segundo trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Tercer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                }
+                            }
+                        },
+                        "21": {
+                            "nombre": "",
+                            "trimestres": {
+                                "Primer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Segundo trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                },
+                                "Tercer trimestre": {
+                                    "principales": [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    "extras": [
+                                        null
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "TULIO": {
+            "cursos": {}
+        },
+        "LULES": {
+            "cursos": {}
+        }
+    }
+}

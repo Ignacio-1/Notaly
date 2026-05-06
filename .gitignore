@@ -1,0 +1,12 @@
+# Archivos de caché compilados de Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Entornos virtuales (en caso de que crees uno más adelante)
+venv/
+env/
+.venv/
+
+# Archivos de base de datos local
+data.json

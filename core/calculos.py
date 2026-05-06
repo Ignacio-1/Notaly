@@ -1,27 +1,28 @@
-def calcular_promedio_trimestre(notas_principales: list, notas_extras: list) -> float:
-    # Filtramos la lista para ignorar valores nulos (None) o vacíos
-    notas_validas = [n for n in notas_principales + notas_extras if n is not None]
-    
+from .constants import NOMBRES_TRIMESTRES, K_PRINCIPALES, K_EXTRAS
+
+def calcular_promedio_trimestre(principales: list, extras: list) -> float | None:
+    # Unificamos todas las notas ignorando las celdas vacías (None)
+    notas_validas = [n for n in principales + extras if n is not None]
+
     if not notas_validas:
-        return 0.0
+        return None # Es más explícito que 0.0 para "sin notas"
     return sum(notas_validas) / len(notas_validas)
 
-def calcular_promedio_total(trimestres_data: dict) -> float:
-    promedios_validos = []
-    
-    # Iteramos sobre los tres trimestres
-    for trimestre, datos_notas in trimestres_data.items():
-        promedio_trimestral = calcular_promedio_trimestre(
-            datos_notas.get("principales", []), 
-            datos_notas.get("extras", [])
-        )
-        
-        # Solo consideramos el trimestre si tiene un promedio superior a 0 (es decir, si tiene notas cargadas)
-        if promedio_trimestral > 0:
-            promedios_validos.append(promedio_trimestral)
+def procesar_calificaciones_alumno(trimestres_data: dict) -> dict:
+    resultados_trimestrales = []
 
-    if not promedios_validos:
-        return 0.0
+    for t_nombre in NOMBRES_TRIMESTRES:
+        t_data = trimestres_data[t_nombre]
+        promedio_t = calcular_promedio_trimestre(
+            t_data.get(K_PRINCIPALES, []),
+            t_data.get(K_EXTRAS, [])
+        )
+        resultados_trimestrales.append(promedio_t) # Ya no se necesita la condición 'if > 0'
+
+    promedios_validos = [p for p in resultados_trimestrales if p is not None]
+    promedio_final = sum(promedios_validos) / len(promedios_validos) if promedios_validos else 0.0
     
-    # El cálculo es dinámico: divide la suma por la cantidad de trimestres cursados realmente.
-    return sum(promedios_validos) / len(promedios_validos)
+    return {
+        "trimestres": resultados_trimestrales,
+        "final": promedio_final
+    }
