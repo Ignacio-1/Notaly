@@ -1,9 +1,12 @@
-import tkinter as tk
+import customtkinter as ctk
 from gui.app import AppPromedios
 
 def main():
+    # NOTA: Esta versión utiliza la librería 'customtkinter' para una apariencia moderna.
+    # Asegúrate de instalarla con: pip install customtkinter
+    
     # Inicializa el motor gráfico principal
-    root = tk.Tk()
+    root = ctk.CTk()
     
     # Instancia nuestra aplicación inyectando la ventana raíz
     app = AppPromedios(root)

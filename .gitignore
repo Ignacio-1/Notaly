@@ -1,12 +1,42 @@
-# Archivos de caché compilados de Python
+# Archivos de Python
 __pycache__/
-*.py[cod]
-*$py.class
+*.pyc
+*.pyd
+*.pyo
 
-# Entornos virtuales (en caso de que crees uno más adelante)
+# Entornos virtuales
 venv/
-env/
 .venv/
+env/
 
-# Archivos de base de datos local
-data.json
+# Archivos de PyInstaller
+build/
+dist/
+*.spec
+
+# Archivos de configuración de la aplicación
+config_path.json
+
+# Archivos de Python
+__pycache__/
+*.pyc
+*.pyd
+*.pyo
+
+# Entornos virtuales
+venv/
+.venv/
+env/
+
+# Archivos de PyInstaller
+build/
+dist/
+*.spec
+
+# Archivos de configuración de la aplicación
+config_path.json
+
+# Archivos de IDE (ej. VS Code)
+.vscode/
+# Archivos de IDE (ej. VS Code)
+.vscode/

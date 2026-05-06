@@ -24,13 +24,14 @@ def obtener_ruta_base_datos():
     messagebox.showinfo("Configuración Inicial", "Por favor, selecciona la CARPETA donde se guardarán tus datos de forma permanente.")
     
     ruta_seleccionada = filedialog.askdirectory(title="Seleccionar carpeta de almacenamiento")
-    
+
     if not ruta_seleccionada:
-        messagebox.showerror("Error", "Es necesario seleccionar una carpeta. La app se cerrará.")
-        sys.exit()
+        # Si el usuario cancela, no podemos continuar.
+        # En el arranque inicial, esto causará el cierre. En una recuperación, se cancelará la operación de guardado.
+        return None
 
     archivo_final = os.path.join(ruta_seleccionada, "datos_promedios.json")
-    
+
     # Guardar esta elección en el archivo de configuración local
     with open(CONFIG_FILE, 'w') as f:
         json.dump({"path": archivo_final}, f)
@@ -39,6 +40,10 @@ def obtener_ruta_base_datos():
     return archivo_final
 
 RUTA_ARCHIVO = obtener_ruta_base_datos()
+if not RUTA_ARCHIVO:
+    # Esto solo debería ocurrir en la configuración inicial si el usuario cancela.
+    messagebox.showerror("Configuración Requerida", "Se requiere una carpeta de datos para iniciar. La aplicación se cerrará.")
+    sys.exit()
 
 def cargar_datos() -> dict:
     if not os.path.exists(RUTA_ARCHIVO):
@@ -51,9 +56,38 @@ def cargar_datos() -> dict:
         return {K_COLEGIOS: {}}
 
 def guardar_datos(datos: dict):
-    try:
-        with open(RUTA_ARCHIVO, 'w', encoding='utf-8') as archivo:
-            json.dump(datos, archivo, indent=4)
-    except (IOError, OSError) as e:
-        # Este es un error crítico, debemos informar al usuario.
-        messagebox.showerror("Error Crítico al Guardar", f"No se pudieron guardar los datos en '{RUTA_ARCHIVO}'.\n\nError: {e}\n\nPor favor, verifica los permisos de la carpeta y el espacio en disco. Los cambios no se han guardado.")
+    global RUTA_ARCHIVO
+    saved_successfully = False
+    while not saved_successfully:
+        try:
+            with open(RUTA_ARCHIVO, 'w', encoding='utf-8') as archivo:
+                json.dump(datos, archivo, indent=4)
+            saved_successfully = True
+        except FileNotFoundError:
+            respuesta = messagebox.askyesno(
+                "Ubicación de Datos Perdida",
+                "La carpeta donde se guardan los datos no se encuentra.\n\n"
+                "¿Deseas seleccionar una nueva ubicación para guardar tus datos?\n\n"
+                "(Si eliges 'No', los cambios actuales no se guardarán)."
+            )
+            if respuesta:
+                # El usuario quiere reubicar. Borramos el config viejo para forzar la creación de uno nuevo.
+                if os.path.exists(CONFIG_FILE):
+                    os.remove(CONFIG_FILE)
+                
+                new_path = obtener_ruta_base_datos() # Esto mostrará el diálogo para elegir carpeta.
+                
+                if new_path:
+                    RUTA_ARCHIVO = new_path
+                    # El bucle while intentará guardar de nuevo en la siguiente iteración.
+                else:
+                    # El usuario canceló la selección de carpeta.
+                    messagebox.showwarning("Guardado Cancelado", "No se seleccionó una nueva ubicación. Los cambios no se han guardado.")
+                    break # Salir del bucle, el guardado ha fallado.
+            else:
+                messagebox.showwarning("Guardado Cancelado", "Los cambios no se han guardado.")
+                break # Salir del bucle, el guardado ha fallado.
+        except (IOError, OSError) as e:
+            # Para otros errores (permisos, disco lleno, etc.), mostramos el error y salimos.
+            messagebox.showerror("Error Crítico al Guardar", f"No se pudieron guardar los datos en '{RUTA_ARCHIVO}'.\n\nError: {e}\n\nPor favor, verifica los permisos y el espacio en disco. Los cambios no se han guardado.")
+            break # Salir del bucle, el guardado ha fallado.

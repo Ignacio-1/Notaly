@@ -1,47 +1,93 @@
+import customtkinter as ctk
 import tkinter as tk
-from tkinter import messagebox, ttk
+from tkinter import messagebox, ttk, filedialog
 from core.gestor_datos import cargar_datos, guardar_datos
 from core.calculos import procesar_calificaciones_alumno
 from core.constants import *
+from core.exportador import exportar_a_csv
 
 class AppPromedios:
     def __init__(self, root):
+        ctk.set_appearance_mode("light")
+
         self.root = root
         self.root.title("Gestor Educativo Profesional")
-        self.root.geometry("1450x850")
-        
+        self.root.geometry("1600x900")
+
+        # --- Fuentes ---
+        self.font_title = ("Segoe UI", 34, "bold")
+        self.font_card_title = ("Segoe UI", 16, "bold")
+        self.font_button = ("Segoe UI", 14, "bold")
+        self.font_body = ("Segoe UI", 14)
+        self.font_grid_header = ("Segoe UI", 13, "bold")
+        self.font_grid_body = ("Segoe UI", 14)
+
+        # --- Paleta de Colores ---
         self.paleta = {
-            "fondo_app": "#FDFDFD",
-            "barra_superior": "#FFFFFF",
-            "texto_principal": "#3C4043",
-            "azul_soft": "#E8F0FE",
-            "azul_fuerte": "#1A73E8",
-            "verde_soft": "#E6F4EA",
-            "verde_fuerte": "#1E8E3E",
-            "rojo_soft": "#FCE8E6",
-            "rojo_fuerte": "#D93025",
-            "borde_sutil": "#E0E0E0",
-            "t1": "#FFF9C4", "t2": "#E6F4EA", "t3": "#F3E8FD", "nf": "#FEEFC3"
+            "fondo_app": "#F4F7F9",      # Un gris muy claro, menos duro que el blanco puro
+            "fondo_card": "#FFFFFF",
+            "texto_principal": "#2C3E50", # Un azul oscuro, más suave que el negro
+            "texto_secundario": "#95A5A6",
+            "borde_sutil": "#EAECEE",
+            "grid_bg": "#EAECEE",        # Color para las líneas de la grilla
+
+            "azul_fg": "#3498DB", "azul_hover": "#2980B9",
+            "verde_fg": "#2ECC71", "verde_hover": "#27AE60",
+            "rojo_fuerte": "#E74C3C",
+
+            "card_btn_fg": "#F4F7F9",
+            "card_btn_hover": "#EAECEE",
+            
+            "card_azul_texto": "#3498DB",
+            "card_verde_texto": "#27AE60",
+            "card_rojo_texto": "#E74C3C",
+
+            "trimestre_1": "#FDEBD0", "trimestre_2": "#D4EFDF", "trimestre_3": "#E8DAEF", "final": "#FCF3CF"
         }
         
-        self.root.configure(bg=self.paleta["fondo_app"])
+        self.root.configure(fg_color=self.paleta["fondo_app"])
         self.datos = cargar_datos()
         self.frame_actual = None
         self.colegio_seleccionado = None
         self.curso_seleccionado = None
         self.hay_cambios_sin_guardar = False
+        self.grid_container = None
+        self._resize_timer = None
 
-        # Validación para permitir solo números y puntos
+        # Validación para permitir solo números y puntos en los Entry
         self.vcmd = (self.root.register(self.solo_numeros), '%P')
 
         # Protocolo de cierre para advertir sobre cambios sin guardar
         self.root.protocol("WM_DELETE_WINDOW", self.al_cerrar)
+        self.root.bind('<Configure>', self._on_resize) # Bind resize event
 
         # Firma fija
-        tk.Label(self.root, text="Software desarrollado por Ignacio Olmedo © 2026", 
-                 font=("Segoe UI", 9, "italic"), bg=self.paleta["fondo_app"], fg="#8A8C8F").pack(side=tk.BOTTOM, pady=5)
+        ctk.CTkLabel(
+            self.root, 
+            text="Software desarrollado por Ignacio Olmedo © 2026", 
+            font=("Segoe UI", 12, "italic"), 
+            text_color=self.paleta["texto_secundario"]
+        ).pack(side=tk.BOTTOM, pady=10)
 
         self.mostrar_pantalla_colegios()
+
+    def _on_resize(self, event):
+        # Este evento se dispara con cualquier cambio de configuración, solo nos importa el tamaño de la ventana principal
+        if event.widget == self.root:
+            # Si estamos en la pantalla de la planilla, desactivamos temporalmente la columna responsiva para evitar el lag
+            if self.grid_container:
+                self.grid_container.grid_columnconfigure(2, weight=0)
+            # Cancelamos el temporizador anterior para reiniciar la cuenta
+            if self._resize_timer:
+                self.root.after_cancel(self._resize_timer)
+            # Establecemos un nuevo temporizador que se activará después de un breve retraso
+            self._resize_timer = self.root.after(150, self._on_resize_end) # 150ms de retraso
+
+    def _on_resize_end(self):
+        # Esto se llama cuando el redimensionamiento se ha detenido
+        # Si estamos en la pantalla de la planilla, reactivamos la columna responsiva
+        if self.grid_container:
+            self.grid_container.grid_columnconfigure(2, weight=1)
 
     def _marcar_cambios_pendientes(self, event=None):
         self.hay_cambios_sin_guardar = True
@@ -63,11 +109,13 @@ class AppPromedios:
     def mostrar_pantalla_colegios(self):
         self.limpiar_pantalla()
         self.colegio_seleccionado = None
-        self.frame_actual = tk.Frame(self.root, bg=self.paleta["fondo_app"])
+        self.curso_seleccionado = None
+        self.grid_container = None
+        self.frame_actual = ctk.CTkFrame(self.root, fg_color="transparent")
         self.frame_actual.pack(fill=tk.BOTH, expand=True, padx=80, pady=20)
 
-        tk.Label(self.frame_actual, text="Mis Instituciones", font=("Segoe UI", 26, "bold"), 
-                 bg=self.paleta["fondo_app"], fg=self.paleta["texto_principal"]).pack(pady=20)
+        ctk.CTkLabel(self.frame_actual, text="Mis Instituciones", font=self.font_title, 
+                     text_color=self.paleta["texto_principal"]).pack(pady=30)
 
         for nombre_ant in list(self.datos.get(K_COLEGIOS, {}).keys()):
             # Usamos el nuevo método para crear la tarjeta
@@ -76,34 +124,49 @@ class AppPromedios:
                 nombre_entidad=nombre_ant,
                 tipo_entidad="colegio",
                 boton_principal_config={
-                    "text": "Entrar →", 
-                    "bg": self.paleta["azul_soft"], 
-                    "fg": self.paleta["azul_fuerte"],
+                    "text": "Entrar →",
+                    "fg_color": self.paleta["card_btn_fg"],
+                    "hover_color": self.paleta["card_btn_hover"],
+                    "text_color": self.paleta["card_azul_texto"],
                     "accion": self.renombrar_y_abrir_colegio
                 }
             )
 
-        tk.Button(self.frame_actual, text="+ Nueva Institución", bg=self.paleta["azul_fuerte"], fg="white",
-                  font=("Segoe UI", 11, "bold"), relief=tk.FLAT, pady=12, padx=40,
-                  command=lambda: self.modal_crear("colegio")).pack(pady=30)
+        ctk.CTkButton(
+            self.frame_actual, text="+ Nueva Institución", 
+            fg_color=self.paleta["azul_fg"], hover_color=self.paleta["azul_hover"],
+            font=self.font_button, corner_radius=10, height=45,
+            command=lambda: self.modal_crear("colegio")
+        ).pack(pady=30)
 
     def _crear_tarjeta(self, parent, nombre_entidad, tipo_entidad, boton_principal_config):
-        card = tk.Frame(parent, bg="white", highlightthickness=1, highlightbackground=self.paleta["borde_sutil"])
-        card.pack(fill=tk.X, pady=7, ipady=10, padx=50)
+        card = ctk.CTkFrame(parent, fg_color=self.paleta["fondo_card"], border_width=1, border_color=self.paleta["borde_sutil"], corner_radius=16)
+        card.pack(fill=tk.X, pady=8, ipady=12, padx=50)
         
-        entry_font = ("Segoe UI", 13, "bold") if tipo_entidad == "colegio" else ("Segoe UI", 12, "bold")
-        ent_nombre = tk.Entry(card, font=entry_font, bg="#F8F9FA", relief=tk.FLAT, width=30)
+        entry_font = self.font_card_title
+        ent_nombre = ctk.CTkEntry(card, font=entry_font, fg_color="#F8F9FA", border_width=0, width=400)
         ent_nombre.insert(0, nombre_entidad)
-        ent_nombre.pack(side=tk.LEFT, padx=20, ipady=3)
+        ent_nombre.pack(side=tk.LEFT, padx=25, ipady=5)
         
         # Botón de acción principal (Entrar / Ver Planilla)
-        tk.Button(card, text=boton_principal_config["text"], bg=boton_principal_config["bg"], fg=boton_principal_config["fg"], 
-                  font=("Segoe UI", 9, "bold"), relief=tk.FLAT, padx=15,
-                  command=lambda n=nombre_entidad, e=ent_nombre: boton_principal_config["accion"](n, e)).pack(side=tk.RIGHT, padx=10)
+        ctk.CTkButton(
+            card, text=boton_principal_config["text"],
+            fg_color=boton_principal_config["fg_color"],
+            hover_color=boton_principal_config["hover_color"],
+            text_color=boton_principal_config["text_color"],
+            font=self.font_button, corner_radius=8,
+            command=lambda n=nombre_entidad, e=ent_nombre: boton_principal_config["accion"](n, e)
+        ).pack(side=tk.RIGHT, padx=10)
         
         # Botón de eliminar (común a ambos)
-        tk.Button(card, text="Eliminar", bg=self.paleta["rojo_soft"], fg=self.paleta["rojo_fuerte"], 
-                  relief=tk.FLAT, command=lambda n=nombre_entidad: self.eliminar_entidad(tipo_entidad, n)).pack(side=tk.RIGHT, padx=10)
+        ctk.CTkButton(
+            card, text="Eliminar",
+            fg_color=self.paleta["card_btn_fg"],
+            hover_color=self.paleta["card_btn_hover"],
+            text_color=self.paleta["card_rojo_texto"],
+            corner_radius=8, font=self.font_button,
+            command=lambda n=nombre_entidad: self.eliminar_entidad(tipo_entidad, n)
+        ).pack(side=tk.RIGHT, padx=10)
 
     def renombrar_y_abrir_colegio(self, nombre_ant, widget_entry):
         nuevo = widget_entry.get().strip().upper()
@@ -122,17 +185,23 @@ class AppPromedios:
     def mostrar_pantalla_cursos(self, nombre_colegio):
         self.limpiar_pantalla()
         self.colegio_seleccionado = nombre_colegio
-        self.frame_actual = tk.Frame(self.root, bg=self.paleta["fondo_app"])
+        self.curso_seleccionado = None
+        self.grid_container = None
+        self.frame_actual = ctk.CTkFrame(self.root, fg_color="transparent")
         self.frame_actual.pack(fill=tk.BOTH, expand=True, padx=80, pady=20)
 
-        header = tk.Frame(self.frame_actual, bg=self.paleta["fondo_app"])
+        header = ctk.CTkFrame(self.frame_actual, fg_color="transparent")
         header.pack(fill=tk.X, pady=10)
         
-        tk.Button(header, text="← Volver", font=("Segoe UI", 10), command=self.mostrar_pantalla_colegios, 
-                  relief=tk.FLAT, bg=self.paleta["fondo_app"], fg=self.paleta["azul_fuerte"]).pack(side=tk.LEFT)
+        ctk.CTkButton(
+            header, text="← Volver", font=self.font_body, 
+            command=self.mostrar_pantalla_colegios,
+            fg_color="transparent", text_color=self.paleta["azul_fg"],
+            hover_color=self.paleta["card_btn_hover"]
+        ).pack(side=tk.LEFT)
         
-        tk.Label(header, text=f"Cursos en: {nombre_colegio}", font=("Segoe UI", 22, "bold"), 
-                 bg=self.paleta["fondo_app"], fg=self.paleta["texto_principal"]).pack(side=tk.LEFT, padx=20)
+        ctk.CTkLabel(header, text=f"Cursos en: {nombre_colegio}", font=self.font_title, 
+                     text_color=self.paleta["texto_principal"]).pack(side=tk.LEFT, padx=30)
 
         cursos = self.datos[K_COLEGIOS][nombre_colegio].get(K_CURSOS, {})
         for nombre_curso in list(cursos.keys()):
@@ -142,15 +211,19 @@ class AppPromedios:
                 tipo_entidad="curso",
                 boton_principal_config={
                     "text": "Ver Planilla",
-                    "bg": self.paleta["verde_soft"],
-                    "fg": self.paleta["verde_fuerte"],
+                    "fg_color": self.paleta["card_btn_fg"],
+                    "hover_color": self.paleta["card_btn_hover"],
+                    "text_color": self.paleta["card_verde_texto"],
                     "accion": self.renombrar_y_abrir_planilla
                 }
             )
 
-        tk.Button(self.frame_actual, text="+ Nuevo Curso", bg=self.paleta["azul_fuerte"], fg="white",
-                  font=("Segoe UI", 11, "bold"), relief=tk.FLAT, pady=12, padx=40,
-                  command=lambda: self.modal_crear("curso")).pack(pady=30)
+        ctk.CTkButton(
+            self.frame_actual, text="+ Nuevo Curso",
+            fg_color=self.paleta["azul_fg"], hover_color=self.paleta["azul_hover"],
+            font=self.font_button, corner_radius=10, height=45,
+            command=lambda: self.modal_crear("curso")
+        ).pack(pady=30)
 
     def renombrar_y_abrir_planilla(self, nombre_ant, widget_e):
         nuevo = widget_e.get().strip().upper()
@@ -168,25 +241,26 @@ class AppPromedios:
 
     # --- MODALES ---
     def modal_crear(self, tipo):
-        ventana = tk.Toplevel(self.root)
+        ventana = ctk.CTkToplevel(self.root)
         ventana.title(f"Añadir {tipo.capitalize()}")
         alto = 350 if tipo == "curso" else 250
         ventana.geometry(f"450x{alto}")
-        ventana.configure(bg="white")
+        ventana.configure(fg_color="white")
         ventana.grab_set()
 
-        tk.Label(ventana, text=f"Nuevo {tipo.capitalize()}", font=("Segoe UI", 14, "bold"), bg="white", fg=self.paleta["azul_fuerte"]).pack(pady=20)
+        ctk.CTkLabel(ventana, text=f"Nuevo {tipo.capitalize()}", font=self.font_card_title, text_color=self.paleta["azul_fg"]).pack(pady=20)
         
         instruccion = "Nombre de la Institución:" if tipo == "colegio" else "Año y División:"
-        tk.Label(ventana, text=instruccion, bg="white", font=("Segoe UI", 9)).pack(anchor=tk.W, padx=50)
-        ent_nom = tk.Entry(ventana, font=("Segoe UI", 12), highlightthickness=1, highlightbackground="#ccc", relief=tk.FLAT)
+        ctk.CTkLabel(ventana, text=instruccion, font=("Segoe UI", 12)).pack(anchor=tk.W, padx=50)
+        ent_nom = ctk.CTkEntry(ventana, font=self.font_body, border_width=1, border_color="#ccc", corner_radius=6)
         ent_nom.pack(pady=10, padx=50, fill=tk.X, ipady=5)
 
         ent_cant = None
         if tipo == "curso":
-            tk.Label(ventana, text="Cantidad inicial de alumnos:", bg="white", font=("Segoe UI", 9)).pack(anchor=tk.W, padx=50)
-            ent_cant = tk.Entry(ventana, font=("Segoe UI", 12), justify=tk.CENTER, highlightthickness=1, 
-                                highlightbackground="#ccc", relief=tk.FLAT, validate='key', validatecommand=self.vcmd)
+            ctk.CTkLabel(ventana, text="Cantidad inicial de alumnos:", font=("Segoe UI", 12)).pack(anchor=tk.W, padx=50)
+            ent_cant = ctk.CTkEntry(ventana, font=self.font_body, justify=tk.CENTER, border_width=1, 
+                                    border_color="#ccc", corner_radius=6,
+                                    validate='key', validatecommand=self.vcmd)
             ent_cant.insert(0, "")
             ent_cant.pack(pady=10, padx=50, fill=tk.X, ipady=5)
 
@@ -219,79 +293,75 @@ class AppPromedios:
             guardar_datos(self.datos)
             ventana.destroy()
 
-        tk.Button(ventana, text="Confirmar", bg=self.paleta["azul_fuerte"], fg="white", relief=tk.FLAT, command=confirmar, padx=30, pady=5).pack(pady=20)
+        ctk.CTkButton(ventana, text="Confirmar", fg_color=self.paleta["azul_fg"], hover_color=self.paleta["azul_hover"], 
+                      command=confirmar, height=35, corner_radius=8).pack(pady=20, padx=50, fill=tk.X)
 
     # --- PLANILLA DE NOTAS ---
     def mostrar_apartado_curso(self, nombre_curso):
         self.limpiar_pantalla()
         self.curso_seleccionado = nombre_curso
         self.hay_cambios_sin_guardar = False
-        self.frame_actual = tk.Frame(self.root, bg="white")
+        self.frame_actual = ctk.CTkFrame(self.root, fg_color=self.paleta["fondo_card"], corner_radius=0)
         self.frame_actual.pack(fill=tk.BOTH, expand=True)
 
-        toolbar = tk.Frame(self.frame_actual, bg=self.paleta["barra_superior"], highlightthickness=1, highlightbackground=self.paleta["borde_sutil"])
+        toolbar = ctk.CTkFrame(self.frame_actual, fg_color=self.paleta["fondo_card"], border_width=1, border_color=self.paleta["borde_sutil"], corner_radius=0)
         toolbar.pack(side=tk.TOP, fill=tk.X, ipady=8)
-        tk.Button(toolbar, text="← Volver", command=self.accion_volver_desde_planilla, relief=tk.FLAT).pack(side=tk.LEFT, padx=20)
+        ctk.CTkButton(toolbar, text="← Volver", command=self.accion_volver_desde_planilla, fg_color="transparent", text_color=self.paleta["azul_fg"], hover_color=self.paleta["card_btn_hover"], font=self.font_body).pack(side=tk.LEFT, padx=20)
         texto_cabecera = f"{self.colegio_seleccionado}  |  {nombre_curso}"
-        tk.Label(toolbar, text=texto_cabecera, font=("Segoe UI", 14, "bold"), bg="white", fg=self.paleta["texto_principal"]).pack(side=tk.LEFT, padx=10)
-       
-       
-
-        tk.Button(toolbar, text="+ Alumno", bg=self.paleta["azul_soft"], fg=self.paleta["azul_fuerte"], relief=tk.FLAT, command=lambda: self.agregar_alumno(nombre_curso)).pack(side=tk.LEFT, padx=20)
-        tk.Button(toolbar, text="GUARDAR y CALCULAR", bg=self.paleta["verde_fuerte"], fg="white", font=("Segoe UI", 9, "bold"), relief=tk.FLAT, command=lambda: self.guardar_notas_cuadricula(nombre_curso)).pack(side=tk.RIGHT, padx=30, ipady=5)
-
-        container = tk.Frame(self.frame_actual, bg=self.paleta["fondo_app"])
-        container.pack(fill=tk.BOTH, expand=True)
+        ctk.CTkLabel(toolbar, text=texto_cabecera, font=self.font_card_title, text_color=self.paleta["texto_principal"]).pack(side=tk.LEFT, padx=10)
         
-        canvas = tk.Canvas(container, bg=self.paleta["fondo_app"], highlightthickness=0)
-        h_scroll = ttk.Scrollbar(container, orient=tk.HORIZONTAL, command=canvas.xview)
-        v_scroll = ttk.Scrollbar(container, orient=tk.VERTICAL, command=canvas.yview)
-        canvas.configure(xscrollcommand=h_scroll.set, yscrollcommand=v_scroll.set)
-        h_scroll.pack(side=tk.BOTTOM, fill=tk.X); v_scroll.pack(side=tk.RIGHT, fill=tk.Y)
-        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        ctk.CTkButton(toolbar, text="GUARDAR y CALCULAR", fg_color=self.paleta["verde_fg"], hover_color=self.paleta["verde_hover"], font=self.font_button, corner_radius=8, command=lambda: self.guardar_notas_cuadricula(nombre_curso)).pack(side=tk.RIGHT, padx=30, ipady=5)
+        ctk.CTkButton(toolbar, text="Exportar a CSV", fg_color=self.paleta["card_btn_fg"], text_color=self.paleta["texto_secundario"], hover_color=self.paleta["card_btn_hover"], border_width=1, border_color=self.paleta["borde_sutil"], corner_radius=8, font=self.font_button, command=lambda: self.exportar_planilla(nombre_curso)).pack(side=tk.RIGHT, padx=10)
+        ctk.CTkButton(toolbar, text="+ Alumno", fg_color=self.paleta["card_btn_fg"], text_color=self.paleta["card_azul_texto"], hover_color=self.paleta["card_btn_hover"], corner_radius=8, font=self.font_button, command=lambda: self.agregar_alumno(nombre_curso)).pack(side=tk.RIGHT, padx=10)
 
-        self.grid_container = tk.Frame(canvas, bg=self.paleta["borde_sutil"])
-        canvas.create_window((0,0), window=self.grid_container, anchor="nw")
-        self.grid_container.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        # Usamos un CTkScrollableFrame para simplificar enormemente el manejo del scroll
+        scrollable_frame = ctk.CTkScrollableFrame(self.frame_actual, fg_color=self.paleta["grid_bg"], corner_radius=0)
+        scrollable_frame.pack(fill=tk.BOTH, expand=True)
+
+        # El grid_container ahora es el frame interno del CTkScrollableFrame
+        self.grid_container = scrollable_frame
+
+        # Hacemos que la columna del nombre del alumno sea la que se expanda
+        self.grid_container.grid_columnconfigure(2, weight=1, minsize=250) # Asegura un ancho mínimo de 250px
 
         curso_data = self.datos[K_COLEGIOS][self.colegio_seleccionado][K_CURSOS][nombre_curso]
         self.widgets_entradas, self.widgets_resultados, self.widgets_nombres_alumnos = {}, {}, {}
         self.widgets_nombres_cols = {t: [] for t in NOMBRES_TRIMESTRES}
 
         # Headers  
-        tk.Label(self.grid_container, text="N°", width=4, bg="#F1F3F4").grid(row=0, column=1, rowspan=2, sticky="nsew", padx=1, pady=1)
-        tk.Label(self.grid_container, text="Nombre del Alumno", width=30, bg="#F1F3F4").grid(row=0, column=2, rowspan=2, sticky="nsew", padx=1, pady=1)
+        ctk.CTkLabel(self.grid_container, text="N°", font=self.font_grid_header, fg_color="#E5E7E9", text_color=self.paleta["texto_principal"], corner_radius=0).grid(row=0, column=1, rowspan=2, sticky="nsew", padx=1, pady=1)
+        ctk.CTkLabel(self.grid_container, text="Nombre del Alumno", font=self.font_grid_header, fg_color="#E5E7E9", text_color=self.paleta["texto_principal"], corner_radius=0).grid(row=0, column=2, rowspan=2, sticky="nsew", padx=1, pady=1)
 
         col_off = 3
-        for t, color in zip(NOMBRES_TRIMESTRES, [self.paleta["t1"], self.paleta["t2"], self.paleta["t3"]]):
-            tk.Label(self.grid_container, text=t, bg=color, font=("Arial", 10, "bold")).grid(row=0, column=col_off, columnspan=5, sticky="nsew", padx=1, pady=1)
+        for t, color in zip(NOMBRES_TRIMESTRES, [self.paleta["trimestre_1"], self.paleta["trimestre_2"], self.paleta["trimestre_3"]]):
+            ctk.CTkLabel(self.grid_container, text=t, fg_color=color, text_color=self.paleta["texto_principal"], font=self.font_grid_header).grid(row=0, column=col_off, columnspan=5, sticky="nsew", padx=1, pady=1)
             for j, nom in enumerate(curso_data["nombres_columnas"][t]):
-                e = tk.Entry(self.grid_container, justify=tk.CENTER, width=7, relief=tk.FLAT, font=("Arial", 8, "bold"))
+                e = ctk.CTkEntry(self.grid_container, justify=tk.CENTER, width=60, font=self.font_grid_header, fg_color="#E5E7E9", text_color=self.paleta["texto_principal"], border_width=0, corner_radius=0)
                 e.insert(0, nom)
                 e.bind("<KeyRelease>", self._marcar_cambios_pendientes)
                 e.grid(row=1, column=col_off + j, sticky="nsew", padx=1, pady=1)
                 self.widgets_nombres_cols[t].append(e)
-            tk.Label(self.grid_container, text="Prom", width=6, bg="#E8EAED").grid(row=1, column=col_off+4, sticky="nsew", padx=1, pady=1)
+            ctk.CTkLabel(self.grid_container, text="Prom", width=60, font=self.font_grid_header, fg_color="#E5E7E9", text_color=self.paleta["texto_principal"]).grid(row=1, column=col_off+4, sticky="nsew", padx=1, pady=1)
             col_off += 5
         
         # PROMEDIOS FINALES: Aplicamos el margen (30, 1) tanto a la cabecera principal como a los subtítulos
-        tk.Label(self.grid_container, text="PROMEDIOS FINALES", bg=self.paleta["nf"], font=("Arial", 10, "bold")).grid(row=0, column=18, columnspan=4, sticky="nsew", padx=(30, 1), pady=1)
+        ctk.CTkLabel(self.grid_container, text="PROMEDIOS FINALES", fg_color=self.paleta["final"], text_color=self.paleta["texto_principal"], font=self.font_grid_header).grid(row=0, column=18, columnspan=4, sticky="nsew", padx=(30, 1), pady=1)
         
         for i, txt in enumerate(["T1", "T2", "T3", "TOTAL"]):
             # El gap (30, 1) solo va en el primer elemento (T1) para empujar el resto
             gap = (30, 1) if i == 0 else 1
-            tk.Label(self.grid_container, text=txt, width=8, bg="#E8EAED").grid(row=1, column=18+i, sticky="nsew", padx=gap, pady=1)
+            ctk.CTkLabel(self.grid_container, text=txt, width=60, font=self.font_grid_header, fg_color="#E5E7E9", text_color=self.paleta["texto_principal"]).grid(row=1, column=18+i, sticky="nsew", padx=gap, pady=1)
 
         # Dibujar las filas de los alumnos
         for i, id_al in enumerate(sorted(curso_data[K_ALUMNOS].keys(), key=int)):
             self.dibujar_fila_alumno(i+2, id_al, curso_data[K_ALUMNOS][id_al], nombre_curso)
 
     def dibujar_fila_alumno(self, row, id_al, al_data, nombre_curso):
-        tk.Button(self.grid_container, text="✕", bg=self.paleta["rojo_soft"], fg=self.paleta["rojo_fuerte"], 
-                  relief=tk.FLAT, font=("Arial", 9, "bold"), command=lambda: self.eliminar_entidad("alumno", id_al, nombre_curso)).grid(row=row, column=0, sticky="nsew", padx=1, pady=1)
+        ctk.CTkButton(self.grid_container, text="✕", fg_color=self.paleta["fondo_card"], text_color=self.paleta["card_rojo_texto"], hover_color=self.paleta["card_btn_hover"],
+                      width=25, corner_radius=4, font=self.font_body, command=lambda: self.eliminar_entidad("alumno", id_al, nombre_curso)).grid(row=row, column=0, sticky="nsew", padx=1, pady=1)
         
-        tk.Label(self.grid_container, text=id_al, bg="white").grid(row=row, column=1, sticky="nsew", padx=1, pady=1)
-        ent_n = tk.Entry(self.grid_container, relief=tk.FLAT, bg="white", font=("Segoe UI", 10))
+        ctk.CTkLabel(self.grid_container, text=id_al, font=self.font_grid_body, fg_color=self.paleta["fondo_card"], text_color=self.paleta["texto_principal"]).grid(row=row, column=1, sticky="nsew", padx=1, pady=1)
+        ent_n = ctk.CTkEntry(self.grid_container, border_width=0, fg_color=self.paleta["fondo_card"], font=self.font_grid_body, corner_radius=0)
         ent_n.insert(0, al_data.get(K_NOMBRE, "")); ent_n.grid(row=row, column=2, sticky="nsew", padx=1, pady=1)
         ent_n.bind("<KeyRelease>", self._marcar_cambios_pendientes)
         self.widgets_nombres_alumnos[id_al] = ent_n
@@ -302,20 +372,20 @@ class AppPromedios:
             e_dict = {"p": [], "ex": None}
             notas_data = al_data["trimestres"][t_nom]
             for j in range(3):
-                e = tk.Entry(self.grid_container, width=5, justify=tk.CENTER, relief=tk.FLAT, bg="white", validate='key', validatecommand=self.vcmd)
+                e = ctk.CTkEntry(self.grid_container, width=60, justify=tk.CENTER, font=self.font_grid_body, fg_color=self.paleta["fondo_card"], border_width=0, corner_radius=0, validate='key', validatecommand=self.vcmd)
                 val = notas_data["principales"][j]
                 if val is not None: e.insert(0, str(val))
                 e.bind("<KeyRelease>", self._marcar_cambios_pendientes)
                 e.grid(row=row, column=c_idx, padx=1, pady=1); c_idx += 1; e_dict["p"].append(e)
             
-            ex = tk.Entry(self.grid_container, width=5, justify=tk.CENTER, relief=tk.FLAT, bg="#F8F9FA", validate='key', validatecommand=self.vcmd)
+            ex = ctk.CTkEntry(self.grid_container, width=60, justify=tk.CENTER, font=self.font_grid_body, fg_color="#FBFBFB", border_width=0, corner_radius=0, validate='key', validatecommand=self.vcmd)
             val_ex = notas_data[K_EXTRAS][0] if notas_data[K_EXTRAS] else None
             if val_ex is not None: ex.insert(0, str(val_ex))
             ex.bind("<KeyRelease>", self._marcar_cambios_pendientes)
             ex.grid(row=row, column=c_idx, padx=1, pady=1); c_idx += 1; e_dict["ex"] = ex
             self.widgets_entradas[id_al].append(e_dict)
             
-            l = tk.Label(self.grid_container, text="-", font=("Arial", 9, "bold"), bg="#F8F9FA")
+            l = ctk.CTkLabel(self.grid_container, text="-", font=self.font_grid_header, fg_color="#FBFBFB", text_color=self.paleta["texto_principal"])
             l.grid(row=row, column=c_idx, sticky="nsew", padx=1, pady=1); c_idx += 1
             self.widgets_resultados[id_al]["trim"].append(l)
 
@@ -325,7 +395,7 @@ class AppPromedios:
             # Esto empuja toda la sección hacia la derecha para que coincida con el título
             separacion_seccion = (30, 1) if j == 0 else 1
             
-            l_f = tk.Label(self.grid_container, text="-", font=("Arial", 10, "bold"), bg="#F8F9FA")
+            l_f = ctk.CTkLabel(self.grid_container, text="-", font=self.font_grid_header, fg_color="#FBFBFB", text_color=self.paleta["texto_principal"])
             l_f.grid(row=row, column=18+j, sticky="nsew", padx=separacion_seccion, pady=1)
             self.widgets_resultados[id_al]["fin"].append(l_f)
             
@@ -337,14 +407,14 @@ class AppPromedios:
         # Actualiza los labels de promedio para un alumno específico
         for t_idx, prom_t in enumerate(resultados["trimestres"]):
             val_txt = f"{prom_t:.2f}" if prom_t is not None else "-"
-            color = self.paleta["rojo_fuerte"] if (prom_t is not None and prom_t < 6) else (self.paleta["verde_fuerte"] if prom_t is not None else self.paleta["texto_principal"])
-            self.widgets_resultados[id_al]["trim"][t_idx].config(text=val_txt, fg=color)
-            self.widgets_resultados[id_al]["fin"][t_idx].config(text=val_txt, fg=color)
+            color = self.paleta["rojo_fuerte"] if (prom_t is not None and prom_t < 6) else (self.paleta["verde_fg"] if prom_t is not None else self.paleta["texto_principal"])
+            self.widgets_resultados[id_al]["trim"][t_idx].configure(text=val_txt, text_color=color)
+            self.widgets_resultados[id_al]["fin"][t_idx].configure(text=val_txt, text_color=color)
         
         # Color para el promedio final total
         p_final = resultados['final']
-        color_f = self.paleta["rojo_fuerte"] if (p_final > 0 and p_final < 6) else (self.paleta["verde_fuerte"] if p_final > 0 else self.paleta["texto_principal"])
-        self.widgets_resultados[id_al]["fin"][3].config(text=f"{p_final:.2f}" if p_final > 0 else "-", fg=color_f)
+        color_f = self.paleta["rojo_fuerte"] if (p_final > 0 and p_final < 6) else (self.paleta["verde_fg"] if p_final > 0 else self.paleta["texto_principal"])
+        self.widgets_resultados[id_al]["fin"][3].configure(text=f"{p_final:.2f}" if p_final > 0 else "-", text_color=color_f)
 
     def agregar_alumno(self, nombre_curso):
         col = self.colegio_seleccionado
@@ -407,6 +477,29 @@ class AppPromedios:
         guardar_datos(self.datos)
         self.hay_cambios_sin_guardar = False
         messagebox.showinfo("Éxito", "Cambios guardados.")
+
+    def exportar_planilla(self, nombre_curso):
+        if self.hay_cambios_sin_guardar:
+            messagebox.showwarning("Cambios Pendientes", "Tienes cambios sin guardar. Por favor, guarda la planilla antes de exportar para asegurar que los datos sean correctos.")
+            return
+
+        file_path = filedialog.asksaveasfilename(
+            title="Exportar Planilla como CSV",
+            initialfile=f"Planilla - {nombre_curso}.csv",
+            defaultextension=".csv",
+            filetypes=[("Archivos CSV", "*.csv"), ("Todos los archivos", "*.*")]
+        )
+
+        if not file_path:
+            return
+
+        curso_data = self.datos[K_COLEGIOS][self.colegio_seleccionado][K_CURSOS][nombre_curso]
+        success, error_message = exportar_a_csv(curso_data, file_path)
+
+        if success:
+            messagebox.showinfo("Exportación Exitosa", f"La planilla ha sido exportada correctamente a:\n{file_path}")
+        else:
+            messagebox.showerror("Error de Exportación", f"No se pudo exportar la planilla.\n\nError: {error_message}")
 
     def accion_volver_desde_planilla(self):
         if self.hay_cambios_sin_guardar:
