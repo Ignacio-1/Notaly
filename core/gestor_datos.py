@@ -39,12 +39,6 @@ def obtener_ruta_base_datos():
     root.destroy()
     return archivo_final
 
-RUTA_ARCHIVO = obtener_ruta_base_datos()
-if not RUTA_ARCHIVO:
-    # Esto solo debería ocurrir en la configuración inicial si el usuario cancela.
-    messagebox.showerror("Configuración Requerida", "Se requiere una carpeta de datos para iniciar. La aplicación se cerrará.")
-    sys.exit()
-
 def cargar_datos() -> dict:
     if not os.path.exists(RUTA_ARCHIVO):
         return {K_COLEGIOS: {}}
@@ -54,6 +48,8 @@ def cargar_datos() -> dict:
     except (json.JSONDecodeError, FileNotFoundError):
         # Si el archivo no se encuentra (puede ser borrado mientras la app corre) o está corrupto
         return {K_COLEGIOS: {}}
+
+RUTA_ARCHIVO = None # Se inicializará en la clase App
 
 def guardar_datos(datos: dict):
     global RUTA_ARCHIVO

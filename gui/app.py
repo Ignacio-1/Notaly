@@ -1,7 +1,8 @@
 import customtkinter as ctk
 import tkinter as tk
 from tkinter import messagebox, ttk, filedialog
-from core.gestor_datos import cargar_datos, guardar_datos
+import sys
+from core import gestor_datos
 from core.calculos import procesar_calificaciones_alumno
 from core.constants import *
 from core.exportador import exportar_a_csv
@@ -45,8 +46,14 @@ class AppPromedios:
             "trimestre_1": "#FDEBD0", "trimestre_2": "#D4EFDF", "trimestre_3": "#E8DAEF", "final": "#FCF3CF"
         }
         
+        # --- Inicialización de Datos y Configuración ---
         self.root.configure(fg_color=self.paleta["fondo_app"])
-        self.datos = cargar_datos()
+        gestor_datos.RUTA_ARCHIVO = gestor_datos.obtener_ruta_base_datos()
+        if not gestor_datos.RUTA_ARCHIVO:
+            messagebox.showerror("Configuración Requerida", "Se requiere una carpeta de datos para iniciar. La aplicación se cerrará.")
+            sys.exit()
+
+        self.datos = gestor_datos.cargar_datos()
         self.frame_actual = None
         self.colegio_seleccionado = None
         self.curso_seleccionado = None
@@ -95,9 +102,11 @@ class AppPromedios:
     def solo_numeros(self, P):
         if P == "":
             return True
-        # Permite un formato de número flotante simple (ej: "123", "123.45")
-        parts = P.split('.')
-        if len(parts) > 2:  # Más de un punto decimal
+        # Permite un formato de número flotante simple, aceptando tanto punto como coma.
+        # Reemplazamos la coma por un punto para una validación unificada.
+        P_normalized = P.replace(',', '.')
+        parts = P_normalized.split('.')
+        if len(parts) > 2:  # Más de un separador decimal
             return False
         # Chequea que todas las partes (antes y después del punto) sean dígitos
         return all(part.isdigit() for part in parts)
@@ -178,7 +187,7 @@ class AppPromedios:
                 return
 
             self.datos[K_COLEGIOS][nuevo] = self.datos[K_COLEGIOS].pop(nombre_ant)
-            guardar_datos(self.datos)
+            gestor_datos.guardar_datos(self.datos)
         self.mostrar_pantalla_cursos(nuevo if nuevo else nombre_ant)
 
     # --- CRUD CURSOS ---
@@ -236,7 +245,7 @@ class AppPromedios:
                 return
 
             self.datos[K_COLEGIOS][col][K_CURSOS][nuevo] = self.datos[K_COLEGIOS][col][K_CURSOS].pop(nombre_ant)
-            guardar_datos(self.datos)
+            gestor_datos.guardar_datos(self.datos)
         self.mostrar_apartado_curso(nuevo if nuevo else nombre_ant)
 
     # --- MODALES ---
@@ -251,13 +260,13 @@ class AppPromedios:
         ctk.CTkLabel(ventana, text=f"Nuevo {tipo.capitalize()}", font=self.font_card_title, text_color=self.paleta["azul_fg"]).pack(pady=20)
         
         instruccion = "Nombre de la Institución:" if tipo == "colegio" else "Año y División:"
-        ctk.CTkLabel(ventana, text=instruccion, font=("Segoe UI", 12)).pack(anchor=tk.W, padx=50)
+        ctk.CTkLabel(ventana, text=instruccion, font=self.font_body).pack(anchor=tk.W, padx=50)
         ent_nom = ctk.CTkEntry(ventana, font=self.font_body, border_width=1, border_color="#ccc", corner_radius=6)
         ent_nom.pack(pady=10, padx=50, fill=tk.X, ipady=5)
 
         ent_cant = None
         if tipo == "curso":
-            ctk.CTkLabel(ventana, text="Cantidad inicial de alumnos:", font=("Segoe UI", 12)).pack(anchor=tk.W, padx=50)
+            ctk.CTkLabel(ventana, text="Cantidad inicial de alumnos:", font=self.font_body).pack(anchor=tk.W, padx=50)
             ent_cant = ctk.CTkEntry(ventana, font=self.font_body, justify=tk.CENTER, border_width=1, 
                                     border_color="#ccc", corner_radius=6,
                                     validate='key', validatecommand=self.vcmd)
@@ -275,6 +284,11 @@ class AppPromedios:
                     self.datos[K_COLEGIOS][nom] = {K_CURSOS: {}}
                     self.mostrar_pantalla_colegios()
             else:
+                # Asegurarse de que el diccionario de cursos exista antes de intentar acceder a él.
+                # Esto previene el KeyError si los datos están incompletos.
+                if K_CURSOS not in self.datos[K_COLEGIOS][col]:
+                    self.datos[K_COLEGIOS][col][K_CURSOS] = {}
+
                 cant_s = ent_cant.get().strip()
                 cant = int(cant_s) if cant_s.isdigit() else 1
                 if nom not in self.datos[K_COLEGIOS][col][K_CURSOS]:
@@ -290,7 +304,7 @@ class AppPromedios:
                     }
                     self.mostrar_pantalla_cursos(col)
             
-            guardar_datos(self.datos)
+            gestor_datos.guardar_datos(self.datos)
             ventana.destroy()
 
         ctk.CTkButton(ventana, text="Confirmar", fg_color=self.paleta["azul_fg"], hover_color=self.paleta["azul_hover"], 
@@ -421,7 +435,7 @@ class AppPromedios:
         alumnos = self.datos[K_COLEGIOS][col][K_CURSOS][nombre_curso][K_ALUMNOS]
         nuevo_id = str(max([int(k) for k in alumnos.keys()] + [0]) + 1)
         alumnos[nuevo_id] = {K_NOMBRE: "", K_TRIMESTRES: {t: {K_PRINCIPALES: [None]*3, K_EXTRAS: [None]} for t in NOMBRES_TRIMESTRES}}
-        guardar_datos(self.datos); self.mostrar_apartado_curso(nombre_curso)
+        gestor_datos.guardar_datos(self.datos); self.mostrar_apartado_curso(nombre_curso)
 
     def eliminar_entidad(self, tipo, id_ent, nombre_curso=None):
         if not messagebox.askyesno("Confirmar", f"¿Eliminar permanentemente este {tipo}?"): return
@@ -442,7 +456,7 @@ class AppPromedios:
             self.datos[K_COLEGIOS][col][K_CURSOS][nombre_curso][K_ALUMNOS] = alumnos_reordenados
 
         # --- Fase 2: Persistir los cambios en el disco ---
-        guardar_datos(self.datos)
+        gestor_datos.guardar_datos(self.datos)
 
         # --- Fase 3: Actualizar la interfaz de usuario ---
         if tipo == "colegio":
@@ -474,7 +488,7 @@ class AppPromedios:
             # Usamos el nuevo método para actualizar la UI
             self._actualizar_promedios_ui(id_al, res)
 
-        guardar_datos(self.datos)
+        gestor_datos.guardar_datos(self.datos)
         self.hay_cambios_sin_guardar = False
         messagebox.showinfo("Éxito", "Cambios guardados.")
 
