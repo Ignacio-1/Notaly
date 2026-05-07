@@ -15,6 +15,7 @@ def exportar_a_csv(curso_data: dict, file_path: str):
             nombres_cols_curso = curso_data[K_NOMBRES_COLUMNAS]
             for t_nom in NOMBRES_TRIMESTRES:
                 header.extend(nombres_cols_curso[t_nom])
+                header.append("Recuperatorio")
                 header.append(f"Prom. {t_nom.split(' ')[0]}")
             
             header.extend(["Prom. Final T1", "Prom. Final T2", "Prom. Final T3", "Prom. FINAL TOTAL"])
@@ -37,12 +38,15 @@ def exportar_a_csv(curso_data: dict, file_path: str):
                     
                     row.extend(notas_principales)
                     row.extend(notas_extras)
+
+                    recup_val = trimestre_data.get(K_RECUPERATORIO)
+                    row.append(str(recup_val) if recup_val is not None else "")
                     
-                    prom_trim = resultados["trimestres"][i]
-                    row.append(f"{prom_trim:.2f}" if prom_trim is not None else "")
+                    prom_crudo_trim = resultados["promedios_crudos_redondeados"][i]
+                    row.append(f"{prom_crudo_trim}" if prom_crudo_trim is not None else "")
                 
-                row.extend([f"{p:.2f}" if p is not None else "" for p in resultados["trimestres"]])
-                row.append(f"{resultados['final']:.2f}" if resultados['final'] > 0 else "")
+                row.extend([f"{p}" if p is not None else "" for p in resultados["notas_finales_redondeadas"]])
+                row.append(f"{resultados['nota_final_total_redondeada']}" if resultados['nota_final_total_redondeada'] is not None else "")
                 writer.writerow(row)
         return True, None # (Éxito, Mensaje de error)
     except (IOError, OSError) as e:

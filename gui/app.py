@@ -1,7 +1,7 @@
 import customtkinter as ctk
 import tkinter as tk
 from tkinter import messagebox, ttk, filedialog
-import sys
+import sys, platform
 from core import gestor_datos
 from core.calculos import procesar_calificaciones_alumno
 from core.constants import *
@@ -15,13 +15,23 @@ class AppPromedios:
         self.root.title("Gestor Educativo Profesional")
         self.root.geometry("1600x900")
 
+        # --- Fuentes (Cross-platform) ---
+        # Seleccionar una fuente base según el sistema operativo para una apariencia nativa.
+        if platform.system() == "Darwin":  # macOS
+            base_font = "Helvetica"
+        elif platform.system() == "Windows": # Windows
+            base_font = "Segoe UI"
+        else:  # Linux y otros
+            # Usamos una fuente común y de alta calidad para Linux.
+            base_font = "DejaVu Sans"
+
         # --- Fuentes ---
-        self.font_title = ("Segoe UI", 34, "bold")
-        self.font_card_title = ("Segoe UI", 16, "bold")
-        self.font_button = ("Segoe UI", 14, "bold")
-        self.font_body = ("Segoe UI", 14)
-        self.font_grid_header = ("Segoe UI", 13, "bold")
-        self.font_grid_body = ("Segoe UI", 14)
+        self.font_title = (base_font, 34, "bold")
+        self.font_card_title = (base_font, 16, "bold")
+        self.font_button = (base_font, 14, "bold")
+        self.font_body = (base_font, 14)
+        self.font_grid_header = (base_font, 13, "bold")
+        self.font_grid_body = (base_font, 14)
 
         # --- Paleta de Colores ---
         self.paleta = {
@@ -43,7 +53,8 @@ class AppPromedios:
             "card_verde_texto": "#27AE60",
             "card_rojo_texto": "#E74C3C",
 
-            "trimestre_1": "#FDEBD0", "trimestre_2": "#D4EFDF", "trimestre_3": "#E8DAEF", "final": "#FCF3CF"
+            "trimestre_1": "#FDEBD0", "trimestre_2": "#D4EFDF", "trimestre_3": "#E8DAEF", "final": "#FCF3CF",
+            "recuperatorio_bg": "#FAD7A0" # Naranja claro para el campo de recuperatorio
         }
         
         # --- Inicialización de Datos y Configuración ---
@@ -61,8 +72,10 @@ class AppPromedios:
         self.grid_container = None
         self._resize_timer = None
 
-        # Validación para permitir solo números y puntos en los Entry
+        # Validación para notas (0-10, permite decimales)
         self.vcmd = (self.root.register(self.solo_numeros), '%P')
+        # Validación para cantidades (solo enteros positivos)
+        self.vcmd_int = (self.root.register(self.solo_enteros), '%P')
 
         # Protocolo de cierre para advertir sobre cambios sin guardar
         self.root.protocol("WM_DELETE_WINDOW", self.al_cerrar)
@@ -71,8 +84,8 @@ class AppPromedios:
         # Firma fija
         ctk.CTkLabel(
             self.root, 
-            text="Software desarrollado por Ignacio Olmedo © 2026", 
-            font=("Segoe UI", 12, "italic"), 
+            text="Software desarrollado por Ignacio Olmedo © 2026",
+            font=(base_font, 12, "italic"),
             text_color=self.paleta["texto_secundario"]
         ).pack(side=tk.BOTTOM, pady=10)
 
@@ -102,14 +115,32 @@ class AppPromedios:
     def solo_numeros(self, P):
         if P == "":
             return True
-        # Permite un formato de número flotante simple, aceptando tanto punto como coma.
+        
         # Reemplazamos la coma por un punto para una validación unificada.
         P_normalized = P.replace(',', '.')
-        parts = P_normalized.split('.')
-        if len(parts) > 2:  # Más de un separador decimal
+
+        # Permitir estados intermedios como empezar con un punto decimal.
+        if P_normalized == ".":
+            return True
+
+        try:
+            # Intentamos convertir el valor a un número flotante.
+            valor = float(P_normalized)
+        except ValueError:
+            # Si la conversión falla, el formato es inválido (ej: "5.5.5" o "abc").
             return False
-        # Chequea que todas las partes (antes y después del punto) sean dígitos
-        return all(part.isdigit() for part in parts)
+
+        # Validamos que el número esté en el rango de 0 a 10.
+        return 0 <= valor <= 10
+        
+    def solo_enteros(self, P):
+        """Función de validación que solo permite números enteros positivos."""
+        # Permite una cadena vacía (cuando el usuario borra el campo)
+        # o una cadena que contiene solo dígitos.
+        if P == "" or P.isdigit():
+            return True
+        else:
+            return False
         
     def limpiar_pantalla(self):
         if self.frame_actual: self.frame_actual.destroy()
@@ -268,8 +299,8 @@ class AppPromedios:
         if tipo == "curso":
             ctk.CTkLabel(ventana, text="Cantidad inicial de alumnos:", font=self.font_body).pack(anchor=tk.W, padx=50)
             ent_cant = ctk.CTkEntry(ventana, font=self.font_body, justify=tk.CENTER, border_width=1, 
-                                    border_color="#ccc", corner_radius=6,
-                                    validate='key', validatecommand=self.vcmd)
+                                    border_color="#ccc", corner_radius=6, validate='key', 
+                                    validatecommand=self.vcmd_int)
             ent_cant.insert(0, "")
             ent_cant.pack(pady=10, padx=50, fill=tk.X, ipady=5)
 
@@ -294,8 +325,8 @@ class AppPromedios:
                 if nom not in self.datos[K_COLEGIOS][col][K_CURSOS]:
                     alumnos = {
                         str(i): {
-                            K_NOMBRE: "", 
-                            K_TRIMESTRES: {t: {K_PRINCIPALES: [None]*3, K_EXTRAS: [None]} for t in NOMBRES_TRIMESTRES}
+                            K_NOMBRE: "",
+                            K_TRIMESTRES: {t: {K_PRINCIPALES: [None]*3, K_EXTRAS: [None], K_RECUPERATORIO: None} for t in NOMBRES_TRIMESTRES}
                         } for i in range(1, cant + 1)
                     }
                     self.datos[K_COLEGIOS][col][K_CURSOS][nom] = {
@@ -329,17 +360,36 @@ class AppPromedios:
         ctk.CTkButton(toolbar, text="+ Alumno", fg_color=self.paleta["card_btn_fg"], text_color=self.paleta["card_azul_texto"], hover_color=self.paleta["card_btn_hover"], corner_radius=8, font=self.font_button, command=lambda: self.agregar_alumno(nombre_curso)).pack(side=tk.RIGHT, padx=10)
 
         # Usamos un CTkScrollableFrame para simplificar enormemente el manejo del scroll
-        scrollable_frame = ctk.CTkScrollableFrame(self.frame_actual, fg_color=self.paleta["grid_bg"], corner_radius=0)
-        scrollable_frame.pack(fill=tk.BOTH, expand=True)
+        # --- Contenedor con Scrollbars Horizontal y Vertical ---
+        canvas_container = ctk.CTkFrame(self.frame_actual, fg_color="transparent")
+        canvas_container.pack(fill=tk.BOTH, expand=True)
+        canvas_container.grid_rowconfigure(0, weight=1)
+        canvas_container.grid_columnconfigure(0, weight=1)
 
-        # El grid_container ahora es el frame interno del CTkScrollableFrame
-        self.grid_container = scrollable_frame
+        canvas = ctk.CTkCanvas(canvas_container, bg=self.paleta["grid_bg"], highlightthickness=0)
+        
+        v_scrollbar = ctk.CTkScrollbar(canvas_container, orientation="vertical", command=canvas.yview)
+        h_scrollbar = ctk.CTkScrollbar(canvas_container, orientation="horizontal", command=canvas.xview)
+        
+        canvas.configure(yscrollcommand=v_scrollbar.set, xscrollcommand=h_scrollbar.set)
 
+        v_scrollbar.grid(row=0, column=1, sticky="ns")
+        h_scrollbar.grid(row=1, column=0, sticky="ew")
+        canvas.grid(row=0, column=0, sticky="nsew")
+
+        self.grid_container = ctk.CTkFrame(canvas, fg_color=self.paleta["grid_bg"])
+        canvas.create_window((0, 0), window=self.grid_container, anchor="nw")
+
+        def on_frame_configure(event):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+
+        self.grid_container.bind("<Configure>", on_frame_configure)
+        
         # Hacemos que la columna del nombre del alumno sea la que se expanda
         self.grid_container.grid_columnconfigure(2, weight=1, minsize=250) # Asegura un ancho mínimo de 250px
 
         curso_data = self.datos[K_COLEGIOS][self.colegio_seleccionado][K_CURSOS][nombre_curso]
-        self.widgets_entradas, self.widgets_resultados, self.widgets_nombres_alumnos = {}, {}, {}
+        self.widgets_entradas, self.widgets_resultados, self.widgets_nombres_alumnos, self.widgets_recuperatorios = {}, {}, {}, {}
         self.widgets_nombres_cols = {t: [] for t in NOMBRES_TRIMESTRES}
 
         # Headers  
@@ -348,7 +398,7 @@ class AppPromedios:
 
         col_off = 3
         for t, color in zip(NOMBRES_TRIMESTRES, [self.paleta["trimestre_1"], self.paleta["trimestre_2"], self.paleta["trimestre_3"]]):
-            ctk.CTkLabel(self.grid_container, text=t, fg_color=color, text_color=self.paleta["texto_principal"], font=self.font_grid_header).grid(row=0, column=col_off, columnspan=5, sticky="nsew", padx=1, pady=1)
+            ctk.CTkLabel(self.grid_container, text=t, fg_color=color, text_color=self.paleta["texto_principal"], font=self.font_grid_header).grid(row=0, column=col_off, columnspan=6, sticky="nsew", padx=1, pady=1)
             for j, nom in enumerate(curso_data["nombres_columnas"][t]):
                 e = ctk.CTkEntry(self.grid_container, justify=tk.CENTER, width=60, font=self.font_grid_header, fg_color="#E5E7E9", text_color=self.paleta["texto_principal"], border_width=0, corner_radius=0)
                 e.insert(0, nom)
@@ -356,15 +406,16 @@ class AppPromedios:
                 e.grid(row=1, column=col_off + j, sticky="nsew", padx=1, pady=1)
                 self.widgets_nombres_cols[t].append(e)
             ctk.CTkLabel(self.grid_container, text="Prom", width=60, font=self.font_grid_header, fg_color="#E5E7E9", text_color=self.paleta["texto_principal"]).grid(row=1, column=col_off+4, sticky="nsew", padx=1, pady=1)
-            col_off += 5
+            ctk.CTkLabel(self.grid_container, text="Recup.", width=60, font=self.font_grid_header, fg_color="#E5E7E9", text_color=self.paleta["texto_principal"]).grid(row=1, column=col_off+5, sticky="nsew", padx=1, pady=1)
+            col_off += 6
         
         # PROMEDIOS FINALES: Aplicamos el margen (30, 1) tanto a la cabecera principal como a los subtítulos
-        ctk.CTkLabel(self.grid_container, text="PROMEDIOS FINALES", fg_color=self.paleta["final"], text_color=self.paleta["texto_principal"], font=self.font_grid_header).grid(row=0, column=18, columnspan=4, sticky="nsew", padx=(30, 1), pady=1)
+        ctk.CTkLabel(self.grid_container, text="PROMEDIOS FINALES", fg_color=self.paleta["final"], text_color=self.paleta["texto_principal"], font=self.font_grid_header).grid(row=0, column=21, columnspan=4, sticky="nsew", padx=(30, 1), pady=1)
         
         for i, txt in enumerate(["T1", "T2", "T3", "TOTAL"]):
             # El gap (30, 1) solo va en el primer elemento (T1) para empujar el resto
             gap = (30, 1) if i == 0 else 1
-            ctk.CTkLabel(self.grid_container, text=txt, width=60, font=self.font_grid_header, fg_color="#E5E7E9", text_color=self.paleta["texto_principal"]).grid(row=1, column=18+i, sticky="nsew", padx=gap, pady=1)
+            ctk.CTkLabel(self.grid_container, text=txt, width=60, font=self.font_grid_header, fg_color="#E5E7E9", text_color=self.paleta["texto_principal"]).grid(row=1, column=21+i, sticky="nsew", padx=gap, pady=1)
 
         # Dibujar las filas de los alumnos
         for i, id_al in enumerate(sorted(curso_data[K_ALUMNOS].keys(), key=int)):
@@ -380,7 +431,7 @@ class AppPromedios:
         ent_n.bind("<KeyRelease>", self._marcar_cambios_pendientes)
         self.widgets_nombres_alumnos[id_al] = ent_n
 
-        self.widgets_entradas[id_al], self.widgets_resultados[id_al] = [], {"trim": [], "fin": []}
+        self.widgets_entradas[id_al], self.widgets_resultados[id_al], self.widgets_recuperatorios[id_al] = [], {"trim": [], "fin": []}, []
         c_idx = 3
         for t_idx, t_nom in enumerate(NOMBRES_TRIMESTRES):
             e_dict = {"p": [], "ex": None}
@@ -401,6 +452,15 @@ class AppPromedios:
             
             l = ctk.CTkLabel(self.grid_container, text="-", font=self.font_grid_header, fg_color="#FBFBFB", text_color=self.paleta["texto_principal"])
             l.grid(row=row, column=c_idx, sticky="nsew", padx=1, pady=1); c_idx += 1
+            
+            # --- NUEVO CAMPO RECUPERATORIO ---
+            e_recup = ctk.CTkEntry(self.grid_container, width=60, justify=tk.CENTER, font=self.font_grid_body, fg_color=self.paleta["fondo_card"], border_width=0, corner_radius=0, validate='key', validatecommand=self.vcmd)
+            val_recup = notas_data.get(K_RECUPERATORIO)
+            if val_recup is not None: e_recup.insert(0, str(val_recup))
+            e_recup.bind("<KeyRelease>", self._marcar_cambios_pendientes)
+            e_recup.grid(row=row, column=c_idx, padx=1, pady=1); c_idx += 1
+            self.widgets_recuperatorios[id_al].append(e_recup)
+
             self.widgets_resultados[id_al]["trim"].append(l)
 
         # --- FILAS DE PROMEDIOS FINALES (CORREGIDO PARA ALINEAR CON EL CABECERAS) ---
@@ -410,7 +470,7 @@ class AppPromedios:
             separacion_seccion = (30, 1) if j == 0 else 1
             
             l_f = ctk.CTkLabel(self.grid_container, text="-", font=self.font_grid_header, fg_color="#FBFBFB", text_color=self.paleta["texto_principal"])
-            l_f.grid(row=row, column=18+j, sticky="nsew", padx=separacion_seccion, pady=1)
+            l_f.grid(row=row, column=21+j, sticky="nsew", padx=separacion_seccion, pady=1)
             self.widgets_resultados[id_al]["fin"].append(l_f)
             
         # --- CÁLCULO AUTOMÁTICO Y FORMATO DE COLOR AL CARGAR ---
@@ -418,23 +478,42 @@ class AppPromedios:
         self._actualizar_promedios_ui(id_al, res_cargados)
 
     def _actualizar_promedios_ui(self, id_al, resultados):
-        # Actualiza los labels de promedio para un alumno específico
-        for t_idx, prom_t in enumerate(resultados["trimestres"]):
-            val_txt = f"{prom_t:.2f}" if prom_t is not None else "-"
-            color = self.paleta["rojo_fuerte"] if (prom_t is not None and prom_t < 6) else (self.paleta["verde_fg"] if prom_t is not None else self.paleta["texto_principal"])
-            self.widgets_resultados[id_al]["trim"][t_idx].configure(text=val_txt, text_color=color)
-            self.widgets_resultados[id_al]["fin"][t_idx].configure(text=val_txt, text_color=color)
-        
-        # Color para el promedio final total
-        p_final = resultados['final']
-        color_f = self.paleta["rojo_fuerte"] if (p_final > 0 and p_final < 6) else (self.paleta["verde_fg"] if p_final > 0 else self.paleta["texto_principal"])
-        self.widgets_resultados[id_al]["fin"][3].configure(text=f"{p_final:.2f}" if p_final > 0 else "-", text_color=color_f)
+        """
+        Actualiza la UI de un alumno con los resultados calculados.
+        - Muestra el promedio crudo en la columna "Prom" del trimestre.
+        - Muestra la nota final (que puede ser el recuperatorio) en la sección de promedios finales.
+        - Habilita y colorea el campo de recuperatorio si el promedio crudo es <= 5.
+        """
+        for t_idx, prom_crudo_raw in enumerate(resultados["promedios_crudos_sin_redondear"]):
+            # Habilitar/deshabilitar y colorear campo de recuperatorio
+            recup_widget = self.widgets_recuperatorios[id_al][t_idx]
+            if prom_crudo_raw is not None and prom_crudo_raw <= 5:
+                recup_widget.configure(state=tk.NORMAL, fg_color=self.paleta["recuperatorio_bg"])
+            else:
+                recup_widget.configure(state=tk.DISABLED, fg_color="#F0F0F0")
+
+            # Actualizar label "Prom" del trimestre (usa promedio crudo redondeado)
+            prom_crudo_rnd = resultados["promedios_crudos_redondeados"][t_idx]
+            val_txt_crudo = f"{prom_crudo_rnd}" if prom_crudo_rnd is not None else "-"
+            color_crudo = self.paleta["rojo_fuerte"] if (prom_crudo_rnd is not None and prom_crudo_rnd < 6) else (self.paleta["verde_fg"] if prom_crudo_rnd is not None else self.paleta["texto_principal"])
+            self.widgets_resultados[id_al]["trim"][t_idx].configure(text=val_txt_crudo, text_color=color_crudo)
+
+            # Actualizar labels de "PROMEDIOS FINALES" (T1, T2, T3) (usa nota final redondeada)
+            nota_final_rnd = resultados["notas_finales_redondeadas"][t_idx]
+            val_txt_final = f"{nota_final_rnd}" if nota_final_rnd is not None else "-"
+            color_final = self.paleta["rojo_fuerte"] if (nota_final_rnd is not None and nota_final_rnd < 6) else (self.paleta["verde_fg"] if nota_final_rnd is not None else self.paleta["texto_principal"])
+            self.widgets_resultados[id_al]["fin"][t_idx].configure(text=val_txt_final, text_color=color_final)
+
+        # Actualizar label "TOTAL"
+        nota_total_rnd = resultados['nota_final_total_redondeada']
+        color_total = self.paleta["rojo_fuerte"] if (nota_total_rnd is not None and nota_total_rnd < 6) else (self.paleta["verde_fg"] if nota_total_rnd is not None else self.paleta["texto_principal"])
+        self.widgets_resultados[id_al]["fin"][3].configure(text=f"{nota_total_rnd}" if nota_total_rnd is not None else "-", text_color=color_total)
 
     def agregar_alumno(self, nombre_curso):
         col = self.colegio_seleccionado
         alumnos = self.datos[K_COLEGIOS][col][K_CURSOS][nombre_curso][K_ALUMNOS]
         nuevo_id = str(max([int(k) for k in alumnos.keys()] + [0]) + 1)
-        alumnos[nuevo_id] = {K_NOMBRE: "", K_TRIMESTRES: {t: {K_PRINCIPALES: [None]*3, K_EXTRAS: [None]} for t in NOMBRES_TRIMESTRES}}
+        alumnos[nuevo_id] = {K_NOMBRE: "", K_TRIMESTRES: {t: {K_PRINCIPALES: [None]*3, K_EXTRAS: [None], K_RECUPERATORIO: None} for t in NOMBRES_TRIMESTRES}}
         gestor_datos.guardar_datos(self.datos); self.mostrar_apartado_curso(nombre_curso)
 
     def eliminar_entidad(self, tipo, id_ent, nombre_curso=None):
@@ -483,6 +562,7 @@ class AppPromedios:
             for t_idx, t_nom in enumerate(NOMBRES_TRIMESTRES):
                 al_data[K_TRIMESTRES][t_nom][K_PRINCIPALES] = [val_num(e) for e in ui[t_idx]["p"]]
                 al_data[K_TRIMESTRES][t_nom][K_EXTRAS] = [val_num(ui[t_idx]["ex"])]
+                al_data[K_TRIMESTRES][t_nom][K_RECUPERATORIO] = val_num(self.widgets_recuperatorios[id_al][t_idx])
             res = procesar_calificaciones_alumno(al_data[K_TRIMESTRES])
             
             # Usamos el nuevo método para actualizar la UI

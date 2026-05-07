@@ -16,17 +16,17 @@ def sample_curso_data():
             "1": {
                 K_NOMBRE: "ALUMNO UNO",
                 K_TRIMESTRES: {
-                    TRIM_1: {K_PRINCIPALES: [7, 8, None], K_EXTRAS: [9]},
-                    TRIM_2: {K_PRINCIPALES: [4, 5, 6], K_EXTRAS: []},
-                    TRIM_3: {K_PRINCIPALES: [], K_EXTRAS: []}
+                    TRIM_1: {K_PRINCIPALES: [7, 8, None], K_EXTRAS: [9], K_RECUPERATORIO: None},
+                    TRIM_2: {K_PRINCIPALES: [4, 5, 6], K_EXTRAS: [], K_RECUPERATORIO: 7},
+                    TRIM_3: {K_PRINCIPALES: [], K_EXTRAS: [], K_RECUPERATORIO: None}
                 }
             },
             "2": {
                 K_NOMBRE: "ALUMNO DOS",
                 K_TRIMESTRES: {
-                    TRIM_1: {K_PRINCIPALES: [10, 10, 10], K_EXTRAS: [10]},
-                    TRIM_2: {K_PRINCIPALES: [10, 10, 10], K_EXTRAS: [10]},
-                    TRIM_3: {K_PRINCIPALES: [10, 10, 10], K_EXTRAS: [10]}
+                    TRIM_1: {K_PRINCIPALES: [10, 10, 10], K_EXTRAS: [10], K_RECUPERATORIO: None},
+                    TRIM_2: {K_PRINCIPALES: [10, 10, 10], K_EXTRAS: [10], K_RECUPERATORIO: None},
+                    TRIM_3: {K_PRINCIPALES: [10, 10, 10], K_EXTRAS: [10], K_RECUPERATORIO: None}
                 }
             }
         }
@@ -44,15 +44,18 @@ def test_exportar_a_csv_estructura_y_contenido(tmp_path, sample_curso_data):
         rows = list(reader)
 
         # Verificar cabecera
-        assert len(rows[0]) == 2 + (4 + 1) * 3 + 4 # N, Nombre + 3*(4 notas + prom) + 4 prom finales
+        # N, Nombre + 3*(4 notas + Recup + Prom) + 4 prom finales
+        assert len(rows[0]) == 2 + (4 + 1 + 1) * 3 + 4
         assert rows[0][0] == "N°"
         assert rows[0][-1] == "Prom. FINAL TOTAL"
+        assert rows[0][6] == "Recuperatorio"
 
         # Verificar contenido de una fila
         assert rows[1][0] == "1" # ID Alumno
         assert rows[1][1] == "ALUMNO UNO"
         assert rows[1][2] == "7" # Primera nota
         assert rows[1][4] == "" # Nota vacía
-        assert rows[1][6] == "8.00" # Promedio del primer trimestre
+        assert rows[1][7] == "8" # Promedio crudo del primer trimestre (7+8+9)/3=8
+        assert rows[1][12] == "7" # Nota de recuperatorio del T2
         assert rows[2][1] == "ALUMNO DOS"
-        assert rows[2][-1] == "10.00" # Promedio final del Alumno Dos
+        assert rows[2][-1] == "10" # Promedio final del Alumno Dos

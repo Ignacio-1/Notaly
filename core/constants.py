@@ -6,6 +6,7 @@ K_NOMBRE = "nombre"
 K_TRIMESTRES = "trimestres"
 K_PRINCIPALES = "principales"
 K_EXTRAS = "extras"
+K_RECUPERATORIO = "recuperatorio"
 K_NOMBRES_COLUMNAS = "nombres_columnas"
 
 # Nombres de los trimestres, usados como claves y para la UI

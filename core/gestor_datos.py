@@ -1,22 +1,48 @@
 import json
 import os
 import sys
+from pathlib import Path
 from tkinter import filedialog, messagebox
 from .constants import K_COLEGIOS
 import tkinter as tk
 
-# Archivo oculto de configuración que guarda la RUTA de la base de datos
-CONFIG_FILE = "config_path.json"
+def _get_config_dir() -> Path:
+    """
+    Obtiene el directorio de configuración apropiado para el SO y lo crea si no existe.
+    Esto asegura que los archivos de configuración no se guarden en el directorio de trabajo.
+    """
+    app_name = "Promediador"
+    
+    if sys.platform == "win32":
+        # Windows: C:\Users\<User>\AppData\Roaming\<AppName>
+        config_dir = Path(os.getenv("APPDATA")) / app_name
+    elif sys.platform == "darwin":
+        # macOS: /Users/<User>/Library/Application Support/<AppName>
+        config_dir = Path.home() / "Library" / "Application Support" / app_name
+    else: # Linux y otros
+        # Linux: /home/<user>/.config/<AppName>
+        config_dir = Path.home() / ".config" / app_name
+    
+    # Asegurarse de que el directorio de configuración exista
+    config_dir.mkdir(parents=True, exist_ok=True)
+    return config_dir
+
+# Archivo de configuración que guarda la RUTA de la base de datos.
+# Se almacena en una ubicación estándar del sistema operativo.
+CONFIG_FILE = _get_config_dir() / "config_path.json"
 
 def obtener_ruta_base_datos():
     # 1. Intentar leer la ruta desde el archivo de configuración
     if os.path.exists(CONFIG_FILE):
         try:
             with open(CONFIG_FILE, 'r') as f:
-                return json.load(f)["path"]
+                path_str = json.load(f)["path"]
+                # Verificación de robustez: la ruta guardada todavía existe?
+                if os.path.exists(path_str):
+                    return path_str
         except (json.JSONDecodeError, KeyError, FileNotFoundError):
             # El archivo de config está corrupto, no tiene la key, o fue borrado entre el check y el open.
-            pass 
+            pass
 
     # 2. Si no existe, preguntar al usuario dónde quiere guardar su base de datos
     root = tk.Tk()

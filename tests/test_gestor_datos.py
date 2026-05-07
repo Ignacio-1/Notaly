@@ -102,6 +102,54 @@ def test_guardar_datos_recuperacion_de_error(monkeypatch, tmp_path):
         data_on_disk = json.load(f)
     assert data_on_disk == sample_data
 
+def test_guardar_datos_recuperacion_cancelada_por_usuario(monkeypatch):
+    """
+    Prueba que si el usuario elige 'No' en el diálogo de recuperación,
+    el guardado se cancela y se muestra una advertencia.
+    """
+    # 1. Forzar FileNotFoundError
+    gestor_datos.RUTA_ARCHIVO = "ruta/inexistente/datos.json"
+    
+    # 2. Simular que el usuario presiona 'No'
+    monkeypatch.setattr(gestor_datos.messagebox, 'askyesno', lambda title, message: False)
+    
+    # 3. Simular la función de advertencia para verificar que se llama
+    mock_showwarning = MagicMock()
+    monkeypatch.setattr(gestor_datos.messagebox, 'showwarning', mock_showwarning)
+    
+    # --- Ejecutar la función ---
+    gestor_datos.guardar_datos({"data": "no guardado"})
+    
+    # --- Verificar ---
+    mock_showwarning.assert_called_once_with("Guardado Cancelado", "Los cambios no se han guardado.")
+
+def test_obtener_ruta_primera_vez(monkeypatch, tmp_path):
+    """
+    Prueba el flujo de la primera ejecución: no hay config, el usuario elige una carpeta,
+    y el archivo de config y la ruta final se crean correctamente.
+    """
+    # 1. Mock del path del archivo de configuración para que apunte a nuestro directorio temporal
+    config_file_path = tmp_path / "config_path.json"
+    monkeypatch.setattr(gestor_datos, 'CONFIG_FILE', config_file_path)
+    
+    # Nos aseguramos de que el archivo de config no exista al inicio
+    assert not os.path.exists(config_file_path)
+
+    # 2. Simulamos que el usuario elige una carpeta de datos dentro del directorio temporal
+    data_dir_path = tmp_path / "data_folder"
+    monkeypatch.setattr(gestor_datos.filedialog, 'askdirectory', lambda title: str(data_dir_path))
+    
+    # --- Ejecutar la función ---
+    ruta_obtenida = gestor_datos.obtener_ruta_base_datos()
+    
+    # --- Verificar ---
+    expected_data_path = os.path.join(str(data_dir_path), "datos_promedios.json")
+    assert ruta_obtenida == expected_data_path
+    assert os.path.exists(config_file_path) # El archivo de config debe haberse creado
+    with open(config_file_path, 'r') as f:
+        config_data = json.load(f)
+        assert config_data["path"] == expected_data_path
+
 def test_guardar_datos_error_io(monkeypatch):
     """Prueba que se muestre un error en caso de un IOError y no entre en bucle."""
     gestor_datos.RUTA_ARCHIVO = "ruta/protegida/datos.json"
