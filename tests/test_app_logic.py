@@ -1,64 +1,47 @@
+"""Tests para la lógica de la aplicación (validación, reordenación)."""
+
 import pytest
-from core.constants import *
 from unittest.mock import MagicMock
-# Importamos la clase de la app para poder instanciarla y probar sus métodos
+
+from core.constants import K_ALUMNOS, K_COLEGIOS, K_CURSOS, K_NOMBRE
 from gui.app import AppPromedios
+
 
 @pytest.fixture
 def sample_data_for_deletion():
     """Proporciona datos de ejemplo para probar la eliminación de alumnos."""
     return {
-        K_COLEGIOS: {
-            "COLEGIO TEST": {
-                K_CURSOS: {
-                    "CURSO TEST": {
-                        K_ALUMNOS: {
-                            "1": {K_NOMBRE: "Alumno A"},
-                            "2": {K_NOMBRE: "Alumno B"},
-                            "3": {K_NOMBRE: "Alumno C"}
-                        }
-                    }
-                }
-            }
-        }
+        "1": {K_NOMBRE: "Alumno A"},
+        "2": {K_NOMBRE: "Alumno B"},
+        "3": {K_NOMBRE: "Alumno C"},
     }
+
+
+def test_reordenar_alumnos_despues_de_borrado(sample_data_for_deletion):
+    """Verifica que al eliminar un alumno, los IDs se reordenen correctamente."""
+    alumnos = sample_data_for_deletion
+    del alumnos["2"]  # Eliminamos al Alumno B
+
+    reordenados = AppPromedios._reordenar_alumnos(alumnos)
+
+    assert len(reordenados) == 2
+    assert "3" not in reordenados
+    assert reordenados["1"][K_NOMBRE] == "Alumno A"
+    assert reordenados["2"][K_NOMBRE] == "Alumno C"
+
 
 @pytest.fixture
 def app_instance(monkeypatch):
-    """Crea una instancia de la app sin iniciar la UI de Tkinter."""
-    # Simulamos la ventana raíz de Tkinter con un MagicMock para que acepte cualquier llamada.
+    """Crea una instancia mock de la app sin iniciar la UI de Tkinter."""
     mock_root = MagicMock()
-    
-    # Evitamos que se inicialice la UI real y que se acceda al sistema de archivos.
+
     monkeypatch.setattr("gui.app.ctk.CTk", lambda: mock_root)
-    monkeypatch.setattr("gui.app.gestor_datos.obtener_ruta_base_datos", lambda: "dummy/path/datos.json")
-    monkeypatch.setattr("gui.app.gestor_datos.cargar_datos", lambda: {K_COLEGIOS: {}})
-    
-    # Evitamos que se intente dibujar la UI al inicializar la clase, lo que causa que el test se cuelgue.
+    monkeypatch.setattr(AppPromedios, '_obtener_o_configurar_ruta_datos', lambda self: "dummy/path/datos.json")
+    monkeypatch.setattr("gui.app.gestor_datos.cargar_datos", lambda ruta: {K_COLEGIOS: {}})
     monkeypatch.setattr(AppPromedios, 'mostrar_pantalla_colegios', lambda self: None)
-    
-    # Devolvemos una instancia de la app con el root simulado.
+
     return AppPromedios(root=mock_root)
 
-def test_eliminar_alumno_y_reordenar(sample_data_for_deletion):
-    """Verifica que al eliminar un alumno, los IDs se reordenen correctamente."""
-    datos = sample_data_for_deletion
-    col = "COLEGIO TEST"
-    curso = "CURSO TEST"
-    id_a_eliminar = "2" # Eliminamos al Alumno B
-
-    # Lógica de eliminación extraída de la clase AppPromedios para testeo unitario
-    del datos[K_COLEGIOS][col][K_CURSOS][curso][K_ALUMNOS][id_a_eliminar]
-    alumnos_restantes = datos[K_COLEGIOS][col][K_CURSOS][curso][K_ALUMNOS]
-    ids_viejos_ordenados = sorted(alumnos_restantes.keys(), key=int)
-    alumnos_reordenados = {str(nuevo_id): alumnos_restantes[viejo_id] for nuevo_id, viejo_id in enumerate(ids_viejos_ordenados, start=1)}
-    datos[K_COLEGIOS][col][K_CURSOS][curso][K_ALUMNOS] = alumnos_reordenados
-
-    # Verificaciones
-    alumnos_finales = datos[K_COLEGIOS][col][K_CURSOS][curso][K_ALUMNOS]
-    assert "3" not in alumnos_finales # El ID '3' original ya no debe existir
-    assert alumnos_finales["1"][K_NOMBRE] == "Alumno A"
-    assert alumnos_finales["2"][K_NOMBRE] == "Alumno C" # El Alumno C ahora tiene el ID '2'
 
 # --- Pruebas para las funciones de validación de la UI ---
 @pytest.mark.parametrize("entrada, esperado", [
@@ -71,11 +54,12 @@ def test_eliminar_alumno_y_reordenar(sample_data_for_deletion):
     ("-1", False),
     ("abc", False),
     ("5.5.5", False),
-    ("", True)
+    ("", True),
 ])
 def test_validacion_solo_numeros(app_instance, entrada, esperado):
     """Prueba la validación de notas (0-10)."""
     assert app_instance.solo_numeros(entrada) == esperado
+
 
 @pytest.mark.parametrize("entrada, esperado", [
     ("50", True),
@@ -84,7 +68,7 @@ def test_validacion_solo_numeros(app_instance, entrada, esperado):
     ("", True),
     ("abc", False),
     ("5.5", False),
-    ("-1", False)
+    ("-1", False),
 ])
 def test_validacion_solo_enteros(app_instance, entrada, esperado):
     """Prueba la validación de cantidades (solo enteros positivos)."""

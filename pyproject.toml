@@ -1,0 +1,16 @@
+[project]
+name = "promediador"
+version = "1.0.0"
+description = "Gestor Educativo de Notas - Promediador"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+
+[tool.pyrefly]
+search_path = ["."]
+
+[tool.pyright]
+extraPaths = ["."]
+venvPath = "."
+venv = "venv"

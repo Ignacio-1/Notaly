@@ -3,15 +3,27 @@ __pycache__/
 *.pyc
 *.pyd
 *.pyo
+
 # Entornos virtuales
 venv/
 .venv/
+.venv_linux/
 env/
+
 # Archivos de PyInstaller
 build/
 dist/
 *.spec
-# Archivos de configuración de la aplicación
+
+# Archivos de datos de la aplicación
 config_path.json
-# Archivos de IDE (ej. VS Code)
+data.json
+*.bak
+*.tmp
+
+# Cache de pytest
+.pytest_cache/
+
+# Archivos de IDE
 .vscode/
+.idea/

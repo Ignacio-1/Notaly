@@ -1,0 +1,22 @@
+# Normalizar finales de línea para todos los SO.
+# Git almacena LF internamente; cada SO usa su formato nativo en el working copy.
+* text=auto
+
+# Forzar LF en archivos de código (estándar de la industria)
+*.py text eol=lf
+*.toml text eol=lf
+*.txt text eol=lf
+*.md text eol=lf
+*.csv text eol=lf
+*.json text eol=lf
+*.ini text eol=lf
+*.cfg text eol=lf
+*.yml text eol=lf
+*.gitignore text eol=lf
+*.gitattributes text eol=lf
+
+# Archivos binarios: no tocar
+*.exe binary
+*.png binary
+*.jpg binary
+*.ico binary

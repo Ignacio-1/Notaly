@@ -1,8 +1,5 @@
-altgraph==0.17.5
-packaging==26.2
-pefile==2024.8.26
-pyinstaller==6.20.0
-pyinstaller-hooks-contrib==2026.5
-pywin32-ctypes==0.2.3
-setuptools==82.0.1
-customtkinter
+# Dependencias de producción
+customtkinter>=5.2.0
+
+# Dependencias de desarrollo
+pytest>=7.0.0

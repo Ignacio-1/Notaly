@@ -1,115 +1,252 @@
+"""
+Módulo de gestión de datos persistentes.
+
+Maneja la lectura/escritura de archivos JSON para la base de datos de la
+aplicación, y la configuración de la ruta de almacenamiento.
+
+Estrategia de escritura segura (anti-corrupción):
+  1. Escribir a archivo temporal (.tmp)
+  2. Forzar flush + fsync para asegurar escritura física a disco
+  3. Verificar que el .tmp es JSON válido releyéndolo
+  4. Crear backup del archivo actual (.bak)
+  5. Reemplazar atómicamente el archivo original con el .tmp
+
+Estrategia de lectura con recuperación:
+  1. Intentar cargar el archivo principal
+  2. Si está corrupto, intentar cargar el backup (.bak)
+  3. Si el backup también falla, retornar estructura vacía
+"""
+
 import json
+import logging
 import os
+import shutil
 import sys
 from pathlib import Path
-from tkinter import filedialog, messagebox
+
 from .constants import K_COLEGIOS
-import tkinter as tk
+
+logger = logging.getLogger(__name__)
+
+APP_NAME = "Promediador"
+
 
 def _get_config_dir() -> Path:
     """
     Obtiene el directorio de configuración apropiado para el SO y lo crea si no existe.
-    Esto asegura que los archivos de configuración no se guarden en el directorio de trabajo.
+
+    Returns:
+        Path al directorio de configuración de la aplicación.
     """
-    app_name = "Promediador"
-    
     if sys.platform == "win32":
         # Windows: C:\Users\<User>\AppData\Roaming\<AppName>
-        config_dir = Path(os.getenv("APPDATA")) / app_name
+        appdata = Path.home() / "AppData" / "Roaming"
+        env_appdata = Path(str(appdata))  # Fallback seguro
+        env_val = os.getenv("APPDATA")
+        if env_val:
+            env_appdata = Path(env_val)
+        config_dir = env_appdata / APP_NAME
     elif sys.platform == "darwin":
         # macOS: /Users/<User>/Library/Application Support/<AppName>
-        config_dir = Path.home() / "Library" / "Application Support" / app_name
-    else: # Linux y otros
-        # Linux: /home/<user>/.config/<AppName>
-        config_dir = Path.home() / ".config" / app_name
-    
-    # Asegurarse de que el directorio de configuración exista
+        config_dir = Path.home() / "Library" / "Application Support" / APP_NAME
+    else:
+        # Linux y otros: /home/<user>/.config/<AppName>
+        config_dir = Path.home() / ".config" / APP_NAME
+
     config_dir.mkdir(parents=True, exist_ok=True)
     return config_dir
+
 
 # Archivo de configuración que guarda la RUTA de la base de datos.
 # Se almacena en una ubicación estándar del sistema operativo.
 CONFIG_FILE = _get_config_dir() / "config_path.json"
 
-def obtener_ruta_base_datos():
-    # 1. Intentar leer la ruta desde el archivo de configuración
-    if os.path.exists(CONFIG_FILE):
+
+def _escribir_archivo_seguro(ruta: Path, contenido: str) -> None:
+    """
+    Escribe contenido a un archivo de forma segura usando escritura atómica.
+
+    Patrón: escribir a .tmp → fsync → verificar → backup .bak → reemplazar original.
+
+    Args:
+        ruta: Path destino final del archivo.
+        contenido: String con el contenido a escribir.
+
+    Raises:
+        IOError/OSError: Si hay errores de escritura en disco.
+    """
+    ruta_temporal = ruta.with_suffix(ruta.suffix + ".tmp")
+    ruta_backup = ruta.with_suffix(ruta.suffix + ".bak")
+
+    # Paso 1: Escribir a archivo temporal con flush + fsync
+    with open(ruta_temporal, 'w', encoding='utf-8') as f:
+        f.write(contenido)
+        f.flush()
+        os.fsync(f.fileno())
+
+    # Paso 2: Verificar integridad del archivo temporal releyéndolo
+    try:
+        with open(ruta_temporal, 'r', encoding='utf-8') as f:
+            json.load(f)
+    except (json.JSONDecodeError, UnicodeDecodeError) as e:
+        # El archivo temporal está corrupto, no reemplazar el original
+        logger.error("Verificación de integridad falló para '%s': %s", ruta_temporal, e)
+        ruta_temporal.unlink(missing_ok=True)
+        raise IOError(f"El archivo escrito falló la verificación de integridad: {e}") from e
+
+    # Paso 3: Crear backup del archivo actual (si existe)
+    if ruta.exists():
         try:
-            with open(CONFIG_FILE, 'r') as f:
-                path_str = json.load(f)["path"]
-                # Verificación de robustez: la ruta guardada todavía existe?
-                if os.path.exists(path_str):
-                    return path_str
-        except (json.JSONDecodeError, KeyError, FileNotFoundError):
-            # El archivo de config está corrupto, no tiene la key, o fue borrado entre el check y el open.
-            pass
+            shutil.copy2(str(ruta), str(ruta_backup))
+        except OSError as e:
+            # El backup falló, pero no es crítico — continuamos con el guardado
+            logger.warning("No se pudo crear backup '%s': %s", ruta_backup, e)
 
-    # 2. Si no existe, preguntar al usuario dónde quiere guardar su base de datos
-    root = tk.Tk()
-    root.withdraw() # Esconde la ventana principal de tkinter
-    messagebox.showinfo("Configuración Inicial", "Por favor, selecciona la CARPETA donde se guardarán tus datos de forma permanente.")
-    
-    ruta_seleccionada = filedialog.askdirectory(title="Seleccionar carpeta de almacenamiento")
+    # Paso 4: Reemplazar atómicamente el original con el temporal
+    os.replace(str(ruta_temporal), str(ruta))
 
-    if not ruta_seleccionada:
-        # Si el usuario cancela, no podemos continuar.
-        # En el arranque inicial, esto causará el cierre. En una recuperación, se cancelará la operación de guardado.
+
+def leer_ruta_config() -> str | None:
+    """
+    Lee la ruta del archivo de datos desde el archivo de configuración.
+
+    Returns:
+        La ruta como string si es válida y el archivo existe, None en caso contrario.
+    """
+    if not CONFIG_FILE.exists():
         return None
 
-    archivo_final = os.path.join(ruta_seleccionada, "datos_promedios.json")
-
-    # Guardar esta elección en el archivo de configuración local
-    with open(CONFIG_FILE, 'w') as f:
-        json.dump({"path": archivo_final}, f)
-    
-    root.destroy()
-    return archivo_final
-
-def cargar_datos() -> dict:
-    if not os.path.exists(RUTA_ARCHIVO):
-        return {K_COLEGIOS: {}}
     try:
-        with open(RUTA_ARCHIVO, 'r', encoding='utf-8') as archivo:
-            return json.load(archivo)
-    except (json.JSONDecodeError, FileNotFoundError):
-        # Si el archivo no se encuentra (puede ser borrado mientras la app corre) o está corrupto
-        return {K_COLEGIOS: {}}
+        with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+            path_str = json.load(f)["path"]
 
-RUTA_ARCHIVO = None # Se inicializará en la clase App
+        # Verificación de robustez: ¿la ruta guardada todavía existe?
+        if Path(path_str).exists():
+            return path_str
 
-def guardar_datos(datos: dict):
-    global RUTA_ARCHIVO
-    saved_successfully = False
-    while not saved_successfully:
-        try:
-            with open(RUTA_ARCHIVO, 'w', encoding='utf-8') as archivo:
-                json.dump(datos, archivo, indent=4)
-            saved_successfully = True
-        except FileNotFoundError:
-            respuesta = messagebox.askyesno(
-                "Ubicación de Datos Perdida",
-                "La carpeta donde se guardan los datos no se encuentra.\n\n"
-                "¿Deseas seleccionar una nueva ubicación para guardar tus datos?\n\n"
-                "(Si eliges 'No', los cambios actuales no se guardarán)."
+        logger.warning("La ruta guardada en config ya no existe: %s", path_str)
+    except (json.JSONDecodeError, KeyError, FileNotFoundError) as e:
+        # El archivo de config está corrupto, no tiene la key, o fue borrado
+        # entre el check y el open.
+        logger.warning("Error al leer archivo de configuración: %s", e)
+
+    return None
+
+
+def escribir_ruta_config(ruta_archivo: str) -> None:
+    """
+    Escribe la ruta del archivo de datos en el archivo de configuración
+    de forma segura (escritura atómica).
+
+    Args:
+        ruta_archivo: Ruta absoluta al archivo de datos JSON.
+    """
+    contenido = json.dumps({"path": ruta_archivo})
+    _escribir_archivo_seguro(CONFIG_FILE, contenido)
+    logger.info("Ruta de datos guardada en config: %s", ruta_archivo)
+
+
+def cargar_datos(ruta_archivo: str) -> dict:
+    """
+    Carga los datos desde la ruta especificada, con recuperación automática
+    desde backup si el archivo principal está corrupto.
+
+    Args:
+        ruta_archivo: Ruta al archivo JSON con los datos.
+
+    Returns:
+        Diccionario con los datos cargados, o estructura vacía si no se puede recuperar.
+    """
+    ruta = Path(ruta_archivo)
+    ruta_backup = ruta.with_suffix(ruta.suffix + ".bak")
+
+    # Intento 1: Cargar archivo principal
+    datos = _intentar_cargar_archivo(ruta)
+    if datos is not None:
+        return datos
+
+    # Intento 2: Cargar desde backup
+    if ruta_backup.exists():
+        logger.warning(
+            "Archivo principal corrupto o no encontrado. Intentando recuperar desde backup: %s",
+            ruta_backup,
+        )
+        datos_backup = _intentar_cargar_archivo(ruta_backup)
+        if datos_backup is not None:
+            # Restaurar el backup como archivo principal
+            try:
+                shutil.copy2(str(ruta_backup), str(ruta))
+                logger.info("Datos recuperados exitosamente desde backup.")
+            except OSError as e:
+                logger.warning("No se pudo restaurar backup como principal: %s", e)
+            return datos_backup
+
+    # Sin datos recuperables: retornar estructura vacía
+    if ruta.exists() or ruta_backup.exists():
+        logger.error(
+            "No se pudieron recuperar datos ni del archivo principal ni del backup. "
+            "Creando estructura vacía."
+        )
+    else:
+        logger.info("Archivo de datos no encontrado, creando estructura vacía: %s", ruta_archivo)
+
+    return {K_COLEGIOS: {}}
+
+
+def _intentar_cargar_archivo(ruta: Path) -> dict | None:
+    """
+    Intenta cargar un archivo JSON. Retorna None si falla.
+
+    Args:
+        ruta: Path al archivo JSON.
+
+    Returns:
+        Diccionario con los datos, o None si el archivo no existe o está corrupto.
+    """
+    if not ruta.exists():
+        return None
+
+    try:
+        with open(ruta, 'r', encoding='utf-8') as archivo:
+            datos = json.load(archivo)
+
+        # Validar estructura mínima esperada
+        if not isinstance(datos, dict) or K_COLEGIOS not in datos:
+            logger.error(
+                "Archivo '%s' tiene estructura inválida (falta clave '%s').",
+                ruta, K_COLEGIOS,
             )
-            if respuesta:
-                # El usuario quiere reubicar. Borramos el config viejo para forzar la creación de uno nuevo.
-                if os.path.exists(CONFIG_FILE):
-                    os.remove(CONFIG_FILE)
-                
-                new_path = obtener_ruta_base_datos() # Esto mostrará el diálogo para elegir carpeta.
-                
-                if new_path:
-                    RUTA_ARCHIVO = new_path
-                    # El bucle while intentará guardar de nuevo en la siguiente iteración.
-                else:
-                    # El usuario canceló la selección de carpeta.
-                    messagebox.showwarning("Guardado Cancelado", "No se seleccionó una nueva ubicación. Los cambios no se han guardado.")
-                    break # Salir del bucle, el guardado ha fallado.
-            else:
-                messagebox.showwarning("Guardado Cancelado", "Los cambios no se han guardado.")
-                break # Salir del bucle, el guardado ha fallado.
-        except (IOError, OSError) as e:
-            # Para otros errores (permisos, disco lleno, etc.), mostramos el error y salimos.
-            messagebox.showerror("Error Crítico al Guardar", f"No se pudieron guardar los datos en '{RUTA_ARCHIVO}'.\n\nError: {e}\n\nPor favor, verifica los permisos y el espacio en disco. Los cambios no se han guardado.")
-            break # Salir del bucle, el guardado ha fallado.
+            return None
+
+        logger.info("Datos cargados exitosamente desde: %s", ruta)
+        return datos
+    except (json.JSONDecodeError, UnicodeDecodeError) as e:
+        logger.error("Archivo corrupto '%s': %s", ruta, e)
+        return None
+    except FileNotFoundError:
+        # Borrado entre el check de exists() y el open()
+        return None
+
+
+def guardar_datos(ruta_archivo: str, datos: dict) -> None:
+    """
+    Guarda los datos de forma segura usando escritura atómica con backup.
+
+    Secuencia: escribir .tmp → fsync → verificar → backup .bak → reemplazar.
+    Si el proceso se interrumpe en cualquier punto, el archivo original
+    o el backup permanecen intactos.
+
+    Args:
+        ruta_archivo: Ruta donde se guardará el archivo JSON.
+        datos: Diccionario con los datos a persistir.
+
+    Raises:
+        FileNotFoundError: Si no se puede crear el directorio padre.
+        IOError/OSError: Si hay errores de escritura en disco.
+    """
+    ruta = Path(ruta_archivo)
+    ruta.parent.mkdir(parents=True, exist_ok=True)
+
+    contenido = json.dumps(datos, indent=4, ensure_ascii=False)
+    _escribir_archivo_seguro(ruta, contenido)
+    logger.info("Datos guardados exitosamente en: %s", ruta_archivo)

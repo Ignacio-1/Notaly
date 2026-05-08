@@ -1,11 +1,39 @@
+"""Módulo principal de la interfaz gráfica del Gestor Educativo."""
+
+import logging
+import os
+import platform
+import sys
+
 import customtkinter as ctk
 import tkinter as tk
-from tkinter import messagebox, ttk, filedialog
-import sys, platform
+from tkinter import messagebox, filedialog
+
 from core import gestor_datos
 from core.calculos import procesar_calificaciones_alumno
-from core.constants import *
+from core.constants import (
+    K_ALUMNOS,
+    K_COLEGIOS,
+    K_CURSOS,
+    K_EXTRAS,
+    K_NOMBRE,
+    K_NOMBRES_COLUMNAS,
+    K_PRINCIPALES,
+    K_RECUPERATORIO,
+    K_TRIMESTRES,
+    NOMBRES_COLUMNAS_DEFAULT,
+    NOMBRES_TRIMESTRES,
+    NOTA_MAXIMA,
+    NOTA_MINIMA_APROBACION,
+    NUM_EXTRAS,
+    NUM_PRINCIPALES,
+    UMBRAL_RECUPERATORIO,
+    crear_trimestre_vacio,
+    crear_trimestres_vacios,
+)
 from core.exportador import exportar_a_csv
+
+logger = logging.getLogger(__name__)
 
 class AppPromedios:
     def __init__(self, root):
@@ -59,12 +87,12 @@ class AppPromedios:
         
         # --- Inicialización de Datos y Configuración ---
         self.root.configure(fg_color=self.paleta["fondo_app"])
-        gestor_datos.RUTA_ARCHIVO = gestor_datos.obtener_ruta_base_datos()
-        if not gestor_datos.RUTA_ARCHIVO:
+        self.ruta_datos = self._obtener_o_configurar_ruta_datos()
+        if not self.ruta_datos:
             messagebox.showerror("Configuración Requerida", "Se requiere una carpeta de datos para iniciar. La aplicación se cerrará.")
             sys.exit()
 
-        self.datos = gestor_datos.cargar_datos()
+        self.datos = gestor_datos.cargar_datos(self.ruta_datos)
         self.frame_actual = None
         self.colegio_seleccionado = None
         self.curso_seleccionado = None
@@ -131,7 +159,7 @@ class AppPromedios:
             return False
 
         # Validamos que el número esté en el rango de 0 a 10.
-        return 0 <= valor <= 10
+        return 0 <= valor <= NOTA_MAXIMA
         
     def solo_enteros(self, P):
         """Función de validación que solo permite números enteros positivos."""
@@ -218,7 +246,7 @@ class AppPromedios:
                 return
 
             self.datos[K_COLEGIOS][nuevo] = self.datos[K_COLEGIOS].pop(nombre_ant)
-            gestor_datos.guardar_datos(self.datos)
+            self._guardar_datos_con_recuperacion()
         self.mostrar_pantalla_cursos(nuevo if nuevo else nombre_ant)
 
     # --- CRUD CURSOS ---
@@ -276,7 +304,7 @@ class AppPromedios:
                 return
 
             self.datos[K_COLEGIOS][col][K_CURSOS][nuevo] = self.datos[K_COLEGIOS][col][K_CURSOS].pop(nombre_ant)
-            gestor_datos.guardar_datos(self.datos)
+            self._guardar_datos_con_recuperacion()
         self.mostrar_apartado_curso(nuevo if nuevo else nombre_ant)
 
     # --- MODALES ---
@@ -326,16 +354,18 @@ class AppPromedios:
                     alumnos = {
                         str(i): {
                             K_NOMBRE: "",
-                            K_TRIMESTRES: {t: {K_PRINCIPALES: [None]*3, K_EXTRAS: [None], K_RECUPERATORIO: None} for t in NOMBRES_TRIMESTRES}
+                            K_TRIMESTRES: crear_trimestres_vacios(),
                         } for i in range(1, cant + 1)
                     }
                     self.datos[K_COLEGIOS][col][K_CURSOS][nom] = {
-                        K_NOMBRES_COLUMNAS: {t: NOMBRES_COLUMNAS_DEFAULT for t in NOMBRES_TRIMESTRES}, 
-                        K_ALUMNOS: alumnos
+                        K_NOMBRES_COLUMNAS: {
+                            t: list(NOMBRES_COLUMNAS_DEFAULT) for t in NOMBRES_TRIMESTRES
+                        },
+                        K_ALUMNOS: alumnos,
                     }
                     self.mostrar_pantalla_cursos(col)
             
-            gestor_datos.guardar_datos(self.datos)
+            self._guardar_datos_con_recuperacion()
             ventana.destroy()
 
         ctk.CTkButton(ventana, text="Confirmar", fg_color=self.paleta["azul_fg"], hover_color=self.paleta["azul_hover"], 
@@ -477,100 +507,171 @@ class AppPromedios:
         res_cargados = procesar_calificaciones_alumno(al_data[K_TRIMESTRES])
         self._actualizar_promedios_ui(id_al, res_cargados)
 
+    def _color_por_nota(self, nota: int | None) -> str:
+        """Retorna el color de la paleta según si la nota aprueba, desaprueba, o es nula."""
+        if nota is None:
+            return self.paleta["texto_principal"]
+        if nota < NOTA_MINIMA_APROBACION:
+            return self.paleta["rojo_fuerte"]
+        return self.paleta["verde_fg"]
+
     def _actualizar_promedios_ui(self, id_al, resultados):
-        """
-        Actualiza la UI de un alumno con los resultados calculados.
-        - Muestra el promedio crudo en la columna "Prom" del trimestre.
-        - Muestra la nota final (que puede ser el recuperatorio) en la sección de promedios finales.
-        - Habilita y colorea el campo de recuperatorio si el promedio crudo es <= 5.
-        """
-        for t_idx, prom_crudo_raw in enumerate(resultados["promedios_crudos_sin_redondear"]):
-            # Habilitar/deshabilitar y colorear campo de recuperatorio
+        """Actualiza la UI de un alumno con los resultados calculados."""
+        for t_idx in range(len(NOMBRES_TRIMESTRES)):
             recup_widget = self.widgets_recuperatorios[id_al][t_idx]
-            if prom_crudo_raw is not None and prom_crudo_raw <= 5:
+            prom_redondeado = resultados["promedios_crudos_redondeados"][t_idx]
+            is_failing = prom_redondeado is not None and prom_redondeado <= UMBRAL_RECUPERATORIO
+
+            if is_failing:
                 recup_widget.configure(state=tk.NORMAL, fg_color=self.paleta["recuperatorio_bg"])
             else:
-                recup_widget.configure(state=tk.DISABLED, fg_color="#F0F0F0")
+                if recup_widget.get().strip() == "":
+                    recup_widget.configure(state=tk.DISABLED, fg_color="#F0F0F0")
+                else:
+                    recup_widget.configure(state=tk.NORMAL, fg_color=self.paleta["fondo_card"])
 
-            # Actualizar label "Prom" del trimestre (usa promedio crudo redondeado)
             prom_crudo_rnd = resultados["promedios_crudos_redondeados"][t_idx]
-            val_txt_crudo = f"{prom_crudo_rnd}" if prom_crudo_rnd is not None else "-"
-            color_crudo = self.paleta["rojo_fuerte"] if (prom_crudo_rnd is not None and prom_crudo_rnd < 6) else (self.paleta["verde_fg"] if prom_crudo_rnd is not None else self.paleta["texto_principal"])
-            self.widgets_resultados[id_al]["trim"][t_idx].configure(text=val_txt_crudo, text_color=color_crudo)
+            self.widgets_resultados[id_al]["trim"][t_idx].configure(
+                text=str(prom_crudo_rnd) if prom_crudo_rnd is not None else "-",
+                text_color=self._color_por_nota(prom_crudo_rnd),
+            )
 
-            # Actualizar labels de "PROMEDIOS FINALES" (T1, T2, T3) (usa nota final redondeada)
             nota_final_rnd = resultados["notas_finales_redondeadas"][t_idx]
-            val_txt_final = f"{nota_final_rnd}" if nota_final_rnd is not None else "-"
-            color_final = self.paleta["rojo_fuerte"] if (nota_final_rnd is not None and nota_final_rnd < 6) else (self.paleta["verde_fg"] if nota_final_rnd is not None else self.paleta["texto_principal"])
-            self.widgets_resultados[id_al]["fin"][t_idx].configure(text=val_txt_final, text_color=color_final)
+            self.widgets_resultados[id_al]["fin"][t_idx].configure(
+                text=str(nota_final_rnd) if nota_final_rnd is not None else "-",
+                text_color=self._color_por_nota(nota_final_rnd),
+            )
 
-        # Actualizar label "TOTAL"
         nota_total_rnd = resultados['nota_final_total_redondeada']
-        color_total = self.paleta["rojo_fuerte"] if (nota_total_rnd is not None and nota_total_rnd < 6) else (self.paleta["verde_fg"] if nota_total_rnd is not None else self.paleta["texto_principal"])
-        self.widgets_resultados[id_al]["fin"][3].configure(text=f"{nota_total_rnd}" if nota_total_rnd is not None else "-", text_color=color_total)
+        self.widgets_resultados[id_al]["fin"][3].configure(
+            text=str(nota_total_rnd) if nota_total_rnd is not None else "-",
+            text_color=self._color_por_nota(nota_total_rnd),
+        )
 
     def agregar_alumno(self, nombre_curso):
-        col = self.colegio_seleccionado
-        alumnos = self.datos[K_COLEGIOS][col][K_CURSOS][nombre_curso][K_ALUMNOS]
+        """Agrega un nuevo alumno al curso y recarga la planilla."""
+        nombre_colegio = self.colegio_seleccionado
+        alumnos = self.datos[K_COLEGIOS][nombre_colegio][K_CURSOS][nombre_curso][K_ALUMNOS]
         nuevo_id = str(max([int(k) for k in alumnos.keys()] + [0]) + 1)
-        alumnos[nuevo_id] = {K_NOMBRE: "", K_TRIMESTRES: {t: {K_PRINCIPALES: [None]*3, K_EXTRAS: [None], K_RECUPERATORIO: None} for t in NOMBRES_TRIMESTRES}}
-        gestor_datos.guardar_datos(self.datos); self.mostrar_apartado_curso(nombre_curso)
+        alumnos[nuevo_id] = {
+            K_NOMBRE: "",
+            K_TRIMESTRES: crear_trimestres_vacios(),
+        }
+        self._guardar_datos_con_recuperacion()
+        self.mostrar_apartado_curso(nombre_curso)
 
     def eliminar_entidad(self, tipo, id_ent, nombre_curso=None):
-        if not messagebox.askyesno("Confirmar", f"¿Eliminar permanentemente este {tipo}?"): return
-        col = self.colegio_seleccionado
+        """Elimina una entidad (colegio, curso o alumno) con confirmación del usuario."""
+        if not messagebox.askyesno("Confirmar", f"¿Eliminar permanentemente este {tipo}?"):
+            return
+        nombre_colegio = self.colegio_seleccionado
         
-        # --- Fase 1: Modificar los datos en memoria ---
         if tipo == "colegio":
             del self.datos[K_COLEGIOS][id_ent]
         elif tipo == "curso":
-            del self.datos[K_COLEGIOS][col][K_CURSOS][id_ent]
+            del self.datos[K_COLEGIOS][nombre_colegio][K_CURSOS][id_ent]
         elif tipo == "alumno":
-            del self.datos[K_COLEGIOS][col][K_CURSOS][nombre_curso][K_ALUMNOS][id_ent]
-            alumnos_restantes = self.datos[K_COLEGIOS][col][K_CURSOS][nombre_curso][K_ALUMNOS]
-            ids_viejos_ordenados = sorted(alumnos_restantes.keys(), key=int)
-            alumnos_reordenados = {}
-            for nuevo_id, viejo_id in enumerate(ids_viejos_ordenados, start=1):
-                alumnos_reordenados[str(nuevo_id)] = alumnos_restantes[viejo_id]
-            self.datos[K_COLEGIOS][col][K_CURSOS][nombre_curso][K_ALUMNOS] = alumnos_reordenados
+            del self.datos[K_COLEGIOS][nombre_colegio][K_CURSOS][nombre_curso][K_ALUMNOS][id_ent]
+            alumnos_restantes = self.datos[K_COLEGIOS][nombre_colegio][K_CURSOS][nombre_curso][K_ALUMNOS]
+            self.datos[K_COLEGIOS][nombre_colegio][K_CURSOS][nombre_curso][K_ALUMNOS] = (
+                AppPromedios._reordenar_alumnos(alumnos_restantes)
+            )
 
-        # --- Fase 2: Persistir los cambios en el disco ---
-        gestor_datos.guardar_datos(self.datos)
+        self._guardar_datos_con_recuperacion()
 
         # --- Fase 3: Actualizar la interfaz de usuario ---
         if tipo == "colegio":
             self.mostrar_pantalla_colegios()
         elif tipo == "curso":
-            self.mostrar_pantalla_cursos(col)
+            self.mostrar_pantalla_cursos(nombre_colegio)
         elif tipo == "alumno":
             self.mostrar_apartado_curso(nombre_curso)
 
-    def guardar_notas_cuadricula(self, nombre_curso):
+    def guardar_notas_cuadricula(self, nombre_curso, show_success_message=True):
+        """Guarda las notas de la cuadrícula, recalcula promedios y persiste."""
         col = self.colegio_seleccionado
         curso_data = self.datos[K_COLEGIOS][col][K_CURSOS][nombre_curso]
         for t_nom in NOMBRES_TRIMESTRES:
-            curso_data["nombres_columnas"][t_nom] = [w.get() for w in self.widgets_nombres_cols[t_nom]]
+            curso_data[K_NOMBRES_COLUMNAS][t_nom] = [w.get() for w in self.widgets_nombres_cols[t_nom]]
 
-        def val_num(e):
-            s = e.get().replace(',', '.').strip()
-            try: return float(s) if s else None
-            except: return None
+        def parsear_nota(entry_widget):
+            """Extrae y parsea el valor numérico de un widget Entry."""
+            texto = entry_widget.get().replace(',', '.').strip()
+            if not texto:
+                return None
+            try:
+                return float(texto)
+            except ValueError:
+                return None
 
         for id_al, al_data in curso_data[K_ALUMNOS].items():
             al_data[K_NOMBRE] = self.widgets_nombres_alumnos[id_al].get()
-            ui = self.widgets_entradas[id_al]
+            widgets_alumno = self.widgets_entradas[id_al]
             for t_idx, t_nom in enumerate(NOMBRES_TRIMESTRES):
-                al_data[K_TRIMESTRES][t_nom][K_PRINCIPALES] = [val_num(e) for e in ui[t_idx]["p"]]
-                al_data[K_TRIMESTRES][t_nom][K_EXTRAS] = [val_num(ui[t_idx]["ex"])]
-                al_data[K_TRIMESTRES][t_nom][K_RECUPERATORIO] = val_num(self.widgets_recuperatorios[id_al][t_idx])
+                al_data[K_TRIMESTRES][t_nom][K_PRINCIPALES] = [
+                    parsear_nota(entry) for entry in widgets_alumno[t_idx]["p"]
+                ]
+                al_data[K_TRIMESTRES][t_nom][K_EXTRAS] = [parsear_nota(widgets_alumno[t_idx]["ex"])]
+                al_data[K_TRIMESTRES][t_nom][K_RECUPERATORIO] = parsear_nota(
+                    self.widgets_recuperatorios[id_al][t_idx]
+                )
             res = procesar_calificaciones_alumno(al_data[K_TRIMESTRES])
-            
-            # Usamos el nuevo método para actualizar la UI
             self._actualizar_promedios_ui(id_al, res)
 
-        gestor_datos.guardar_datos(self.datos)
-        self.hay_cambios_sin_guardar = False
-        messagebox.showinfo("Éxito", "Cambios guardados.")
+        if self._guardar_datos_con_recuperacion():
+            self.hay_cambios_sin_guardar = False
+            if show_success_message:
+                messagebox.showinfo("Éxito", "Cambios guardados.")
+            return True
+        return False
+
+    def _obtener_o_configurar_ruta_datos(self):
+        """Obtiene la ruta de datos desde config o solicita configuración inicial."""
+        ruta = gestor_datos.leer_ruta_config()
+        if ruta:
+            return ruta
+        return self._realizar_configuracion_inicial()
+
+    def _realizar_configuracion_inicial(self):
+        """Solicita al usuario seleccionar una carpeta para los datos."""
+        carpeta = filedialog.askdirectory(title="Selecciona la carpeta para guardar los datos")
+        if not carpeta:
+            return None
+        ruta_archivo = os.path.join(carpeta, "datos_promedios.json")
+        gestor_datos.escribir_ruta_config(ruta_archivo)
+        return ruta_archivo
+
+    def _guardar_datos_con_recuperacion(self):
+        """Intenta guardar los datos y maneja errores ofreciendo recuperación."""
+        try:
+            gestor_datos.guardar_datos(self.ruta_datos, self.datos)
+            return True
+        except FileNotFoundError:
+            respuesta = messagebox.askyesno(
+                "Ubicación de Datos Perdida",
+                "La carpeta donde se guardan los datos no se encuentra.\n\n"
+                "¿Deseas seleccionar una nueva ubicación para guardar tus datos?\n\n"
+                "(Si eliges 'No', los cambios actuales no se guardarán)."
+            )
+            if respuesta:
+                nueva_ruta = self._realizar_configuracion_inicial()
+                if nueva_ruta:
+                    self.ruta_datos = nueva_ruta
+                    return self._guardar_datos_con_recuperacion()
+            messagebox.showwarning("Guardado Cancelado", "No se han guardado.")
+            return False
+        except (IOError, OSError) as e:
+            messagebox.showerror("Error Crítico al Guardar", f"No se pudieron guardar los datos.\n\nError: {e}")
+            return False
+
+    @staticmethod
+    def _reordenar_alumnos(alumnos_curso: dict) -> dict:
+        """Reordena los IDs de los alumnos para que sean consecutivos desde 1."""
+        ids_viejos_ordenados = sorted(alumnos_curso.keys(), key=int)
+        alumnos_reordenados = {}
+        for nuevo_id, viejo_id in enumerate(ids_viejos_ordenados, start=1):
+            alumnos_reordenados[str(nuevo_id)] = alumnos_curso[viejo_id]
+        return alumnos_reordenados
 
     def exportar_planilla(self, nombre_curso):
         if self.hay_cambios_sin_guardar:
@@ -598,23 +699,26 @@ class AppPromedios:
     def accion_volver_desde_planilla(self):
         if self.hay_cambios_sin_guardar:
             respuesta = messagebox.askyesnocancel("Volver", "Tienes cambios sin guardar. ¿Deseas guardarlos antes de volver?")
-            if respuesta is True: # Sí
-                self.guardar_notas_cuadricula(self.curso_seleccionado)
+            if respuesta is True:
+                if self.guardar_notas_cuadricula(self.curso_seleccionado):
+                    self.mostrar_pantalla_cursos(self.colegio_seleccionado)
+            elif respuesta is False:
                 self.mostrar_pantalla_cursos(self.colegio_seleccionado)
-            elif respuesta is False: # No
-                self.mostrar_pantalla_cursos(self.colegio_seleccionado)
-            # else: Cancelar, no hacer nada
         else:
             self.mostrar_pantalla_cursos(self.colegio_seleccionado)
 
     def al_cerrar(self):
         if self.hay_cambios_sin_guardar:
-            respuesta = messagebox.askyesnocancel("Salir", "Tienes cambios sin guardar. ¿Deseas guardarlos antes de salir?")
-            if respuesta is True: # Sí
-                self.guardar_notas_cuadricula(self.curso_seleccionado)
-                self.root.destroy()
-            elif respuesta is False: # No
-                self.root.destroy()
-            # else: Cancelar, no hacer nada
+            if self.curso_seleccionado:
+                respuesta = messagebox.askyesnocancel("Salir", "Tienes cambios sin guardar en la planilla. ¿Deseas guardarlos antes de salir?")
+                if respuesta is True:
+                    if self.guardar_notas_cuadricula(self.curso_seleccionado, show_success_message=False):
+                        self.root.destroy()
+                elif respuesta is False:
+                    self.root.destroy()
+            else:
+                respuesta = messagebox.askyesno("Salir", "Tienes cambios sin guardar que se perderán. ¿Deseas salir de todas formas?")
+                if respuesta:
+                    self.root.destroy()
         else:
             self.root.destroy()
