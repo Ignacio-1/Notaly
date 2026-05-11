@@ -42,6 +42,22 @@ class AppPromedios:
         self.root = root
         self.root.title("Gestor Educativo Profesional")
         self.root.geometry("1600x900")
+        
+        # --- Configurar icono de la ventana ---
+        def resource_path(relative_path):
+            """ Obtiene la ruta absoluta al recurso, funciona para dev y para PyInstaller """
+            try:
+                # PyInstaller crea una carpeta temporal y guarda la ruta en _MEIPASS
+                base_path = sys._MEIPASS
+            except Exception:
+                base_path = os.path.abspath(".")
+            return os.path.join(base_path, relative_path)
+            
+        try:
+            icon_path = resource_path("app_icon.ico")
+            self.root.iconbitmap(icon_path)
+        except Exception as e:
+            logger.warning(f"No se pudo cargar el icono de la ventana: {e}")
 
         # --- Fuentes (Cross-platform) ---
         # Seleccionar una fuente base según el sistema operativo para una apariencia nativa.

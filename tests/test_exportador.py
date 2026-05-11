@@ -17,8 +17,8 @@ def sample_curso_data():
                 K_NOMBRE: "ALUMNO UNO",
                 K_TRIMESTRES: {
                     TRIM_1: {K_PRINCIPALES: [7, 8, None], K_EXTRAS: [9], K_RECUPERATORIO: None},
-                    TRIM_2: {K_PRINCIPALES: [4, 5, 6], K_EXTRAS: [], K_RECUPERATORIO: 7},
-                    TRIM_3: {K_PRINCIPALES: [], K_EXTRAS: [], K_RECUPERATORIO: None}
+                    TRIM_2: {K_PRINCIPALES: [4, 5, 6], K_EXTRAS: [None], K_RECUPERATORIO: 7},
+                    TRIM_3: {K_PRINCIPALES: [None, None, None], K_EXTRAS: [None], K_RECUPERATORIO: None}
                 }
             },
             "2": {

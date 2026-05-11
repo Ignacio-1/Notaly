@@ -31,16 +31,16 @@ def test_reordenar_alumnos_despues_de_borrado(sample_data_for_deletion):
 
 
 @pytest.fixture
-def app_instance(monkeypatch):
-    """Crea una instancia mock de la app sin iniciar la UI de Tkinter."""
-    mock_root = MagicMock()
-
-    monkeypatch.setattr("gui.app.ctk.CTk", lambda: mock_root)
-    monkeypatch.setattr(AppPromedios, '_obtener_o_configurar_ruta_datos', lambda self: "dummy/path/datos.json")
-    monkeypatch.setattr("gui.app.gestor_datos.cargar_datos", lambda ruta: {K_COLEGIOS: {}})
-    monkeypatch.setattr(AppPromedios, 'mostrar_pantalla_colegios', lambda self: None)
-
-    return AppPromedios(root=mock_root)
+def app_instance():
+    """Provee un objeto con los métodos de validación para testear sin instanciar la UI."""
+    class DummyApp:
+        pass
+    
+    app = DummyApp()
+    # Atamos los métodos de la clase a esta instancia dummy
+    app.solo_numeros = AppPromedios.solo_numeros.__get__(app)
+    app.solo_enteros = AppPromedios.solo_enteros.__get__(app)
+    return app
 
 
 # --- Pruebas para las funciones de validación de la UI ---
