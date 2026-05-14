@@ -31,7 +31,7 @@ from core.constants import (
     crear_trimestre_vacio,
     crear_trimestres_vacios,
 )
-from core.exportador import exportar_a_csv
+from core.exportador import exportar_a_csv, exportar_a_texto, exportar_a_pdf
 
 logger = logging.getLogger(__name__)
 
@@ -41,16 +41,21 @@ class AppPromedios:
 
         self.root = root
         self.root.title("Gestor Educativo Profesional")
-        self.root.geometry("1600x900")
+        
+        # Usamos una resolución más amigable para pantallas pequeñas (ej. laptops de 1366x768)
+        self.root.geometry("1200x700")
+        
+        # Maximizar por defecto en Windows para aprovechar todo el espacio
+        try:
+            self.root.state('zoomed')
+        except:
+            pass
         
         # --- Configurar icono de la ventana ---
         def resource_path(relative_path):
             """ Obtiene la ruta absoluta al recurso, funciona para dev y para PyInstaller """
-            try:
-                # PyInstaller crea una carpeta temporal y guarda la ruta en _MEIPASS
-                base_path = sys._MEIPASS
-            except Exception:
-                base_path = os.path.abspath(".")
+            # PyInstaller crea una carpeta temporal y guarda la ruta en _MEIPASS
+            base_path = getattr(sys, '_MEIPASS', os.path.abspath("."))
             return os.path.join(base_path, relative_path)
             
         try:
@@ -187,7 +192,17 @@ class AppPromedios:
             return False
         
     def limpiar_pantalla(self):
-        if self.frame_actual: self.frame_actual.destroy()
+        # Desvinculamos el scroll global por si venimos de la planilla
+        self.root.unbind_all("<MouseWheel>")
+        self.root.unbind_all("<Shift-MouseWheel>")
+        self.root.unbind_all("<Button-4>")
+        self.root.unbind_all("<Button-5>")
+        self.root.unbind_all("<Shift-Button-4>")
+        self.root.unbind_all("<Shift-Button-5>")
+        
+        if self.frame_actual:
+            self.frame_actual.pack_forget()
+            self.frame_actual.destroy()
 
     # --- CRUD COLEGIOS ---
     def mostrar_pantalla_colegios(self):
@@ -196,15 +211,18 @@ class AppPromedios:
         self.curso_seleccionado = None
         self.grid_container = None
         self.frame_actual = ctk.CTkFrame(self.root, fg_color="transparent")
-        self.frame_actual.pack(fill=tk.BOTH, expand=True, padx=80, pady=20)
+        self.frame_actual.pack(fill=tk.BOTH, expand=True)
+        
+        scroll_frame = ctk.CTkScrollableFrame(self.frame_actual, fg_color="transparent")
+        scroll_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
 
-        ctk.CTkLabel(self.frame_actual, text="Mis Instituciones", font=self.font_title, 
+        ctk.CTkLabel(scroll_frame, text="Mis Instituciones", font=self.font_title, 
                      text_color=self.paleta["texto_principal"]).pack(pady=30)
 
         for nombre_ant in list(self.datos.get(K_COLEGIOS, {}).keys()):
             # Usamos el nuevo método para crear la tarjeta
             self._crear_tarjeta(
-                parent=self.frame_actual,
+                parent=scroll_frame,
                 nombre_entidad=nombre_ant,
                 tipo_entidad="colegio",
                 boton_principal_config={
@@ -216,21 +234,31 @@ class AppPromedios:
                 }
             )
 
+        btn_frame = ctk.CTkFrame(scroll_frame, fg_color="transparent")
+        btn_frame.pack(pady=30)
+
         ctk.CTkButton(
-            self.frame_actual, text="+ Nueva Institución", 
+            btn_frame, text="+ Nueva Institución", 
             fg_color=self.paleta["azul_fg"], hover_color=self.paleta["azul_hover"],
             font=self.font_button, corner_radius=10, height=45,
             command=lambda: self.modal_crear("colegio")
-        ).pack(pady=30)
+        ).pack(side=tk.LEFT, padx=10)
+
+        ctk.CTkButton(
+            btn_frame, text="📥 Importar Datos", 
+            fg_color="#7D3C98", hover_color="#6C3483",
+            font=self.font_button, corner_radius=10, height=45,
+            command=self.importar_datos
+        ).pack(side=tk.LEFT, padx=10)
 
     def _crear_tarjeta(self, parent, nombre_entidad, tipo_entidad, boton_principal_config):
         card = ctk.CTkFrame(parent, fg_color=self.paleta["fondo_card"], border_width=1, border_color=self.paleta["borde_sutil"], corner_radius=16)
         card.pack(fill=tk.X, pady=8, ipady=12, padx=50)
         
         entry_font = self.font_card_title
-        ent_nombre = ctk.CTkEntry(card, font=entry_font, fg_color="#F8F9FA", border_width=0, width=400)
+        ent_nombre = ctk.CTkEntry(card, font=entry_font, fg_color="#F8F9FA", border_width=0)
         ent_nombre.insert(0, nombre_entidad)
-        ent_nombre.pack(side=tk.LEFT, padx=25, ipady=5)
+        ent_nombre.pack(side=tk.LEFT, padx=20, fill=tk.X, expand=True, ipady=5)
         
         # Botón de acción principal (Entrar / Ver Planilla)
         ctk.CTkButton(
@@ -272,9 +300,12 @@ class AppPromedios:
         self.curso_seleccionado = None
         self.grid_container = None
         self.frame_actual = ctk.CTkFrame(self.root, fg_color="transparent")
-        self.frame_actual.pack(fill=tk.BOTH, expand=True, padx=80, pady=20)
+        self.frame_actual.pack(fill=tk.BOTH, expand=True)
 
-        header = ctk.CTkFrame(self.frame_actual, fg_color="transparent")
+        scroll_frame = ctk.CTkScrollableFrame(self.frame_actual, fg_color="transparent")
+        scroll_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+
+        header = ctk.CTkFrame(scroll_frame, fg_color="transparent")
         header.pack(fill=tk.X, pady=10)
         
         ctk.CTkButton(
@@ -290,7 +321,7 @@ class AppPromedios:
         cursos = self.datos[K_COLEGIOS][nombre_colegio].get(K_CURSOS, {})
         for nombre_curso in list(cursos.keys()):
             self._crear_tarjeta(
-                parent=self.frame_actual,
+                parent=scroll_frame,
                 nombre_entidad=nombre_curso,
                 tipo_entidad="curso",
                 boton_principal_config={
@@ -303,7 +334,7 @@ class AppPromedios:
             )
 
         ctk.CTkButton(
-            self.frame_actual, text="+ Nuevo Curso",
+            scroll_frame, text="+ Nuevo Curso",
             fg_color=self.paleta["azul_fg"], hover_color=self.paleta["azul_hover"],
             font=self.font_button, corner_radius=10, height=45,
             command=lambda: self.modal_crear("curso")
@@ -364,7 +395,7 @@ class AppPromedios:
                 if K_CURSOS not in self.datos[K_COLEGIOS][col]:
                     self.datos[K_COLEGIOS][col][K_CURSOS] = {}
 
-                cant_s = ent_cant.get().strip()
+                cant_s = ent_cant.get().strip() if ent_cant else "1"
                 cant = int(cant_s) if cant_s.isdigit() else 1
                 if nom not in self.datos[K_COLEGIOS][col][K_CURSOS]:
                     alumnos = {
@@ -402,7 +433,9 @@ class AppPromedios:
         ctk.CTkLabel(toolbar, text=texto_cabecera, font=self.font_card_title, text_color=self.paleta["texto_principal"]).pack(side=tk.LEFT, padx=10)
         
         ctk.CTkButton(toolbar, text="GUARDAR y CALCULAR", fg_color=self.paleta["verde_fg"], hover_color=self.paleta["verde_hover"], font=self.font_button, corner_radius=8, command=lambda: self.guardar_notas_cuadricula(nombre_curso)).pack(side=tk.RIGHT, padx=30, ipady=5)
-        ctk.CTkButton(toolbar, text="Exportar a CSV", fg_color=self.paleta["card_btn_fg"], text_color=self.paleta["texto_secundario"], hover_color=self.paleta["card_btn_hover"], border_width=1, border_color=self.paleta["borde_sutil"], corner_radius=8, font=self.font_button, command=lambda: self.exportar_planilla(nombre_curso)).pack(side=tk.RIGHT, padx=10)
+        ctk.CTkButton(toolbar, text="Exp. PDF", fg_color="#FDF2F2", text_color="#C0392B", hover_color="#FADBD8", border_width=1, border_color="#E6B0AA", corner_radius=8, font=self.font_button, command=lambda: self.exportar_planilla_pdf(nombre_curso)).pack(side=tk.RIGHT, padx=5)
+        ctk.CTkButton(toolbar, text="Exp. TXT", fg_color=self.paleta["card_btn_fg"], text_color=self.paleta["texto_secundario"], hover_color=self.paleta["card_btn_hover"], border_width=1, border_color=self.paleta["borde_sutil"], corner_radius=8, font=self.font_button, command=lambda: self.exportar_planilla_texto(nombre_curso)).pack(side=tk.RIGHT, padx=5)
+        ctk.CTkButton(toolbar, text="Exp. CSV", fg_color=self.paleta["card_btn_fg"], text_color=self.paleta["texto_secundario"], hover_color=self.paleta["card_btn_hover"], border_width=1, border_color=self.paleta["borde_sutil"], corner_radius=8, font=self.font_button, command=lambda: self.exportar_planilla(nombre_curso)).pack(side=tk.RIGHT, padx=5)
         ctk.CTkButton(toolbar, text="+ Alumno", fg_color=self.paleta["card_btn_fg"], text_color=self.paleta["card_azul_texto"], hover_color=self.paleta["card_btn_hover"], corner_radius=8, font=self.font_button, command=lambda: self.agregar_alumno(nombre_curso)).pack(side=tk.RIGHT, padx=10)
 
         # Usamos un CTkScrollableFrame para simplificar enormemente el manejo del scroll
@@ -423,6 +456,38 @@ class AppPromedios:
         h_scrollbar.grid(row=1, column=0, sticky="ew")
         canvas.grid(row=0, column=0, sticky="nsew")
 
+        # --- Bindings para Scroll con la Rueda del Ratón ---
+        def _on_mousewheel_v(event):
+            delta = -1 * event.delta if sys.platform == "darwin" else int(-1 * (event.delta / 120))
+            canvas.yview_scroll(delta, "units")
+
+        def _on_mousewheel_h(event):
+            delta = -1 * event.delta if sys.platform == "darwin" else int(-1 * (event.delta / 120))
+            canvas.xview_scroll(delta, "units")
+
+        def bind_scroll_events():
+            canvas.bind_all("<MouseWheel>", _on_mousewheel_v)
+            canvas.bind_all("<Shift-MouseWheel>", _on_mousewheel_h)
+            canvas.bind_all("<Button-4>", lambda e: canvas.yview_scroll(-1, "units"))
+            canvas.bind_all("<Button-5>", lambda e: canvas.yview_scroll(1, "units"))
+            canvas.bind_all("<Shift-Button-4>", lambda e: canvas.xview_scroll(-1, "units"))
+            canvas.bind_all("<Shift-Button-5>", lambda e: canvas.xview_scroll(1, "units"))
+
+        # Ejecutamos el bind inmediatamente sin depender de <Enter>
+        bind_scroll_events()
+        
+        # Permitir arrastrar la planilla con clic derecho o botón medio
+        def start_pan(event):
+            canvas.scan_mark(event.x, event.y)
+            
+        def pan(event):
+            canvas.scan_dragto(event.x, event.y, gain=1)
+
+        canvas.bind("<ButtonPress-2>", start_pan)
+        canvas.bind("<B2-Motion>", pan)
+        canvas.bind("<ButtonPress-3>", start_pan)
+        canvas.bind("<B3-Motion>", pan)
+
         self.grid_container = ctk.CTkFrame(canvas, fg_color=self.paleta["grid_bg"])
         canvas.create_window((0, 0), window=self.grid_container, anchor="nw")
 
@@ -437,6 +502,7 @@ class AppPromedios:
         curso_data = self.datos[K_COLEGIOS][self.colegio_seleccionado][K_CURSOS][nombre_curso]
         self.widgets_entradas, self.widgets_resultados, self.widgets_nombres_alumnos, self.widgets_recuperatorios = {}, {}, {}, {}
         self.widgets_nombres_cols = {t: [] for t in NOMBRES_TRIMESTRES}
+        self.matriz_entradas = {}
 
         # Headers  
         ctk.CTkLabel(self.grid_container, text="N°", font=self.font_grid_header, fg_color="#E5E7E9", text_color=self.paleta["texto_principal"], corner_radius=0).grid(row=0, column=1, rowspan=2, sticky="nsew", padx=1, pady=1)
@@ -472,10 +538,19 @@ class AppPromedios:
                       width=25, corner_radius=4, font=self.font_body, command=lambda: self.eliminar_entidad("alumno", id_al, nombre_curso)).grid(row=row, column=0, sticky="nsew", padx=1, pady=1)
         
         ctk.CTkLabel(self.grid_container, text=id_al, font=self.font_grid_body, fg_color=self.paleta["fondo_card"], text_color=self.paleta["texto_principal"]).grid(row=row, column=1, sticky="nsew", padx=1, pady=1)
+        
+        def register_nav(ent, r, c):
+            self.matriz_entradas[(r, c)] = ent
+            ent.bind("<Up>", lambda e, rr=r, cc=c: self._navigate_grid(e, rr, cc, "Up"))
+            ent.bind("<Down>", lambda e, rr=r, cc=c: self._navigate_grid(e, rr, cc, "Down"))
+            ent.bind("<Left>", lambda e, rr=r, cc=c: self._navigate_grid(e, rr, cc, "Left"))
+            ent.bind("<Right>", lambda e, rr=r, cc=c: self._navigate_grid(e, rr, cc, "Right"))
+
         ent_n = ctk.CTkEntry(self.grid_container, border_width=0, fg_color=self.paleta["fondo_card"], font=self.font_grid_body, corner_radius=0)
         ent_n.insert(0, al_data.get(K_NOMBRE, "")); ent_n.grid(row=row, column=2, sticky="nsew", padx=1, pady=1)
         ent_n.bind("<KeyRelease>", self._marcar_cambios_pendientes)
         self.widgets_nombres_alumnos[id_al] = ent_n
+        register_nav(ent_n, row, 2)
 
         self.widgets_entradas[id_al], self.widgets_resultados[id_al], self.widgets_recuperatorios[id_al] = [], {"trim": [], "fin": []}, []
         c_idx = 3
@@ -485,15 +560,21 @@ class AppPromedios:
             for j in range(3):
                 e = ctk.CTkEntry(self.grid_container, width=60, justify=tk.CENTER, font=self.font_grid_body, fg_color=self.paleta["fondo_card"], border_width=0, corner_radius=0, validate='key', validatecommand=self.vcmd)
                 val = notas_data["principales"][j]
-                if val is not None: e.insert(0, str(val))
+                if val is not None:
+                    e.insert(0, str(int(val)) if isinstance(val, float) and val.is_integer() else str(val))
                 e.bind("<KeyRelease>", self._marcar_cambios_pendientes)
-                e.grid(row=row, column=c_idx, padx=1, pady=1); c_idx += 1; e_dict["p"].append(e)
+                e.grid(row=row, column=c_idx, padx=1, pady=1)
+                register_nav(e, row, c_idx)
+                c_idx += 1; e_dict["p"].append(e)
             
             ex = ctk.CTkEntry(self.grid_container, width=60, justify=tk.CENTER, font=self.font_grid_body, fg_color="#FBFBFB", border_width=0, corner_radius=0, validate='key', validatecommand=self.vcmd)
             val_ex = notas_data[K_EXTRAS][0] if notas_data[K_EXTRAS] else None
-            if val_ex is not None: ex.insert(0, str(val_ex))
+            if val_ex is not None:
+                ex.insert(0, str(int(val_ex)) if isinstance(val_ex, float) and val_ex.is_integer() else str(val_ex))
             ex.bind("<KeyRelease>", self._marcar_cambios_pendientes)
-            ex.grid(row=row, column=c_idx, padx=1, pady=1); c_idx += 1; e_dict["ex"] = ex
+            ex.grid(row=row, column=c_idx, padx=1, pady=1)
+            register_nav(ex, row, c_idx)
+            c_idx += 1; e_dict["ex"] = ex
             self.widgets_entradas[id_al].append(e_dict)
             
             l = ctk.CTkLabel(self.grid_container, text="-", font=self.font_grid_header, fg_color="#FBFBFB", text_color=self.paleta["texto_principal"])
@@ -502,9 +583,12 @@ class AppPromedios:
             # --- NUEVO CAMPO RECUPERATORIO ---
             e_recup = ctk.CTkEntry(self.grid_container, width=60, justify=tk.CENTER, font=self.font_grid_body, fg_color=self.paleta["fondo_card"], border_width=0, corner_radius=0, validate='key', validatecommand=self.vcmd)
             val_recup = notas_data.get(K_RECUPERATORIO)
-            if val_recup is not None: e_recup.insert(0, str(val_recup))
+            if val_recup is not None:
+                e_recup.insert(0, str(int(val_recup)) if isinstance(val_recup, float) and val_recup.is_integer() else str(val_recup))
             e_recup.bind("<KeyRelease>", self._marcar_cambios_pendientes)
-            e_recup.grid(row=row, column=c_idx, padx=1, pady=1); c_idx += 1
+            e_recup.grid(row=row, column=c_idx, padx=1, pady=1)
+            register_nav(e_recup, row, c_idx)
+            c_idx += 1
             self.widgets_recuperatorios[id_al].append(e_recup)
 
             self.widgets_resultados[id_al]["trim"].append(l)
@@ -564,8 +648,33 @@ class AppPromedios:
             text_color=self._color_por_nota(nota_total_rnd),
         )
 
+    def _navigate_grid(self, event, row, col, direction):
+        if direction == "Left":
+            if event.widget.index(tk.INSERT) > 0: return
+        elif direction == "Right":
+            if event.widget.index(tk.INSERT) < len(event.widget.get()): return
+        
+        while True:
+            if direction == "Left": col -= 1
+            elif direction == "Right": col += 1
+            elif direction == "Up": row -= 1
+            elif direction == "Down": row += 1
+            
+            if row < 0 or row > 2000 or col < 0 or col > 50:
+                break
+                
+            if (row, col) in self.matriz_entradas:
+                ent = self.matriz_entradas[(row, col)]
+                if ent.cget("state") == tk.NORMAL:
+                    ent.focus_set()
+                    ent._entry.select_range(0, tk.END)
+                    return "break"
+
     def agregar_alumno(self, nombre_curso):
         """Agrega un nuevo alumno al curso y recarga la planilla."""
+        # Guardar cambios en la UI para no perderlos
+        self.guardar_notas_cuadricula(nombre_curso, show_success_message=False)
+        
         nombre_colegio = self.colegio_seleccionado
         alumnos = self.datos[K_COLEGIOS][nombre_colegio][K_CURSOS][nombre_curso][K_ALUMNOS]
         nuevo_id = str(max([int(k) for k in alumnos.keys()] + [0]) + 1)
@@ -587,6 +696,9 @@ class AppPromedios:
         elif tipo == "curso":
             del self.datos[K_COLEGIOS][nombre_colegio][K_CURSOS][id_ent]
         elif tipo == "alumno":
+            # Guardar la grilla antes de borrar para no perder cambios de otros alumnos
+            self.guardar_notas_cuadricula(nombre_curso, show_success_message=False)
+            
             del self.datos[K_COLEGIOS][nombre_colegio][K_CURSOS][nombre_curso][K_ALUMNOS][id_ent]
             alumnos_restantes = self.datos[K_COLEGIOS][nombre_colegio][K_CURSOS][nombre_curso][K_ALUMNOS]
             self.datos[K_COLEGIOS][nombre_colegio][K_CURSOS][nombre_curso][K_ALUMNOS] = (
@@ -616,7 +728,11 @@ class AppPromedios:
             if not texto:
                 return None
             try:
-                return float(texto)
+                val = float(texto)
+                # Si el valor no tiene parte decimal (ej. 8.0), lo convertimos a entero (8)
+                if val.is_integer():
+                    return int(val)
+                return val
             except ValueError:
                 return None
 
@@ -642,14 +758,101 @@ class AppPromedios:
         return False
 
     def _obtener_o_configurar_ruta_datos(self):
-        """Obtiene la ruta de datos desde config o solicita configuración inicial."""
+        """Obtiene la ruta de datos desde config, búsqueda automática, o configuración manual."""
+        # Paso 1: Intentar leer la config guardada
         ruta = gestor_datos.leer_ruta_config()
         if ruta:
             return ruta
+
+        # Paso 2: Búsqueda automática en ubicaciones comunes
+        encontrados = gestor_datos.buscar_archivos_datos()
+        if len(encontrados) == 1:
+            # Solo un archivo encontrado: usarlo directamente
+            gestor_datos.escribir_ruta_config(encontrados[0])
+            messagebox.showinfo(
+                "Datos Encontrados",
+                f"Se encontró automáticamente un archivo de datos existente:\n\n"
+                f"{encontrados[0]}\n\n"
+                f"Se usará esta ubicación."
+            )
+            return encontrados[0]
+        elif len(encontrados) > 1:
+            # Múltiples archivos: dejar que el usuario elija
+            return self._seleccionar_archivo_encontrado(encontrados)
+
+        # Paso 3: Nada encontrado, configuración manual
         return self._realizar_configuracion_inicial()
+
+    def _seleccionar_archivo_encontrado(self, rutas):
+        """Muestra un diálogo para que el usuario elija entre múltiples archivos encontrados."""
+        dialog = ctk.CTkToplevel(self.root)
+        dialog.title("Archivos de Datos Encontrados")
+        dialog.geometry("600x400")
+        dialog.transient(self.root)
+        dialog.grab_set()
+        dialog.resizable(False, False)
+
+        seleccion = {"ruta": None}
+
+        ctk.CTkLabel(
+            dialog,
+            text="Se encontraron varios archivos de datos.",
+            font=("Segoe UI", 16, "bold")
+        ).pack(pady=(20, 5))
+
+        ctk.CTkLabel(
+            dialog,
+            text="Selecciona cuál deseas usar:",
+            font=("Segoe UI", 13)
+        ).pack(pady=(0, 15))
+
+        radio_var = tk.StringVar(value=rutas[0])
+
+        scroll = ctk.CTkScrollableFrame(dialog, fg_color="transparent")
+        scroll.pack(fill=tk.BOTH, expand=True, padx=20)
+
+        for ruta in rutas:
+            ctk.CTkRadioButton(
+                scroll,
+                text=ruta,
+                variable=radio_var,
+                value=ruta,
+                font=("Segoe UI", 12)
+            ).pack(anchor="w", pady=5)
+
+        def confirmar():
+            seleccion["ruta"] = radio_var.get()
+            dialog.destroy()
+
+        def nueva_carpeta():
+            dialog.destroy()
+            seleccion["ruta"] = "__nueva__"
+
+        btn_frame = ctk.CTkFrame(dialog, fg_color="transparent")
+        btn_frame.pack(pady=15)
+        ctk.CTkButton(btn_frame, text="Usar Seleccionado", fg_color="#2E86C1",
+                      command=confirmar).pack(side=tk.LEFT, padx=10)
+        ctk.CTkButton(btn_frame, text="Elegir Otra Carpeta", fg_color="#7D3C98",
+                      command=nueva_carpeta).pack(side=tk.LEFT, padx=10)
+
+        dialog.wait_window()
+
+        if seleccion["ruta"] == "__nueva__":
+            return self._realizar_configuracion_inicial()
+        elif seleccion["ruta"]:
+            gestor_datos.escribir_ruta_config(seleccion["ruta"])
+            return seleccion["ruta"]
+        else:
+            return self._realizar_configuracion_inicial()
 
     def _realizar_configuracion_inicial(self):
         """Solicita al usuario seleccionar una carpeta para los datos."""
+        messagebox.showinfo(
+            "Configuración Inicial",
+            "Seleccioná una carpeta donde se guardarán tus datos.\n\n"
+            "Si ya tenés un archivo de datos de otra PC, pegálo\n"
+            "en esa carpeta y el programa lo reconocerá automáticamente."
+        )
         carpeta = filedialog.askdirectory(title="Selecciona la carpeta para guardar los datos")
         if not carpeta:
             return None
@@ -657,8 +860,78 @@ class AppPromedios:
         gestor_datos.escribir_ruta_config(ruta_archivo)
         return ruta_archivo
 
+    def importar_datos(self):
+        """Importa y fusiona datos desde un archivo JSON externo."""
+        archivo = filedialog.askopenfilename(
+            title="Seleccionar archivo de datos a importar",
+            filetypes=[
+                ("Archivos de datos Promediador", "datos_promedios.json"),
+                ("Archivos JSON", "*.json"),
+                ("Todos los archivos", "*.*")
+            ]
+        )
+        if not archivo:
+            return
+
+        # Verificar que no sea el mismo archivo que ya estamos usando
+        if os.path.abspath(archivo) == os.path.abspath(self.ruta_datos):
+            messagebox.showwarning(
+                "Archivo Duplicado",
+                "El archivo seleccionado es el mismo que ya estás usando.\n"
+                "Selecciona un archivo diferente."
+            )
+            return
+
+        # Cargar datos del archivo importado
+        datos_importados = gestor_datos.cargar_datos(archivo)
+        if not datos_importados.get(K_COLEGIOS):
+            messagebox.showinfo(
+                "Sin Datos",
+                "El archivo seleccionado no contiene datos para importar."
+            )
+            return
+
+        # Confirmar la importación
+        colegios = list(datos_importados[K_COLEGIOS].keys())
+        preview = ", ".join(colegios[:5])
+        if len(colegios) > 5:
+            preview += f" y {len(colegios) - 5} más..."
+
+        confirmar = messagebox.askyesno(
+            "Confirmar Importación",
+            f"Se encontraron {len(colegios)} institución(es) en el archivo:\n\n"
+            f"{preview}\n\n"
+            f"Los datos se fusionarán con tus datos actuales.\n"
+            f"No se sobrescribirán datos existentes.\n\n"
+            f"¿Deseas continuar?"
+        )
+        if not confirmar:
+            return
+
+        # Fusionar
+        stats = gestor_datos.fusionar_datos(self.datos, datos_importados)
+
+        # Guardar inmediatamente
+        self._guardar_datos_con_recuperacion()
+
+        # Mostrar resultado
+        messagebox.showinfo(
+            "Importación Exitosa",
+            f"¡Datos importados correctamente!\n\n"
+            f"• Instituciones nuevas: {stats['colegios_nuevos']}\n"
+            f"• Cursos nuevos: {stats['cursos_nuevos']}\n"
+            f"• Alumnos nuevos: {stats['alumnos_nuevos']}\n\n"
+            f"Los datos ya están guardados."
+        )
+
+        # Refrescar la pantalla
+        self.mostrar_pantalla_colegios()
+
     def _guardar_datos_con_recuperacion(self):
         """Intenta guardar los datos y maneja errores ofreciendo recuperación."""
+        if not self.ruta_datos:
+            return False
+        
         try:
             gestor_datos.guardar_datos(self.ruta_datos, self.datos)
             return True
@@ -711,6 +984,52 @@ class AppPromedios:
             messagebox.showinfo("Exportación Exitosa", f"La planilla ha sido exportada correctamente a:\n{file_path}")
         else:
             messagebox.showerror("Error de Exportación", f"No se pudo exportar la planilla.\n\nError: {error_message}")
+
+    def exportar_planilla_texto(self, nombre_curso):
+        if self.hay_cambios_sin_guardar:
+            messagebox.showwarning("Cambios Pendientes", "Tienes cambios sin guardar. Por favor, guarda la planilla antes de exportar para asegurar que los datos sean correctos.")
+            return
+
+        file_path = filedialog.asksaveasfilename(
+            title="Exportar Planilla como Texto",
+            initialfile=f"Planilla - {nombre_curso}.txt",
+            defaultextension=".txt",
+            filetypes=[("Archivos de texto", "*.txt"), ("Todos los archivos", "*.*")]
+        )
+
+        if not file_path:
+            return
+
+        curso_data = self.datos[K_COLEGIOS][self.colegio_seleccionado][K_CURSOS][nombre_curso]
+        success, error_message = exportar_a_texto(curso_data, file_path, nombre_curso)
+
+        if success:
+            messagebox.showinfo("Exportación Exitosa", f"La planilla ha sido exportada como texto correctamente a:\n{file_path}")
+        else:
+            messagebox.showerror("Error de Exportación", f"No se pudo exportar la planilla a texto.\n\nError: {error_message}")
+
+    def exportar_planilla_pdf(self, nombre_curso):
+        if self.hay_cambios_sin_guardar:
+            messagebox.showwarning("Cambios Pendientes", "Tienes cambios sin guardar. Por favor, guarda la planilla antes de exportar para asegurar que los datos sean correctos.")
+            return
+
+        file_path = filedialog.asksaveasfilename(
+            title="Exportar Planilla a PDF",
+            initialfile=f"Planilla - {nombre_curso}.pdf",
+            defaultextension=".pdf",
+            filetypes=[("Archivos PDF", "*.pdf"), ("Todos los archivos", "*.*")]
+        )
+
+        if not file_path:
+            return
+
+        curso_data = self.datos[K_COLEGIOS][self.colegio_seleccionado][K_CURSOS][nombre_curso]
+        success, error_message = exportar_a_pdf(curso_data, file_path, nombre_curso)
+
+        if success:
+            messagebox.showinfo("Exportación Exitosa", f"La planilla PDF lista para imprimir se guardó en:\n{file_path}")
+        else:
+            messagebox.showerror("Error de Exportación", f"No se pudo exportar la planilla a PDF.\n\nError: {error_message}")
 
     def accion_volver_desde_planilla(self):
         if self.hay_cambios_sin_guardar:

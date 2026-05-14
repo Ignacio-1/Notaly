@@ -24,11 +24,12 @@ import shutil
 import sys
 from pathlib import Path
 
-from .constants import K_COLEGIOS
+from .constants import K_COLEGIOS, K_CURSOS, K_ALUMNOS
 
 logger = logging.getLogger(__name__)
 
 APP_NAME = "Promediador"
+DATA_FILENAME = "datos_promedios.json"
 
 
 def _get_config_dir() -> Path:
@@ -250,3 +251,154 @@ def guardar_datos(ruta_archivo: str, datos: dict) -> None:
     contenido = json.dumps(datos, indent=4, ensure_ascii=False)
     _escribir_archivo_seguro(ruta, contenido)
     logger.info("Datos guardados exitosamente en: %s", ruta_archivo)
+
+
+def buscar_archivos_datos() -> list[str]:
+    """
+    Busca archivos de datos de Promediador en ubicaciones comunes del sistema.
+
+    Escanea Documentos, Escritorio, carpeta home y subcarpetas de primer nivel
+    buscando archivos llamados 'datos_promedios.json' que tengan la estructura
+    válida de la aplicación.
+
+    Returns:
+        Lista de rutas absolutas a archivos de datos válidos encontrados.
+    """
+    encontrados = []
+    rutas_a_buscar = set()
+
+    home = Path.home()
+
+    # Carpetas principales donde el usuario podría tener datos
+    carpetas_conocidas = [
+        home / "Documents",
+        home / "Documentos",
+        home / "Desktop",
+        home / "Escritorio",
+        home / "Downloads",
+        home / "Descargas",
+        home,
+    ]
+
+    # En Windows, también revisar las carpetas del perfil
+    if sys.platform == "win32":
+        user_profile = os.getenv("USERPROFILE")
+        if user_profile:
+            up = Path(user_profile)
+            carpetas_conocidas.extend([
+                up / "Documents",
+                up / "Desktop",
+                up / "Downloads",
+            ])
+
+    for carpeta in carpetas_conocidas:
+        if carpeta.exists() and carpeta.is_dir():
+            rutas_a_buscar.add(carpeta)
+
+    # Buscar en cada carpeta y sus subcarpetas de primer nivel
+    for carpeta in rutas_a_buscar:
+        # Buscar directamente en la carpeta
+        candidato = carpeta / DATA_FILENAME
+        if candidato.exists():
+            datos = _intentar_cargar_archivo(candidato)
+            if datos is not None:
+                ruta_str = str(candidato)
+                if ruta_str not in encontrados:
+                    encontrados.append(ruta_str)
+
+        # Buscar en subcarpetas de primer nivel
+        try:
+            for subcarpeta in carpeta.iterdir():
+                if subcarpeta.is_dir():
+                    candidato = subcarpeta / DATA_FILENAME
+                    if candidato.exists():
+                        datos = _intentar_cargar_archivo(candidato)
+                        if datos is not None:
+                            ruta_str = str(candidato)
+                            if ruta_str not in encontrados:
+                                encontrados.append(ruta_str)
+        except PermissionError:
+            continue
+
+    logger.info("Búsqueda automática encontró %d archivo(s) de datos.", len(encontrados))
+    return encontrados
+
+
+def fusionar_datos(datos_destino: dict, datos_origen: dict) -> dict:
+    """
+    Fusiona los datos de origen en los datos de destino sin sobrescribir
+    información existente.
+
+    Lógica de fusión:
+    - Colegios nuevos (que no existen en destino) se agregan completos.
+    - Cursos nuevos dentro de un colegio existente se agregan.
+    - Alumnos nuevos dentro de un curso existente se agregan con IDs
+      consecutivos a partir del último existente.
+    - Datos ya existentes NO se sobrescriben.
+
+    Args:
+        datos_destino: Diccionario de datos actual (se modifica in-place).
+        datos_origen: Diccionario de datos a importar.
+
+    Returns:
+        Diccionario con estadísticas de la fusión:
+        {"colegios_nuevos": int, "cursos_nuevos": int, "alumnos_nuevos": int}
+    """
+    stats = {"colegios_nuevos": 0, "cursos_nuevos": 0, "alumnos_nuevos": 0}
+
+    colegios_destino = datos_destino.setdefault(K_COLEGIOS, {})
+    colegios_origen = datos_origen.get(K_COLEGIOS, {})
+
+    for nombre_colegio, colegio_data in colegios_origen.items():
+        if nombre_colegio not in colegios_destino:
+            # Colegio completamente nuevo: copiar entero
+            colegios_destino[nombre_colegio] = colegio_data
+            stats["colegios_nuevos"] += 1
+            # Contar cursos y alumnos incluidos
+            for curso_data in colegio_data.get(K_CURSOS, {}).values():
+                stats["cursos_nuevos"] += 1
+                stats["alumnos_nuevos"] += len(curso_data.get(K_ALUMNOS, {}))
+        else:
+            # Colegio ya existe: fusionar cursos
+            cursos_destino = colegios_destino[nombre_colegio].setdefault(K_CURSOS, {})
+            cursos_origen = colegio_data.get(K_CURSOS, {})
+
+            for nombre_curso, curso_data in cursos_origen.items():
+                if nombre_curso not in cursos_destino:
+                    # Curso nuevo: copiar entero
+                    cursos_destino[nombre_curso] = curso_data
+                    stats["cursos_nuevos"] += 1
+                    stats["alumnos_nuevos"] += len(curso_data.get(K_ALUMNOS, {}))
+                else:
+                    # Curso ya existe: fusionar alumnos nuevos
+                    alumnos_destino = cursos_destino[nombre_curso].setdefault(K_ALUMNOS, {})
+                    alumnos_origen = curso_data.get(K_ALUMNOS, {})
+
+                    # Encontrar el próximo ID disponible
+                    if alumnos_destino:
+                        max_id = max(int(k) for k in alumnos_destino.keys())
+                    else:
+                        max_id = 0
+
+                    # Obtener nombres existentes para evitar duplicados
+                    nombres_existentes = {
+                        al.get("nombre", "").strip().upper()
+                        for al in alumnos_destino.values()
+                    }
+
+                    for al_data in alumnos_origen.values():
+                        nombre_alumno = al_data.get("nombre", "").strip().upper()
+                        if nombre_alumno and nombre_alumno in nombres_existentes:
+                            # Alumno con mismo nombre ya existe, no duplicar
+                            continue
+                        max_id += 1
+                        alumnos_destino[str(max_id)] = al_data
+                        stats["alumnos_nuevos"] += 1
+                        if nombre_alumno:
+                            nombres_existentes.add(nombre_alumno)
+
+    logger.info(
+        "Fusión completada: %d colegios, %d cursos, %d alumnos nuevos.",
+        stats["colegios_nuevos"], stats["cursos_nuevos"], stats["alumnos_nuevos"]
+    )
+    return stats

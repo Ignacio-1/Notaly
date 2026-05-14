@@ -34,7 +34,8 @@ def test_reordenar_alumnos_despues_de_borrado(sample_data_for_deletion):
 def app_instance():
     """Provee un objeto con los métodos de validación para testear sin instanciar la UI."""
     class DummyApp:
-        pass
+        def solo_numeros(self, P): pass
+        def solo_enteros(self, P): pass
     
     app = DummyApp()
     # Atamos los métodos de la clase a esta instancia dummy

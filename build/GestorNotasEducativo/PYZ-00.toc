@@ -305,22 +305,94 @@
    'soft\\promediador\\venv\\Lib\\site-packages\\PIL\\features.py',
    'PYMODULE'),
   ('__future__', 'D:\\python\\Lib\\__future__.py', 'PYMODULE'),
+  ('_aix_support', 'D:\\python\\Lib\\_aix_support.py', 'PYMODULE'),
   ('_colorize', 'D:\\python\\Lib\\_colorize.py', 'PYMODULE'),
   ('_compat_pickle', 'D:\\python\\Lib\\_compat_pickle.py', 'PYMODULE'),
   ('_compression', 'D:\\python\\Lib\\_compression.py', 'PYMODULE'),
+  ('_ios_support', 'D:\\python\\Lib\\_ios_support.py', 'PYMODULE'),
+  ('_markupbase', 'D:\\python\\Lib\\_markupbase.py', 'PYMODULE'),
   ('_opcode_metadata', 'D:\\python\\Lib\\_opcode_metadata.py', 'PYMODULE'),
   ('_py_abc', 'D:\\python\\Lib\\_py_abc.py', 'PYMODULE'),
   ('_pydatetime', 'D:\\python\\Lib\\_pydatetime.py', 'PYMODULE'),
   ('_pydecimal', 'D:\\python\\Lib\\_pydecimal.py', 'PYMODULE'),
+  ('_pyrepl', 'D:\\python\\Lib\\_pyrepl\\__init__.py', 'PYMODULE'),
+  ('_pyrepl.pager', 'D:\\python\\Lib\\_pyrepl\\pager.py', 'PYMODULE'),
   ('_strptime', 'D:\\python\\Lib\\_strptime.py', 'PYMODULE'),
   ('_threading_local', 'D:\\python\\Lib\\_threading_local.py', 'PYMODULE'),
   ('argparse', 'D:\\python\\Lib\\argparse.py', 'PYMODULE'),
   ('ast', 'D:\\python\\Lib\\ast.py', 'PYMODULE'),
+  ('asyncio', 'D:\\python\\Lib\\asyncio\\__init__.py', 'PYMODULE'),
+  ('asyncio.base_events',
+   'D:\\python\\Lib\\asyncio\\base_events.py',
+   'PYMODULE'),
+  ('asyncio.base_futures',
+   'D:\\python\\Lib\\asyncio\\base_futures.py',
+   'PYMODULE'),
+  ('asyncio.base_subprocess',
+   'D:\\python\\Lib\\asyncio\\base_subprocess.py',
+   'PYMODULE'),
+  ('asyncio.base_tasks', 'D:\\python\\Lib\\asyncio\\base_tasks.py', 'PYMODULE'),
+  ('asyncio.constants', 'D:\\python\\Lib\\asyncio\\constants.py', 'PYMODULE'),
+  ('asyncio.coroutines', 'D:\\python\\Lib\\asyncio\\coroutines.py', 'PYMODULE'),
+  ('asyncio.events', 'D:\\python\\Lib\\asyncio\\events.py', 'PYMODULE'),
+  ('asyncio.exceptions', 'D:\\python\\Lib\\asyncio\\exceptions.py', 'PYMODULE'),
+  ('asyncio.format_helpers',
+   'D:\\python\\Lib\\asyncio\\format_helpers.py',
+   'PYMODULE'),
+  ('asyncio.futures', 'D:\\python\\Lib\\asyncio\\futures.py', 'PYMODULE'),
+  ('asyncio.locks', 'D:\\python\\Lib\\asyncio\\locks.py', 'PYMODULE'),
+  ('asyncio.log', 'D:\\python\\Lib\\asyncio\\log.py', 'PYMODULE'),
+  ('asyncio.mixins', 'D:\\python\\Lib\\asyncio\\mixins.py', 'PYMODULE'),
+  ('asyncio.proactor_events',
+   'D:\\python\\Lib\\asyncio\\proactor_events.py',
+   'PYMODULE'),
+  ('asyncio.protocols', 'D:\\python\\Lib\\asyncio\\protocols.py', 'PYMODULE'),
+  ('asyncio.queues', 'D:\\python\\Lib\\asyncio\\queues.py', 'PYMODULE'),
+  ('asyncio.runners', 'D:\\python\\Lib\\asyncio\\runners.py', 'PYMODULE'),
+  ('asyncio.selector_events',
+   'D:\\python\\Lib\\asyncio\\selector_events.py',
+   'PYMODULE'),
+  ('asyncio.sslproto', 'D:\\python\\Lib\\asyncio\\sslproto.py', 'PYMODULE'),
+  ('asyncio.staggered', 'D:\\python\\Lib\\asyncio\\staggered.py', 'PYMODULE'),
+  ('asyncio.streams', 'D:\\python\\Lib\\asyncio\\streams.py', 'PYMODULE'),
+  ('asyncio.subprocess', 'D:\\python\\Lib\\asyncio\\subprocess.py', 'PYMODULE'),
+  ('asyncio.taskgroups', 'D:\\python\\Lib\\asyncio\\taskgroups.py', 'PYMODULE'),
+  ('asyncio.tasks', 'D:\\python\\Lib\\asyncio\\tasks.py', 'PYMODULE'),
+  ('asyncio.threads', 'D:\\python\\Lib\\asyncio\\threads.py', 'PYMODULE'),
+  ('asyncio.timeouts', 'D:\\python\\Lib\\asyncio\\timeouts.py', 'PYMODULE'),
+  ('asyncio.transports', 'D:\\python\\Lib\\asyncio\\transports.py', 'PYMODULE'),
+  ('asyncio.trsock', 'D:\\python\\Lib\\asyncio\\trsock.py', 'PYMODULE'),
+  ('asyncio.unix_events',
+   'D:\\python\\Lib\\asyncio\\unix_events.py',
+   'PYMODULE'),
+  ('asyncio.windows_events',
+   'D:\\python\\Lib\\asyncio\\windows_events.py',
+   'PYMODULE'),
+  ('asyncio.windows_utils',
+   'D:\\python\\Lib\\asyncio\\windows_utils.py',
+   'PYMODULE'),
   ('base64', 'D:\\python\\Lib\\base64.py', 'PYMODULE'),
+  ('bdb', 'D:\\python\\Lib\\bdb.py', 'PYMODULE'),
   ('bisect', 'D:\\python\\Lib\\bisect.py', 'PYMODULE'),
   ('bz2', 'D:\\python\\Lib\\bz2.py', 'PYMODULE'),
   ('calendar', 'D:\\python\\Lib\\calendar.py', 'PYMODULE'),
+  ('cmd', 'D:\\python\\Lib\\cmd.py', 'PYMODULE'),
+  ('code', 'D:\\python\\Lib\\code.py', 'PYMODULE'),
+  ('codeop', 'D:\\python\\Lib\\codeop.py', 'PYMODULE'),
   ('colorsys', 'D:\\python\\Lib\\colorsys.py', 'PYMODULE'),
+  ('concurrent', 'D:\\python\\Lib\\concurrent\\__init__.py', 'PYMODULE'),
+  ('concurrent.futures',
+   'D:\\python\\Lib\\concurrent\\futures\\__init__.py',
+   'PYMODULE'),
+  ('concurrent.futures._base',
+   'D:\\python\\Lib\\concurrent\\futures\\_base.py',
+   'PYMODULE'),
+  ('concurrent.futures.process',
+   'D:\\python\\Lib\\concurrent\\futures\\process.py',
+   'PYMODULE'),
+  ('concurrent.futures.thread',
+   'D:\\python\\Lib\\concurrent\\futures\\thread.py',
+   'PYMODULE'),
   ('contextlib', 'D:\\python\\Lib\\contextlib.py', 'PYMODULE'),
   ('contextvars', 'D:\\python\\Lib\\contextvars.py', 'PYMODULE'),
   ('copy', 'D:\\python\\Lib\\copy.py', 'PYMODULE'),
@@ -552,7 +624,49 @@
   ('dataclasses', 'D:\\python\\Lib\\dataclasses.py', 'PYMODULE'),
   ('datetime', 'D:\\python\\Lib\\datetime.py', 'PYMODULE'),
   ('decimal', 'D:\\python\\Lib\\decimal.py', 'PYMODULE'),
+  ('defusedxml',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\defusedxml\\__init__.py',
+   'PYMODULE'),
+  ('defusedxml.ElementTree',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\defusedxml\\ElementTree.py',
+   'PYMODULE'),
+  ('defusedxml.cElementTree',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\defusedxml\\cElementTree.py',
+   'PYMODULE'),
+  ('defusedxml.common',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\defusedxml\\common.py',
+   'PYMODULE'),
+  ('defusedxml.expatbuilder',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\defusedxml\\expatbuilder.py',
+   'PYMODULE'),
+  ('defusedxml.expatreader',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\defusedxml\\expatreader.py',
+   'PYMODULE'),
+  ('defusedxml.minidom',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\defusedxml\\minidom.py',
+   'PYMODULE'),
+  ('defusedxml.pulldom',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\defusedxml\\pulldom.py',
+   'PYMODULE'),
+  ('defusedxml.sax',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\defusedxml\\sax.py',
+   'PYMODULE'),
+  ('defusedxml.xmlrpc',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\defusedxml\\xmlrpc.py',
+   'PYMODULE'),
+  ('difflib', 'D:\\python\\Lib\\difflib.py', 'PYMODULE'),
   ('dis', 'D:\\python\\Lib\\dis.py', 'PYMODULE'),
+  ('doctest', 'D:\\python\\Lib\\doctest.py', 'PYMODULE'),
   ('email', 'D:\\python\\Lib\\email\\__init__.py', 'PYMODULE'),
   ('email._encoded_words',
    'D:\\python\\Lib\\email\\_encoded_words.py',
@@ -582,6 +696,986 @@
   ('email.quoprimime', 'D:\\python\\Lib\\email\\quoprimime.py', 'PYMODULE'),
   ('email.utils', 'D:\\python\\Lib\\email\\utils.py', 'PYMODULE'),
   ('fnmatch', 'D:\\python\\Lib\\fnmatch.py', 'PYMODULE'),
+  ('fontTools',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\__init__.py',
+   'PYMODULE'),
+  ('fontTools.agl',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\agl.py',
+   'PYMODULE'),
+  ('fontTools.cffLib',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\cffLib\\__init__.py',
+   'PYMODULE'),
+  ('fontTools.cffLib.CFF2ToCFF',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\cffLib\\CFF2ToCFF.py',
+   'PYMODULE'),
+  ('fontTools.cffLib.CFFToCFF2',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\cffLib\\CFFToCFF2.py',
+   'PYMODULE'),
+  ('fontTools.cffLib.specializer',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\cffLib\\specializer.py',
+   'PYMODULE'),
+  ('fontTools.cffLib.transforms',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\cffLib\\transforms.py',
+   'PYMODULE'),
+  ('fontTools.cffLib.width',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\cffLib\\width.py',
+   'PYMODULE'),
+  ('fontTools.colorLib',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\colorLib\\__init__.py',
+   'PYMODULE'),
+  ('fontTools.colorLib.builder',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\colorLib\\builder.py',
+   'PYMODULE'),
+  ('fontTools.colorLib.errors',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\colorLib\\errors.py',
+   'PYMODULE'),
+  ('fontTools.colorLib.geometry',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\colorLib\\geometry.py',
+   'PYMODULE'),
+  ('fontTools.colorLib.table_builder',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\colorLib\\table_builder.py',
+   'PYMODULE'),
+  ('fontTools.colorLib.unbuilder',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\colorLib\\unbuilder.py',
+   'PYMODULE'),
+  ('fontTools.config',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\config\\__init__.py',
+   'PYMODULE'),
+  ('fontTools.designspaceLib',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\designspaceLib\\__init__.py',
+   'PYMODULE'),
+  ('fontTools.designspaceLib.split',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\designspaceLib\\split.py',
+   'PYMODULE'),
+  ('fontTools.designspaceLib.statNames',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\designspaceLib\\statNames.py',
+   'PYMODULE'),
+  ('fontTools.designspaceLib.types',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\designspaceLib\\types.py',
+   'PYMODULE'),
+  ('fontTools.encodings',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\encodings\\__init__.py',
+   'PYMODULE'),
+  ('fontTools.encodings.StandardEncoding',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\encodings\\StandardEncoding.py',
+   'PYMODULE'),
+  ('fontTools.encodings.codecs',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\encodings\\codecs.py',
+   'PYMODULE'),
+  ('fontTools.feaLib',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\feaLib\\__init__.py',
+   'PYMODULE'),
+  ('fontTools.feaLib.ast',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\feaLib\\ast.py',
+   'PYMODULE'),
+  ('fontTools.feaLib.error',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\feaLib\\error.py',
+   'PYMODULE'),
+  ('fontTools.feaLib.location',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\feaLib\\location.py',
+   'PYMODULE'),
+  ('fontTools.feaLib.lookupDebugInfo',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\feaLib\\lookupDebugInfo.py',
+   'PYMODULE'),
+  ('fontTools.misc',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\misc\\__init__.py',
+   'PYMODULE'),
+  ('fontTools.misc.arrayTools',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\misc\\arrayTools.py',
+   'PYMODULE'),
+  ('fontTools.misc.classifyTools',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\misc\\classifyTools.py',
+   'PYMODULE'),
+  ('fontTools.misc.cliTools',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\misc\\cliTools.py',
+   'PYMODULE'),
+  ('fontTools.misc.configTools',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\misc\\configTools.py',
+   'PYMODULE'),
+  ('fontTools.misc.cython',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\misc\\cython.py',
+   'PYMODULE'),
+  ('fontTools.misc.dictTools',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\misc\\dictTools.py',
+   'PYMODULE'),
+  ('fontTools.misc.encodingTools',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\misc\\encodingTools.py',
+   'PYMODULE'),
+  ('fontTools.misc.enumTools',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\misc\\enumTools.py',
+   'PYMODULE'),
+  ('fontTools.misc.etree',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\misc\\etree.py',
+   'PYMODULE'),
+  ('fontTools.misc.filenames',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\misc\\filenames.py',
+   'PYMODULE'),
+  ('fontTools.misc.fixedTools',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\misc\\fixedTools.py',
+   'PYMODULE'),
+  ('fontTools.misc.intTools',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\misc\\intTools.py',
+   'PYMODULE'),
+  ('fontTools.misc.iterTools',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\misc\\iterTools.py',
+   'PYMODULE'),
+  ('fontTools.misc.lazyTools',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\misc\\lazyTools.py',
+   'PYMODULE'),
+  ('fontTools.misc.loggingTools',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\misc\\loggingTools.py',
+   'PYMODULE'),
+  ('fontTools.misc.macCreatorType',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\misc\\macCreatorType.py',
+   'PYMODULE'),
+  ('fontTools.misc.macRes',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\misc\\macRes.py',
+   'PYMODULE'),
+  ('fontTools.misc.plistlib',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\misc\\plistlib\\__init__.py',
+   'PYMODULE'),
+  ('fontTools.misc.psCharStrings',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\misc\\psCharStrings.py',
+   'PYMODULE'),
+  ('fontTools.misc.roundTools',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\misc\\roundTools.py',
+   'PYMODULE'),
+  ('fontTools.misc.sstruct',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\misc\\sstruct.py',
+   'PYMODULE'),
+  ('fontTools.misc.textTools',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\misc\\textTools.py',
+   'PYMODULE'),
+  ('fontTools.misc.timeTools',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\misc\\timeTools.py',
+   'PYMODULE'),
+  ('fontTools.misc.transform',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\misc\\transform.py',
+   'PYMODULE'),
+  ('fontTools.misc.treeTools',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\misc\\treeTools.py',
+   'PYMODULE'),
+  ('fontTools.misc.vector',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\misc\\vector.py',
+   'PYMODULE'),
+  ('fontTools.misc.visitor',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\misc\\visitor.py',
+   'PYMODULE'),
+  ('fontTools.misc.xmlReader',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\misc\\xmlReader.py',
+   'PYMODULE'),
+  ('fontTools.misc.xmlWriter',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\misc\\xmlWriter.py',
+   'PYMODULE'),
+  ('fontTools.otlLib',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\otlLib\\__init__.py',
+   'PYMODULE'),
+  ('fontTools.otlLib.builder',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\otlLib\\builder.py',
+   'PYMODULE'),
+  ('fontTools.otlLib.error',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\otlLib\\error.py',
+   'PYMODULE'),
+  ('fontTools.otlLib.maxContextCalc',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\otlLib\\maxContextCalc.py',
+   'PYMODULE'),
+  ('fontTools.otlLib.optimize',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\otlLib\\optimize\\__init__.py',
+   'PYMODULE'),
+  ('fontTools.otlLib.optimize.gpos',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\otlLib\\optimize\\gpos.py',
+   'PYMODULE'),
+  ('fontTools.pens',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\pens\\__init__.py',
+   'PYMODULE'),
+  ('fontTools.pens.basePen',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\pens\\basePen.py',
+   'PYMODULE'),
+  ('fontTools.pens.boundsPen',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\pens\\boundsPen.py',
+   'PYMODULE'),
+  ('fontTools.pens.filterPen',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\pens\\filterPen.py',
+   'PYMODULE'),
+  ('fontTools.pens.pointPen',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\pens\\pointPen.py',
+   'PYMODULE'),
+  ('fontTools.pens.recordingPen',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\pens\\recordingPen.py',
+   'PYMODULE'),
+  ('fontTools.pens.reverseContourPen',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\pens\\reverseContourPen.py',
+   'PYMODULE'),
+  ('fontTools.pens.t2CharStringPen',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\pens\\t2CharStringPen.py',
+   'PYMODULE'),
+  ('fontTools.pens.transformPen',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\pens\\transformPen.py',
+   'PYMODULE'),
+  ('fontTools.pens.ttGlyphPen',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\pens\\ttGlyphPen.py',
+   'PYMODULE'),
+  ('fontTools.subset',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\subset\\__init__.py',
+   'PYMODULE'),
+  ('fontTools.subset.cff',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\subset\\cff.py',
+   'PYMODULE'),
+  ('fontTools.subset.svg',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\subset\\svg.py',
+   'PYMODULE'),
+  ('fontTools.subset.util',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\subset\\util.py',
+   'PYMODULE'),
+  ('fontTools.svgLib',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\svgLib\\__init__.py',
+   'PYMODULE'),
+  ('fontTools.svgLib.path',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\svgLib\\path\\__init__.py',
+   'PYMODULE'),
+  ('fontTools.svgLib.path.arc',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\svgLib\\path\\arc.py',
+   'PYMODULE'),
+  ('fontTools.svgLib.path.parser',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\svgLib\\path\\parser.py',
+   'PYMODULE'),
+  ('fontTools.svgLib.path.shapes',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\svgLib\\path\\shapes.py',
+   'PYMODULE'),
+  ('fontTools.ttLib',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\__init__.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.macUtils',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\macUtils.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.removeOverlaps',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\removeOverlaps.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.reorderGlyphs',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\reorderGlyphs.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.sfnt',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\sfnt.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.standardGlyphOrder',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\standardGlyphOrder.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\__init__.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables.B_A_S_E_',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\B_A_S_E_.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables.BitmapGlyphMetrics',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\BitmapGlyphMetrics.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables.C_B_D_T_',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\C_B_D_T_.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables.C_B_L_C_',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\C_B_L_C_.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables.C_F_F_',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\C_F_F_.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables.C_F_F__2',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\C_F_F__2.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables.C_O_L_R_',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\C_O_L_R_.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables.C_P_A_L_',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\C_P_A_L_.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables.D_S_I_G_',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\D_S_I_G_.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables.D__e_b_g',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\D__e_b_g.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables.DefaultTable',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\DefaultTable.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables.E_B_D_T_',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\E_B_D_T_.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables.E_B_L_C_',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\E_B_L_C_.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables.F_F_T_M_',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\F_F_T_M_.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables.F__e_a_t',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\F__e_a_t.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables.G_D_E_F_',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\G_D_E_F_.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables.G_P_O_S_',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\G_P_O_S_.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables.G_S_U_B_',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\G_S_U_B_.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables.G_V_A_R_',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\G_V_A_R_.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables.G__l_a_t',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\G__l_a_t.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables.G__l_o_c',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\G__l_o_c.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables.H_V_A_R_',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\H_V_A_R_.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables.J_S_T_F_',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\J_S_T_F_.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables.L_T_S_H_',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\L_T_S_H_.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables.M_A_T_H_',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\M_A_T_H_.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables.M_V_A_R_',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\M_V_A_R_.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables.O_S_2f_2',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\O_S_2f_2.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables.S_T_A_T_',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\S_T_A_T_.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables.S_V_G_',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\S_V_G_.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables.S__i_l_f',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\S__i_l_f.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables.S__i_l_l',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\S__i_l_l.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables.T_S_I_B_',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\T_S_I_B_.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables.T_S_I_C_',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\T_S_I_C_.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables.T_S_I_D_',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\T_S_I_D_.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables.T_S_I_J_',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\T_S_I_J_.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables.T_S_I_P_',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\T_S_I_P_.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables.T_S_I_S_',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\T_S_I_S_.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables.T_S_I_V_',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\T_S_I_V_.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables.T_S_I__0',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\T_S_I__0.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables.T_S_I__1',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\T_S_I__1.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables.T_S_I__2',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\T_S_I__2.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables.T_S_I__3',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\T_S_I__3.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables.T_S_I__5',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\T_S_I__5.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables.T_T_F_A_',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\T_T_F_A_.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables.TupleVariation',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\TupleVariation.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables.V_A_R_C_',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\V_A_R_C_.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables.V_D_M_X_',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\V_D_M_X_.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables.V_O_R_G_',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\V_O_R_G_.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables.V_V_A_R_',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\V_V_A_R_.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables._a_n_k_r',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\_a_n_k_r.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables._a_v_a_r',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\_a_v_a_r.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables._b_s_l_n',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\_b_s_l_n.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables._c_i_d_g',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\_c_i_d_g.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables._c_m_a_p',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\_c_m_a_p.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables._c_v_a_r',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\_c_v_a_r.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables._c_v_t',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\_c_v_t.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables._f_e_a_t',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\_f_e_a_t.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables._f_p_g_m',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\_f_p_g_m.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables._f_v_a_r',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\_f_v_a_r.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables._g_a_s_p',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\_g_a_s_p.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables._g_c_i_d',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\_g_c_i_d.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables._g_l_y_f',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\_g_l_y_f.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables._g_v_a_r',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\_g_v_a_r.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables._h_d_m_x',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\_h_d_m_x.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables._h_e_a_d',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\_h_e_a_d.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables._h_h_e_a',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\_h_h_e_a.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables._h_m_t_x',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\_h_m_t_x.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables._k_e_r_n',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\_k_e_r_n.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables._l_c_a_r',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\_l_c_a_r.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables._l_o_c_a',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\_l_o_c_a.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables._l_t_a_g',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\_l_t_a_g.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables._m_a_x_p',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\_m_a_x_p.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables._m_e_t_a',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\_m_e_t_a.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables._m_o_r_t',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\_m_o_r_t.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables._m_o_r_x',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\_m_o_r_x.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables._n_a_m_e',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\_n_a_m_e.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables._o_p_b_d',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\_o_p_b_d.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables._p_o_s_t',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\_p_o_s_t.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables._p_r_e_p',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\_p_r_e_p.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables._p_r_o_p',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\_p_r_o_p.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables._s_b_i_x',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\_s_b_i_x.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables._t_r_a_k',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\_t_r_a_k.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables._v_h_e_a',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\_v_h_e_a.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables._v_m_t_x',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\_v_m_t_x.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables.asciiTable',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\asciiTable.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables.grUtils',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\grUtils.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables.otBase',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\otBase.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables.otConverters',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\otConverters.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables.otData',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\otData.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables.otTables',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\otTables.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables.otTraverse',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\otTraverse.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables.sbixGlyph',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\sbixGlyph.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables.sbixStrike',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\sbixStrike.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.tables.ttProgram',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\tables\\ttProgram.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.ttCollection',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\ttCollection.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.ttFont',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\ttFont.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.ttGlyphSet',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\ttGlyphSet.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.ttVisitor',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\ttVisitor.py',
+   'PYMODULE'),
+  ('fontTools.ttLib.woff2',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttLib\\woff2.py',
+   'PYMODULE'),
+  ('fontTools.ttx',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\ttx.py',
+   'PYMODULE'),
+  ('fontTools.unicode',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\unicode.py',
+   'PYMODULE'),
+  ('fontTools.unicodedata',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\unicodedata\\__init__.py',
+   'PYMODULE'),
+  ('fontTools.unicodedata.Blocks',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\unicodedata\\Blocks.py',
+   'PYMODULE'),
+  ('fontTools.unicodedata.Mirrored',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\unicodedata\\Mirrored.py',
+   'PYMODULE'),
+  ('fontTools.unicodedata.OTTags',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\unicodedata\\OTTags.py',
+   'PYMODULE'),
+  ('fontTools.unicodedata.ScriptExtensions',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\unicodedata\\ScriptExtensions.py',
+   'PYMODULE'),
+  ('fontTools.unicodedata.Scripts',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\unicodedata\\Scripts.py',
+   'PYMODULE'),
+  ('fontTools.varLib',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\varLib\\__init__.py',
+   'PYMODULE'),
+  ('fontTools.varLib.builder',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\varLib\\builder.py',
+   'PYMODULE'),
+  ('fontTools.varLib.cff',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\varLib\\cff.py',
+   'PYMODULE'),
+  ('fontTools.varLib.errors',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\varLib\\errors.py',
+   'PYMODULE'),
+  ('fontTools.varLib.featureVars',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\varLib\\featureVars.py',
+   'PYMODULE'),
+  ('fontTools.varLib.instancer',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\varLib\\instancer\\__init__.py',
+   'PYMODULE'),
+  ('fontTools.varLib.instancer.featureVars',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\varLib\\instancer\\featureVars.py',
+   'PYMODULE'),
+  ('fontTools.varLib.instancer.names',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\varLib\\instancer\\names.py',
+   'PYMODULE'),
+  ('fontTools.varLib.instancer.solver',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\varLib\\instancer\\solver.py',
+   'PYMODULE'),
+  ('fontTools.varLib.merger',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\varLib\\merger.py',
+   'PYMODULE'),
+  ('fontTools.varLib.models',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\varLib\\models.py',
+   'PYMODULE'),
+  ('fontTools.varLib.multiVarStore',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\varLib\\multiVarStore.py',
+   'PYMODULE'),
+  ('fontTools.varLib.mvar',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\varLib\\mvar.py',
+   'PYMODULE'),
+  ('fontTools.varLib.stat',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\varLib\\stat.py',
+   'PYMODULE'),
+  ('fontTools.varLib.varStore',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fontTools\\varLib\\varStore.py',
+   'PYMODULE'),
+  ('fpdf',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fpdf\\__init__.py',
+   'PYMODULE'),
+  ('fpdf.actions',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fpdf\\actions.py',
+   'PYMODULE'),
+  ('fpdf.annotations',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fpdf\\annotations.py',
+   'PYMODULE'),
+  ('fpdf.bidi',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fpdf\\bidi.py',
+   'PYMODULE'),
+  ('fpdf.deprecation',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fpdf\\deprecation.py',
+   'PYMODULE'),
+  ('fpdf.drawing',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fpdf\\drawing.py',
+   'PYMODULE'),
+  ('fpdf.drawing_primitives',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fpdf\\drawing_primitives.py',
+   'PYMODULE'),
+  ('fpdf.encryption',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fpdf\\encryption.py',
+   'PYMODULE'),
+  ('fpdf.enums',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fpdf\\enums.py',
+   'PYMODULE'),
+  ('fpdf.errors',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fpdf\\errors.py',
+   'PYMODULE'),
+  ('fpdf.font_type_3',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fpdf\\font_type_3.py',
+   'PYMODULE'),
+  ('fpdf.fonts',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fpdf\\fonts.py',
+   'PYMODULE'),
+  ('fpdf.fpdf',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fpdf\\fpdf.py',
+   'PYMODULE'),
+  ('fpdf.graphics_state',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fpdf\\graphics_state.py',
+   'PYMODULE'),
+  ('fpdf.html',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fpdf\\html.py',
+   'PYMODULE'),
+  ('fpdf.image_datastructures',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fpdf\\image_datastructures.py',
+   'PYMODULE'),
+  ('fpdf.image_parsing',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fpdf\\image_parsing.py',
+   'PYMODULE'),
+  ('fpdf.line_break',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fpdf\\line_break.py',
+   'PYMODULE'),
+  ('fpdf.linearization',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fpdf\\linearization.py',
+   'PYMODULE'),
+  ('fpdf.outline',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fpdf\\outline.py',
+   'PYMODULE'),
+  ('fpdf.output',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fpdf\\output.py',
+   'PYMODULE'),
+  ('fpdf.pattern',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fpdf\\pattern.py',
+   'PYMODULE'),
+  ('fpdf.prefs',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fpdf\\prefs.py',
+   'PYMODULE'),
+  ('fpdf.recorder',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fpdf\\recorder.py',
+   'PYMODULE'),
+  ('fpdf.sign',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fpdf\\sign.py',
+   'PYMODULE'),
+  ('fpdf.structure_tree',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fpdf\\structure_tree.py',
+   'PYMODULE'),
+  ('fpdf.svg',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fpdf\\svg.py',
+   'PYMODULE'),
+  ('fpdf.syntax',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fpdf\\syntax.py',
+   'PYMODULE'),
+  ('fpdf.table',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fpdf\\table.py',
+   'PYMODULE'),
+  ('fpdf.template',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fpdf\\template.py',
+   'PYMODULE'),
+  ('fpdf.text_region',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fpdf\\text_region.py',
+   'PYMODULE'),
+  ('fpdf.transitions',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fpdf\\transitions.py',
+   'PYMODULE'),
+  ('fpdf.unicode_script',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fpdf\\unicode_script.py',
+   'PYMODULE'),
+  ('fpdf.util',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\fpdf\\util.py',
+   'PYMODULE'),
   ('fractions', 'D:\\python\\Lib\\fractions.py', 'PYMODULE'),
   ('ftplib', 'D:\\python\\Lib\\ftplib.py', 'PYMODULE'),
   ('getopt', 'D:\\python\\Lib\\getopt.py', 'PYMODULE'),
@@ -596,9 +1690,14 @@
    'PYMODULE'),
   ('gzip', 'D:\\python\\Lib\\gzip.py', 'PYMODULE'),
   ('hashlib', 'D:\\python\\Lib\\hashlib.py', 'PYMODULE'),
+  ('hmac', 'D:\\python\\Lib\\hmac.py', 'PYMODULE'),
+  ('html', 'D:\\python\\Lib\\html\\__init__.py', 'PYMODULE'),
+  ('html.entities', 'D:\\python\\Lib\\html\\entities.py', 'PYMODULE'),
+  ('html.parser', 'D:\\python\\Lib\\html\\parser.py', 'PYMODULE'),
   ('http', 'D:\\python\\Lib\\http\\__init__.py', 'PYMODULE'),
   ('http.client', 'D:\\python\\Lib\\http\\client.py', 'PYMODULE'),
   ('http.cookiejar', 'D:\\python\\Lib\\http\\cookiejar.py', 'PYMODULE'),
+  ('http.server', 'D:\\python\\Lib\\http\\server.py', 'PYMODULE'),
   ('importlib', 'D:\\python\\Lib\\importlib\\__init__.py', 'PYMODULE'),
   ('importlib._abc', 'D:\\python\\Lib\\importlib\\_abc.py', 'PYMODULE'),
   ('importlib._bootstrap',
@@ -664,6 +1763,75 @@
   ('logging', 'D:\\python\\Lib\\logging\\__init__.py', 'PYMODULE'),
   ('lzma', 'D:\\python\\Lib\\lzma.py', 'PYMODULE'),
   ('mimetypes', 'D:\\python\\Lib\\mimetypes.py', 'PYMODULE'),
+  ('multiprocessing',
+   'D:\\python\\Lib\\multiprocessing\\__init__.py',
+   'PYMODULE'),
+  ('multiprocessing.connection',
+   'D:\\python\\Lib\\multiprocessing\\connection.py',
+   'PYMODULE'),
+  ('multiprocessing.context',
+   'D:\\python\\Lib\\multiprocessing\\context.py',
+   'PYMODULE'),
+  ('multiprocessing.dummy',
+   'D:\\python\\Lib\\multiprocessing\\dummy\\__init__.py',
+   'PYMODULE'),
+  ('multiprocessing.dummy.connection',
+   'D:\\python\\Lib\\multiprocessing\\dummy\\connection.py',
+   'PYMODULE'),
+  ('multiprocessing.forkserver',
+   'D:\\python\\Lib\\multiprocessing\\forkserver.py',
+   'PYMODULE'),
+  ('multiprocessing.heap',
+   'D:\\python\\Lib\\multiprocessing\\heap.py',
+   'PYMODULE'),
+  ('multiprocessing.managers',
+   'D:\\python\\Lib\\multiprocessing\\managers.py',
+   'PYMODULE'),
+  ('multiprocessing.pool',
+   'D:\\python\\Lib\\multiprocessing\\pool.py',
+   'PYMODULE'),
+  ('multiprocessing.popen_fork',
+   'D:\\python\\Lib\\multiprocessing\\popen_fork.py',
+   'PYMODULE'),
+  ('multiprocessing.popen_forkserver',
+   'D:\\python\\Lib\\multiprocessing\\popen_forkserver.py',
+   'PYMODULE'),
+  ('multiprocessing.popen_spawn_posix',
+   'D:\\python\\Lib\\multiprocessing\\popen_spawn_posix.py',
+   'PYMODULE'),
+  ('multiprocessing.popen_spawn_win32',
+   'D:\\python\\Lib\\multiprocessing\\popen_spawn_win32.py',
+   'PYMODULE'),
+  ('multiprocessing.process',
+   'D:\\python\\Lib\\multiprocessing\\process.py',
+   'PYMODULE'),
+  ('multiprocessing.queues',
+   'D:\\python\\Lib\\multiprocessing\\queues.py',
+   'PYMODULE'),
+  ('multiprocessing.reduction',
+   'D:\\python\\Lib\\multiprocessing\\reduction.py',
+   'PYMODULE'),
+  ('multiprocessing.resource_sharer',
+   'D:\\python\\Lib\\multiprocessing\\resource_sharer.py',
+   'PYMODULE'),
+  ('multiprocessing.resource_tracker',
+   'D:\\python\\Lib\\multiprocessing\\resource_tracker.py',
+   'PYMODULE'),
+  ('multiprocessing.shared_memory',
+   'D:\\python\\Lib\\multiprocessing\\shared_memory.py',
+   'PYMODULE'),
+  ('multiprocessing.sharedctypes',
+   'D:\\python\\Lib\\multiprocessing\\sharedctypes.py',
+   'PYMODULE'),
+  ('multiprocessing.spawn',
+   'D:\\python\\Lib\\multiprocessing\\spawn.py',
+   'PYMODULE'),
+  ('multiprocessing.synchronize',
+   'D:\\python\\Lib\\multiprocessing\\synchronize.py',
+   'PYMODULE'),
+  ('multiprocessing.util',
+   'D:\\python\\Lib\\multiprocessing\\util.py',
+   'PYMODULE'),
   ('netrc', 'D:\\python\\Lib\\netrc.py', 'PYMODULE'),
   ('nturl2path', 'D:\\python\\Lib\\nturl2path.py', 'PYMODULE'),
   ('numbers', 'D:\\python\\Lib\\numbers.py', 'PYMODULE'),
@@ -679,26 +1847,38 @@
   ('pathlib', 'D:\\python\\Lib\\pathlib\\__init__.py', 'PYMODULE'),
   ('pathlib._abc', 'D:\\python\\Lib\\pathlib\\_abc.py', 'PYMODULE'),
   ('pathlib._local', 'D:\\python\\Lib\\pathlib\\_local.py', 'PYMODULE'),
+  ('pdb', 'D:\\python\\Lib\\pdb.py', 'PYMODULE'),
   ('pickle', 'D:\\python\\Lib\\pickle.py', 'PYMODULE'),
+  ('pkgutil', 'D:\\python\\Lib\\pkgutil.py', 'PYMODULE'),
   ('platform', 'D:\\python\\Lib\\platform.py', 'PYMODULE'),
   ('pprint', 'D:\\python\\Lib\\pprint.py', 'PYMODULE'),
   ('py_compile', 'D:\\python\\Lib\\py_compile.py', 'PYMODULE'),
+  ('pydoc', 'D:\\python\\Lib\\pydoc.py', 'PYMODULE'),
+  ('pydoc_data', 'D:\\python\\Lib\\pydoc_data\\__init__.py', 'PYMODULE'),
+  ('pydoc_data.topics', 'D:\\python\\Lib\\pydoc_data\\topics.py', 'PYMODULE'),
+  ('queue', 'D:\\python\\Lib\\queue.py', 'PYMODULE'),
   ('quopri', 'D:\\python\\Lib\\quopri.py', 'PYMODULE'),
   ('random', 'D:\\python\\Lib\\random.py', 'PYMODULE'),
+  ('rlcompleter', 'D:\\python\\Lib\\rlcompleter.py', 'PYMODULE'),
+  ('runpy', 'D:\\python\\Lib\\runpy.py', 'PYMODULE'),
+  ('secrets', 'D:\\python\\Lib\\secrets.py', 'PYMODULE'),
   ('selectors', 'D:\\python\\Lib\\selectors.py', 'PYMODULE'),
   ('shlex', 'D:\\python\\Lib\\shlex.py', 'PYMODULE'),
   ('shutil', 'D:\\python\\Lib\\shutil.py', 'PYMODULE'),
   ('signal', 'D:\\python\\Lib\\signal.py', 'PYMODULE'),
   ('socket', 'D:\\python\\Lib\\socket.py', 'PYMODULE'),
+  ('socketserver', 'D:\\python\\Lib\\socketserver.py', 'PYMODULE'),
   ('ssl', 'D:\\python\\Lib\\ssl.py', 'PYMODULE'),
   ('statistics', 'D:\\python\\Lib\\statistics.py', 'PYMODULE'),
   ('string', 'D:\\python\\Lib\\string.py', 'PYMODULE'),
   ('stringprep', 'D:\\python\\Lib\\stringprep.py', 'PYMODULE'),
   ('subprocess', 'D:\\python\\Lib\\subprocess.py', 'PYMODULE'),
+  ('sysconfig', 'D:\\python\\Lib\\sysconfig\\__init__.py', 'PYMODULE'),
   ('tarfile', 'D:\\python\\Lib\\tarfile.py', 'PYMODULE'),
   ('tempfile', 'D:\\python\\Lib\\tempfile.py', 'PYMODULE'),
   ('textwrap', 'D:\\python\\Lib\\textwrap.py', 'PYMODULE'),
   ('threading', 'D:\\python\\Lib\\threading.py', 'PYMODULE'),
+  ('timeit', 'D:\\python\\Lib\\timeit.py', 'PYMODULE'),
   ('tkinter', 'D:\\python\\Lib\\tkinter\\__init__.py', 'PYMODULE'),
   ('tkinter.commondialog',
    'D:\\python\\Lib\\tkinter\\commondialog.py',
@@ -715,13 +1895,46 @@
   ('token', 'D:\\python\\Lib\\token.py', 'PYMODULE'),
   ('tokenize', 'D:\\python\\Lib\\tokenize.py', 'PYMODULE'),
   ('tracemalloc', 'D:\\python\\Lib\\tracemalloc.py', 'PYMODULE'),
+  ('tty', 'D:\\python\\Lib\\tty.py', 'PYMODULE'),
   ('typing', 'D:\\python\\Lib\\typing.py', 'PYMODULE'),
+  ('unittest', 'D:\\python\\Lib\\unittest\\__init__.py', 'PYMODULE'),
+  ('unittest._log', 'D:\\python\\Lib\\unittest\\_log.py', 'PYMODULE'),
+  ('unittest.async_case',
+   'D:\\python\\Lib\\unittest\\async_case.py',
+   'PYMODULE'),
+  ('unittest.case', 'D:\\python\\Lib\\unittest\\case.py', 'PYMODULE'),
+  ('unittest.loader', 'D:\\python\\Lib\\unittest\\loader.py', 'PYMODULE'),
+  ('unittest.main', 'D:\\python\\Lib\\unittest\\main.py', 'PYMODULE'),
+  ('unittest.mock', 'D:\\python\\Lib\\unittest\\mock.py', 'PYMODULE'),
+  ('unittest.result', 'D:\\python\\Lib\\unittest\\result.py', 'PYMODULE'),
+  ('unittest.runner', 'D:\\python\\Lib\\unittest\\runner.py', 'PYMODULE'),
+  ('unittest.signals', 'D:\\python\\Lib\\unittest\\signals.py', 'PYMODULE'),
+  ('unittest.suite', 'D:\\python\\Lib\\unittest\\suite.py', 'PYMODULE'),
+  ('unittest.util', 'D:\\python\\Lib\\unittest\\util.py', 'PYMODULE'),
   ('urllib', 'D:\\python\\Lib\\urllib\\__init__.py', 'PYMODULE'),
   ('urllib.error', 'D:\\python\\Lib\\urllib\\error.py', 'PYMODULE'),
   ('urllib.parse', 'D:\\python\\Lib\\urllib\\parse.py', 'PYMODULE'),
   ('urllib.request', 'D:\\python\\Lib\\urllib\\request.py', 'PYMODULE'),
   ('urllib.response', 'D:\\python\\Lib\\urllib\\response.py', 'PYMODULE'),
+  ('uuid', 'D:\\python\\Lib\\uuid.py', 'PYMODULE'),
+  ('webbrowser', 'D:\\python\\Lib\\webbrowser.py', 'PYMODULE'),
   ('xml', 'D:\\python\\Lib\\xml\\__init__.py', 'PYMODULE'),
+  ('xml.dom', 'D:\\python\\Lib\\xml\\dom\\__init__.py', 'PYMODULE'),
+  ('xml.dom.NodeFilter',
+   'D:\\python\\Lib\\xml\\dom\\NodeFilter.py',
+   'PYMODULE'),
+  ('xml.dom.domreg', 'D:\\python\\Lib\\xml\\dom\\domreg.py', 'PYMODULE'),
+  ('xml.dom.expatbuilder',
+   'D:\\python\\Lib\\xml\\dom\\expatbuilder.py',
+   'PYMODULE'),
+  ('xml.dom.minicompat',
+   'D:\\python\\Lib\\xml\\dom\\minicompat.py',
+   'PYMODULE'),
+  ('xml.dom.minidom', 'D:\\python\\Lib\\xml\\dom\\minidom.py', 'PYMODULE'),
+  ('xml.dom.pulldom', 'D:\\python\\Lib\\xml\\dom\\pulldom.py', 'PYMODULE'),
+  ('xml.dom.xmlbuilder',
+   'D:\\python\\Lib\\xml\\dom\\xmlbuilder.py',
+   'PYMODULE'),
   ('xml.etree', 'D:\\python\\Lib\\xml\\etree\\__init__.py', 'PYMODULE'),
   ('xml.etree.ElementInclude',
    'D:\\python\\Lib\\xml\\etree\\ElementInclude.py',
@@ -747,8 +1960,12 @@
   ('xml.sax.handler', 'D:\\python\\Lib\\xml\\sax\\handler.py', 'PYMODULE'),
   ('xml.sax.saxutils', 'D:\\python\\Lib\\xml\\sax\\saxutils.py', 'PYMODULE'),
   ('xml.sax.xmlreader', 'D:\\python\\Lib\\xml\\sax\\xmlreader.py', 'PYMODULE'),
+  ('xmlrpc', 'D:\\python\\Lib\\xmlrpc\\__init__.py', 'PYMODULE'),
+  ('xmlrpc.client', 'D:\\python\\Lib\\xmlrpc\\client.py', 'PYMODULE'),
+  ('xmlrpc.server', 'D:\\python\\Lib\\xmlrpc\\server.py', 'PYMODULE'),
   ('zipfile', 'D:\\python\\Lib\\zipfile\\__init__.py', 'PYMODULE'),
   ('zipfile._path', 'D:\\python\\Lib\\zipfile\\_path\\__init__.py', 'PYMODULE'),
   ('zipfile._path.glob',
    'D:\\python\\Lib\\zipfile\\_path\\glob.py',
-   'PYMODULE')])
+   'PYMODULE'),
+  ('zipimport', 'D:\\python\\Lib\\zipimport.py', 'PYMODULE')])

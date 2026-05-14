@@ -8,7 +8,7 @@ OutputDir=Output
 OutputBaseFilename=Instalar_Promediador
 Compression=lzma2
 SolidCompression=yes
-ArchitecturesInstallIn64BitMode=x64
+ArchitecturesInstallIn64BitMode=x64compatible
 DisableProgramGroupPage=yes
 SetupIconFile=app_icon.ico
 
@@ -17,10 +17,11 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 
 [Files]
 Source: "dist\GestorNotasEducativo.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "app_icon.ico"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
-Name: "{autoprograms}\Gestor Educativo Profesional"; Filename: "{app}\GestorNotasEducativo.exe"
-Name: "{autodesktop}\Gestor Educativo Profesional"; Filename: "{app}\GestorNotasEducativo.exe"; Tasks: desktopicon
+Name: "{autoprograms}\Gestor Educativo Profesional"; Filename: "{app}\GestorNotasEducativo.exe"; IconFilename: "{app}\app_icon.ico"
+Name: "{autodesktop}\Gestor Educativo Profesional"; Filename: "{app}\GestorNotasEducativo.exe"; IconFilename: "{app}\app_icon.ico"; Tasks: desktopicon
 
 [Run]
 Filename: "{app}\GestorNotasEducativo.exe"; Description: "{cm:LaunchProgram,Gestor Educativo Profesional}"; Flags: nowait postinstall skipifsilent

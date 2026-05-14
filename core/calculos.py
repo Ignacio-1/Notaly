@@ -16,7 +16,7 @@ def redondeo_especial(numero: float | None) -> int | None:
     """
     if numero is None:
         return None
-    return int(math.floor(numero + 0.5))
+    return math.floor(numero + 0.5)
 
 
 def calcular_promedio_crudo_trimestre(t_data: dict) -> float | None:

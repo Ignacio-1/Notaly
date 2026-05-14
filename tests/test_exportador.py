@@ -1,6 +1,6 @@
 import pytest
 import csv
-from core.exportador import exportar_a_csv
+from core.exportador import exportar_a_csv, exportar_a_pdf
 from core.constants import *
 
 @pytest.fixture
@@ -59,3 +59,13 @@ def test_exportar_a_csv_estructura_y_contenido(tmp_path, sample_curso_data):
         assert rows[1][12] == "7" # Nota de recuperatorio del T2
         assert rows[2][1] == "ALUMNO DOS"
         assert rows[2][-1] == "10" # Promedio final del Alumno Dos
+
+def test_exportar_a_pdf_exito(tmp_path, sample_curso_data):
+    """Verifica que el PDF se genere sin errores y el archivo se cree en el disco."""
+    import os
+    file_path = tmp_path / "test_export.pdf"
+    success, _ = exportar_a_pdf(sample_curso_data, str(file_path), "Curso Test")
+
+    assert success is True
+    assert os.path.exists(file_path)
+    assert os.path.getsize(file_path) > 0
