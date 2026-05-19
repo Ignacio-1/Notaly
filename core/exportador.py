@@ -7,7 +7,7 @@ incluyendo notas, promedios trimestrales y promedio final.
 
 import csv
 import math
-from fpdf import FPDF
+from fpdf import FPDF  # type: ignore
 
 from .calculos import procesar_calificaciones_alumno
 from .constants import (
@@ -210,7 +210,7 @@ def exportar_a_pdf(curso_data: dict, file_path: str, nombre_curso: str) -> tuple
         trim_w = col_widths['t_p']*4 + col_widths['t_pr'] + col_widths['t_re'] # 57
         fin_w = col_widths['f_p']*3 + col_widths['f_t'] # 44
 
-        pdf.set_font('helvetica', 'B', font_size)
+        pdf.set_font('helvetica', 'B', font_size)  # type: ignore
         
         # Fila 1 (Super Cabeceras)
         pdf.set_fill_color(240, 240, 240)
@@ -242,7 +242,7 @@ def exportar_a_pdf(curso_data: dict, file_path: str, nombre_curso: str) -> tuple
         pdf.ln()
 
         # Filas de Alumnos
-        pdf.set_font('helvetica', '', font_size)
+        pdf.set_font('helvetica', '', font_size)  # type: ignore
         alumnos_ordenados = sorted(curso_data[K_ALUMNOS].items(), key=lambda item: int(item[0]))
 
         for id_alumno, datos_alumno in alumnos_ordenados:
@@ -288,9 +288,9 @@ def exportar_a_pdf(curso_data: dict, file_path: str, nombre_curso: str) -> tuple
                 
             nota_total = resultados['nota_final_total_redondeada']
             pdf.set_text_color(220, 50, 50) if nota_total is not None and nota_total < 6 else pdf.set_text_color(0, 0, 0)
-            pdf.set_font('helvetica', 'B', font_size)
+            pdf.set_font('helvetica', 'B', font_size)  # type: ignore
             pdf.cell(col_widths['f_t'], row_height, str(nota_total) if nota_total is not None else '-', border=1, align='C')
-            pdf.set_font('helvetica', '', font_size)
+            pdf.set_font('helvetica', '', font_size)  # type: ignore
             pdf.set_text_color(0, 0, 0)
             
             pdf.ln()

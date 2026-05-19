@@ -870,11 +870,11 @@ class AppPromedios:
                 ("Todos los archivos", "*.*")
             ]
         )
-        if not archivo:
+        if not archivo or not isinstance(archivo, str):
             return
 
         # Verificar que no sea el mismo archivo que ya estamos usando
-        if os.path.abspath(archivo) == os.path.abspath(self.ruta_datos):
+        if self.ruta_datos and os.path.abspath(archivo) == os.path.abspath(self.ruta_datos):
             messagebox.showwarning(
                 "Archivo Duplicado",
                 "El archivo seleccionado es el mismo que ya estás usando.\n"
