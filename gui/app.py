@@ -40,7 +40,7 @@ class AppPromedios:
         ctk.set_appearance_mode("light")
 
         self.root = root
-        self.root.title("Gestor Educativo Profesional")
+        self.root.title("Notaly - Gestor de Notas")
         
         # Usamos una resolución más amigable para pantallas pequeñas (ej. laptops de 1366x768)
         self.root.geometry("1200x700")
@@ -792,7 +792,7 @@ class AppPromedios:
         dialog.grab_set()
         dialog.resizable(False, False)
 
-        seleccion = {"ruta": None}
+        seleccion: dict[str, str | None] = {"ruta": None}
 
         ctk.CTkLabel(
             dialog,

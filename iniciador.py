@@ -21,12 +21,12 @@ from cryptography.fernet import Fernet
 # LLAVE PÚBLICA (Ed25519) - SOLO LECTURA
 # (Genera tu propio par de claves y coloca aquí la pública para producción)
 PUBLIC_KEY_PEM = b"""-----BEGIN PUBLIC KEY-----
-MCowBQYDK2VwAyEA/1/oXQn2A+u6Ea6k1rZ+s7n3X6B0b2i0c+K1kO9d/Xg=
+MCowBQYDK2VwAyEApUk/15ZbrD6dFifrS2Gzm1wXOU/biENA/Pg336DlhxE=
 -----END PUBLIC KEY-----"""
 
 # CLAVE SIMÉTRICA (Para cifrar/descifrar la fecha localmente - Anti-Fraude)
 # ¡Cambia esta clave en tu entorno de producción!
-FERNET_KEY = b'v1G7p_uQ_wR7F9bOQzY-KxwK0aJ2T8D3fG7mYV1P9E8='
+FERNET_KEY = b'K5pOGxFKFIgeOiULveSOMmJ33dZCC6g75KtJ9ENh9os='
 fernet = Fernet(FERNET_KEY)
 
 APP_NAME = "TuApp_Sec"
@@ -175,7 +175,7 @@ def verify_license(hwid: str, license_key: str) -> bool:
             
         # Reconstruir el mensaje original que fue firmado
         message = f"{hwid}{expiration_date_str}".encode('utf-8')
-        signature = base64.b64decode(signature_b64)
+        signature = base64.urlsafe_b64decode(signature_b64)
         
         # Cargar llave pública
         public_key = serialization.load_pem_public_key(PUBLIC_KEY_PEM)
@@ -292,17 +292,9 @@ def load_license() -> str:
 
 def run_main_app():
     """Importa y ejecuta la aplicación original sin modificarla."""
-    # ==============================================================
-    # ⚠️ IMPORTANTE: COLOCA AQUÍ EL IMPORT DE TU APP PRINCIPAL ⚠️
-    #
-    # Por ejemplo, si tu archivo principal se llama main.py o app.py:
-    # import main
-    # main.iniciar()  # (si tu app tiene una función de inicio manual)
-    # ==============================================================
     try:
-        # EJEMPLO:
-        # import main
-        pass # Borrar esto al descomentar la línea superior
+        import main
+        main.main()  # <--- Esto dispara la aplicación
     except Exception as e:
         messagebox.showerror("Error", f"No se pudo cargar la aplicación principal.\nDetalles: {str(e)}")
         sys.exit(1)
