@@ -22,7 +22,7 @@ from cryptography.fernet import Fernet
 # (Genera tu propio par de claves y coloca aquí la pública para producción)
 PUBLIC_KEY_PEM = b"""-----BEGIN PUBLIC KEY-----
 MCowBQYDK2VwAyEApUk/15ZbrD6dFifrS2Gzm1wXOU/biENA/Pg336DlhxE=
------END PUBLIC KEY-----"""
+-----END PUBLIC KEY-----""" 
 
 # CLAVE SIMÉTRICA (Para cifrar/descifrar la fecha localmente - Anti-Fraude)
 # ¡Cambia esta clave en tu entorno de producción!
@@ -195,7 +195,11 @@ def verify_license(hwid: str, license_key: str) -> bool:
             return False # Licencia expirada
             
         return True
-    except (InvalidSignature, Exception):
+    except InvalidSignature:
+        messagebox.showerror("Debug Criptográfico", "Fallo: La firma matemática no coincide. La Llave Pública del iniciador no corresponde a la Llave Privada del generador.")
+        return False
+    except Exception as e:
+        messagebox.showerror("Debug de Código", f"Fallo en la lectura de datos. Error técnico: {repr(e)}")
         return False
 
 
@@ -240,7 +244,7 @@ class ActivationWindow(ctk.CTk):
         self.btn_copy.grid(row=0, column=1, padx=(0, 15), pady=10)
         
         # Entrada de la Licencia
-        self.entry_license = ctk.CTkEntry(self, placeholder_text="Pega aquí tu Licencia (Formato: YYYYMMDD-Firma)", width=380, height=35)
+        self.entry_license = ctk.CTkEntry(self, placeholder_text="Pega aquí tu Licencia", width=380, height=35)
         self.entry_license.grid(row=3, column=0, padx=20, pady=20)
         
         # Botón para Activar

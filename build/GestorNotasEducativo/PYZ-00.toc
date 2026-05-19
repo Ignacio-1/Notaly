@@ -423,6 +423,10 @@
    'D:\\FACULTAD\\practicas '
    'soft\\promediador\\venv\\Lib\\site-packages\\cryptography\\exceptions.py',
    'PYMODULE'),
+  ('cryptography.fernet',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\cryptography\\fernet.py',
+   'PYMODULE'),
   ('cryptography.hazmat',
    'D:\\FACULTAD\\practicas '
    'soft\\promediador\\venv\\Lib\\site-packages\\cryptography\\hazmat\\__init__.py',
@@ -574,6 +578,10 @@
   ('cryptography.hazmat.primitives.hashes',
    'D:\\FACULTAD\\practicas '
    'soft\\promediador\\venv\\Lib\\site-packages\\cryptography\\hazmat\\primitives\\hashes.py',
+   'PYMODULE'),
+  ('cryptography.hazmat.primitives.hmac',
+   'D:\\FACULTAD\\practicas '
+   'soft\\promediador\\venv\\Lib\\site-packages\\cryptography\\hazmat\\primitives\\hmac.py',
    'PYMODULE'),
   ('cryptography.hazmat.primitives.padding',
    'D:\\FACULTAD\\practicas '
@@ -1982,6 +1990,7 @@
   ('json.scanner', 'D:\\python\\Lib\\json\\scanner.py', 'PYMODULE'),
   ('logging', 'D:\\python\\Lib\\logging\\__init__.py', 'PYMODULE'),
   ('lzma', 'D:\\python\\Lib\\lzma.py', 'PYMODULE'),
+  ('main', 'D:\\FACULTAD\\practicas soft\\promediador\\main.py', 'PYMODULE'),
   ('mimetypes', 'D:\\python\\Lib\\mimetypes.py', 'PYMODULE'),
   ('multiprocessing',
    'D:\\python\\Lib\\multiprocessing\\__init__.py',

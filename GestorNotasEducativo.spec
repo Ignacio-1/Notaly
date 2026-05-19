@@ -2,7 +2,7 @@
 
 
 a = Analysis(
-    ['main.py'],
+    ['iniciador.py'],
     pathex=[],
     binaries=[],
     datas=[('app_icon.ico', '.')],
