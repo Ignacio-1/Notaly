@@ -181,18 +181,32 @@ def exportar_a_csv(curso_data: dict, file_path: str) -> tuple[bool, str | None]:
         return False, str(e)
 
 
-def exportar_a_pdf(curso_data: dict, file_path: str, nombre_curso: str) -> tuple[bool, str | None]:
+def exportar_a_pdf(curso_data: dict, file_path: str, nombre_curso: str, nombre_colegio: str = "") -> tuple[bool, str | None]:
     """
     Exporta los datos de un curso a un archivo PDF en formato A4 Horizontal.
     """
+    class PDFWithFooter(FPDF):
+        def footer(self):
+            # Posición a 15 mm del final de la página
+            self.set_y(-15)
+            # Línea divisoria muy tenue y delgada
+            self.set_draw_color(226, 232, 240)
+            self.set_line_width(0.2)
+            self.line(10, self.get_y(), 287, self.get_y())
+            # Fuente del pie de página pequeña y atenuada (#9CA3AF)
+            self.set_font('helvetica', 'I', 8)
+            self.set_text_color(156, 163, 175)
+            self.cell(0, 10, 'Planilla generada por NOTALY - Gestor de Notas', align='R')
+
     try:
-        pdf = FPDF(orientation='L', unit='mm', format='A4')
+        pdf = PDFWithFooter(orientation='L', unit='mm', format='A4')
         pdf.set_auto_page_break(auto=False)
         pdf.add_page()
         
         # Título
         pdf.set_font('helvetica', 'B', 14)
-        pdf.cell(0, 10, f'PLANILLA DE NOTAS - CURSO: {nombre_curso}', border=0, align='C')
+        titulo_texto = f'{nombre_colegio.upper()} - PLANILLA DE NOTAS - CURSO: {nombre_curso}' if nombre_colegio else f'PLANILLA DE NOTAS - CURSO: {nombre_curso}'
+        pdf.cell(0, 10, titulo_texto, border=0, align='C')
         pdf.ln(12)
 
         num_alumnos = len(curso_data.get(K_ALUMNOS, {}))

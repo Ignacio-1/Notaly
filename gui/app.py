@@ -207,6 +207,10 @@ class AppPromedios:
         self.root.unbind_all("<Shift-Button-4>")
         self.root.unbind_all("<Shift-Button-5>")
         
+        if hasattr(self, 'search_dropdown') and self.search_dropdown:
+            self.search_dropdown.destroy()
+            self.search_dropdown = None
+            
         if self.frame_actual:
             self.frame_actual.pack_forget()
             self.frame_actual.destroy()
@@ -226,23 +230,104 @@ class AppPromedios:
         header = ctk.CTkFrame(scroll_frame, fg_color="transparent")
         header.pack(fill=tk.X, pady=(10, 30), padx=10)
 
-        ctk.CTkLabel(header, text="Mis Instituciones", font=self.font_title, 
-                     text_color=self.paleta["texto_principal"]).pack(side=tk.LEFT)
-                     
+        # 1. Extremo Izquierdo (Identidad de Marca)
+        left_frame = ctk.CTkFrame(header, fg_color="transparent")
+        left_frame.pack(side=tk.LEFT)
+        
+        # --- Nivel Superior: Logo + NOTALY ---
+        top_brand_frame = ctk.CTkFrame(left_frame, fg_color="transparent")
+        top_brand_frame.pack(side=tk.TOP, anchor="w")
+        
+        try:
+            from PIL import Image
+            import os, sys
+            base_path = getattr(sys, '_MEIPASS', os.path.abspath("."))
+            icon_path = os.path.join(base_path, "app_icon.ico")
+            img = ctk.CTkImage(light_image=Image.open(icon_path), size=(32, 32))
+            ctk.CTkLabel(top_brand_frame, text="", image=img).pack(side=tk.LEFT, padx=(0, 10))
+        except Exception:
+            ctk.CTkLabel(top_brand_frame, text="✏️", font=("Segoe UI Emoji", 26)).pack(side=tk.LEFT, padx=(0, 10))
+            
+        ctk.CTkLabel(
+            top_brand_frame, 
+            text="NOTALY", 
+            font=("Inter", 26, "bold"), 
+            text_color=self.paleta["azul_fg"]
+        ).pack(side=tk.LEFT)
+        
+        # --- Nivel Inferior: Contexto de Sección ---
+        ctk.CTkLabel(
+            left_frame, 
+            text="Mis Instituciones", 
+            font=("Inter", 16), 
+            text_color="#4B5563"
+        ).pack(side=tk.TOP, anchor="w", pady=(2, 0))
+
+        # 3. Extremo Derecho (Botones de Acción Global)
+        right_frame = ctk.CTkFrame(header, fg_color="transparent")
+        right_frame.pack(side=tk.RIGHT)
+        
         ctk.CTkButton(
-            header, text="📥 Importar Datos", 
+            right_frame, text="+ Nueva Institución", 
+            fg_color=self.paleta["texto_principal"], hover_color="#374151",
+            text_color="#FFFFFF", font=self.font_button, corner_radius=8, height=36,
+            command=lambda: self.modal_crear("colegio")
+        ).pack(side=tk.RIGHT)
+        
+        ctk.CTkButton(
+            right_frame, text="📥 Importar Datos", 
             fg_color="transparent", border_width=1, border_color=self.paleta["borde_sutil"],
             text_color=self.paleta["texto_secundario"], hover_color=self.paleta["card_btn_hover"],
             font=self.font_button, corner_radius=8, height=36,
             command=self.importar_datos
         ).pack(side=tk.RIGHT, padx=10)
 
-        ctk.CTkButton(
-            header, text="+ Nueva Institución", 
-            fg_color=self.paleta["texto_principal"], hover_color="#374151",
-            text_color="#FFFFFF", font=self.font_button, corner_radius=8, height=36,
-            command=lambda: self.modal_crear("colegio")
-        ).pack(side=tk.RIGHT)
+        # 2. Centro (Barra de Búsqueda Predictiva Global)
+        center_frame = ctk.CTkFrame(header, fg_color="transparent")
+        center_frame.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=40)
+        
+        search_entry = ctk.CTkEntry(
+            center_frame, 
+            placeholder_text="Buscar alumno por nombre, curso o colegio...",
+            height=40, font=(self.font_body[0], 14), 
+            fg_color="#FFFFFF", text_color="#111827",
+            border_color="#D1D5DB", border_width=1, corner_radius=8
+        )
+        search_entry.pack(fill=tk.X, padx=20)
+        
+        # Desplegable Flotante (Menú Predictivo)
+        self.search_dropdown = ctk.CTkScrollableFrame(
+            self.root, fg_color="#FFFFFF", border_width=1, border_color="#E5E7EB", 
+            corner_radius=8, height=200
+        )
+        self.search_dropdown.place_forget()
+
+        def ocultar_dropdown(event=None):
+            if hasattr(self, 'search_dropdown') and self.search_dropdown:
+                self.search_dropdown.place_forget()
+
+        def mostrar_dropdown(event=None):
+            if self.search_dropdown is None:
+                return
+            # Calcular posición absoluta respecto al root para que flote por encima del scroll_frame
+            x = search_entry.winfo_rootx() - self.root.winfo_rootx()
+            y = search_entry.winfo_rooty() - self.root.winfo_rooty() + search_entry.winfo_height() + 4
+            width = search_entry.winfo_width()
+            self.search_dropdown.configure(width=width)
+            self.search_dropdown.place(x=x, y=y)
+            self.search_dropdown.lift()
+
+        def on_key_release(event):
+            texto = search_entry.get().strip()
+            self.filtrar_busqueda_predictiva(texto, self.search_dropdown)
+            if texto:
+                mostrar_dropdown()
+            else:
+                ocultar_dropdown()
+
+        search_entry.bind("<KeyRelease>", on_key_release)
+        # Ocultar si pierde el foco (pequeño delay para permitir clicks en los resultados)
+        search_entry.bind("<FocusOut>", lambda e: self.root.after(150, ocultar_dropdown))
 
         grid_frame = ctk.CTkFrame(scroll_frame, fg_color="transparent")
         grid_frame.pack(fill=tk.BOTH, expand=True)
@@ -251,6 +336,16 @@ class AppPromedios:
         for idx, nombre_ant in enumerate(list(self.datos.get(K_COLEGIOS, {}).keys())):
             row = idx // 4
             col = idx % 4
+            
+            # Calcular subtítulo
+            cursos = self.datos[K_COLEGIOS][nombre_ant].get(K_CURSOS, {})
+            num_cursos = len(cursos)
+            total_alumnos = sum(len(c.get(K_ALUMNOS, {})) for c in cursos.values())
+            
+            txt_cursos = "1 Curso" if num_cursos == 1 else f"{num_cursos} Cursos"
+            txt_alumnos = "1 Alumno" if total_alumnos == 1 else f"{total_alumnos} Alumnos"
+            subtitulo = f"{txt_cursos}  •  {txt_alumnos}"
+
             self._crear_tarjeta(
                 parent=grid_frame,
                 nombre_entidad=nombre_ant,
@@ -263,52 +358,58 @@ class AppPromedios:
                     "accion": self.renombrar_y_abrir_colegio
                 },
                 row=row,
-                col=col
+                col=col,
+                subtitulo=subtitulo
             )
 
-    def _crear_tarjeta(self, parent, nombre_entidad, tipo_entidad, boton_principal_config, row, col):
-        card = ctk.CTkFrame(parent, fg_color=self.paleta["fondo_card"], border_width=1, border_color=self.paleta["borde_sutil"], corner_radius=12)
+    def _crear_tarjeta(self, parent, nombre_entidad, tipo_entidad, boton_principal_config, row, col, subtitulo=""):
+        card = ctk.CTkFrame(parent, fg_color="#FFFFFF", border_width=1, border_color=self.paleta["borde_sutil"], corner_radius=12)
         card.grid(row=row, column=col, sticky="nsew", padx=15, pady=15)
         
-        # Icono Superior
-        icon_frame = ctk.CTkFrame(card, fg_color="transparent")
-        icon_frame.pack(pady=(25, 15))
-        try:
-            from PIL import Image
-            base_path = getattr(sys, '_MEIPASS', os.path.abspath("."))
-            icon_path = os.path.join(base_path, "app_icon.ico")
-            img = ctk.CTkImage(light_image=Image.open(icon_path), size=(56, 56))
-            ctk.CTkLabel(icon_frame, text="", image=img).pack()
-        except Exception:
-            ctk.CTkLabel(icon_frame, text="🏫" if tipo_entidad=="colegio" else "📚", font=("Segoe UI Emoji", 56)).pack()
-            
-        # Texto Dinámico Central
-        entry_font = (self.font_body[0], 20, "bold")
-        ent_nombre = ctk.CTkEntry(card, font=entry_font, fg_color=self.paleta["fondo_card"], text_color=self.paleta["texto_principal"], border_width=0, justify="center")
-        ent_nombre.insert(0, nombre_entidad)
-        ent_nombre.pack(fill=tk.X, padx=20, pady=(0, 25))
-        
-        # Acciones Inferiores
-        btn_frame = ctk.CTkFrame(card, fg_color="transparent")
-        btn_frame.pack(fill=tk.X, side=tk.BOTTOM, pady=20, padx=20)
+        # Top Bar (Esquina superior derecha para la Papelera)
+        top_bar = ctk.CTkFrame(card, fg_color="transparent")
+        top_bar.pack(fill=tk.X, padx=8, pady=(8, 0))
         
         ctk.CTkButton(
-            btn_frame, text="🗑",
+            top_bar, text="🗑",
             fg_color="transparent",
-            hover_color=self.paleta["card_btn_hover"],
-            text_color=self.paleta["texto_secundario"],
-            corner_radius=8, width=40, font=("Segoe UI Emoji", 16),
+            hover_color="#ef4444",
+            text_color="#9CA3AF",
+            corner_radius=6, width=28, height=28, font=("Segoe UI Emoji", 14),
             command=lambda n=nombre_entidad: self.eliminar_entidad(tipo_entidad, n)
-        ).pack(side=tk.LEFT)
+        ).pack(side=tk.RIGHT)
+        
+        # Avatar (Monograma Dinámico) - Solo para colegios
+        if tipo_entidad == "colegio":
+            avatar_frame = ctk.CTkFrame(card, fg_color="#E0E7FF", corner_radius=100, width=70, height=70)
+            avatar_frame.pack(pady=(0, 15))
+            avatar_frame.pack_propagate(False) # Mantiene el círculo perfecto
+            inicial = nombre_entidad[0].upper() if nombre_entidad else "?"
+            ctk.CTkLabel(avatar_frame, text=inicial, font=(self.font_title[0], 32, "bold"), text_color="#3730A3").pack(expand=True)
+            
+        # Jerarquía del Bloque de Información
+        entry_font = (self.font_body[0], 20, "bold")
+        ent_nombre = ctk.CTkEntry(card, font=entry_font, fg_color="transparent", text_color=self.paleta["texto_principal"], border_width=0, justify="center")
+        ent_nombre.insert(0, nombre_entidad)
+        
+        if subtitulo:
+            ent_nombre.pack(fill=tk.X, padx=20, pady=(0, 2)) # Margen reducido para agrupar visualmente
+            ctk.CTkLabel(card, text=subtitulo, font=(self.font_body[0], 12), text_color="#4B5563").pack(pady=(0, 20))
+        else:
+            ent_nombre.pack(fill=tk.X, padx=20, pady=(0, 20))
+        
+        # Corrección de Asimetría en la Base (Botón Centrado)
+        btn_frame = ctk.CTkFrame(card, fg_color="transparent")
+        btn_frame.pack(fill=tk.X, side=tk.BOTTOM, pady=(0, 20), padx=20)
         
         ctk.CTkButton(
             btn_frame, text=boton_principal_config["text"],
             fg_color=boton_principal_config["fg_color"],
             hover_color=boton_principal_config["hover_color"],
             text_color=boton_principal_config["text_color"],
-            font=self.font_button, corner_radius=8,
+            font=self.font_button, corner_radius=8, height=36,
             command=lambda n=nombre_entidad, e=ent_nombre: boton_principal_config["accion"](n, e)
-        ).pack(side=tk.RIGHT, expand=True, fill=tk.X, padx=(10, 0))
+        ).pack(expand=True, fill=tk.X)
 
     def renombrar_y_abrir_colegio(self, nombre_ant, widget_entry):
         nuevo = widget_entry.get().strip().upper()
@@ -363,6 +464,30 @@ class AppPromedios:
         for idx, nombre_curso in enumerate(list(cursos.keys())):
             row = idx // 4
             col = idx % 4
+            
+            # Calcular subtítulo
+            alumnos_data = cursos[nombre_curso].get(K_ALUMNOS, {})
+            num_alumnos = len(alumnos_data)
+            
+            aprobados = 0
+            desaprobados = 0
+            try:
+                from core.calculos import procesar_calificaciones_alumno
+                for al_data in alumnos_data.values():
+                    res = procesar_calificaciones_alumno(al_data["trimestres"])
+                    nota_final = res.get("nota_final_total_redondeada")
+                    if nota_final is not None:
+                        if nota_final >= 6:
+                            aprobados += 1
+                        else:
+                            desaprobados += 1
+            except Exception:
+                pass
+                
+            subtitulo = "1 Alumno" if num_alumnos == 1 else f"{num_alumnos} Alumnos"
+            if aprobados > 0 or desaprobados > 0:
+                subtitulo += f"\n✅ {aprobados} aprobados  •  ❌ {desaprobados} desaprobados"
+
             self._crear_tarjeta(
                 parent=grid_frame,
                 nombre_entidad=nombre_curso,
@@ -375,7 +500,8 @@ class AppPromedios:
                     "accion": self.renombrar_y_abrir_planilla
                 },
                 row=row,
-                col=col
+                col=col,
+                subtitulo=subtitulo
             )
 
     def renombrar_y_abrir_planilla(self, nombre_ant, widget_e):
@@ -514,24 +640,37 @@ class AppPromedios:
         canvas.grid(row=0, column=0, sticky="nsew")
 
         # --- Bindings para Scroll con la Rueda del Ratón ---
+        # --- Bindings para Scroll con la Rueda del Ratón ---
         def _on_mousewheel_v(event):
+            if not canvas.winfo_exists(): return
             delta = -1 * event.delta if sys.platform == "darwin" else int(-1 * (event.delta / 120))
-            canvas.yview_scroll(delta, "units")
+            if delta != 0:
+                canvas.yview_scroll(delta, "units")
 
         def _on_mousewheel_h(event):
+            if not canvas.winfo_exists(): return
             delta = -1 * event.delta if sys.platform == "darwin" else int(-1 * (event.delta / 120))
-            canvas.xview_scroll(delta, "units")
+            if delta != 0:
+                canvas.xview_scroll(delta, "units")
 
         def bind_scroll_events():
             canvas.bind_all("<MouseWheel>", _on_mousewheel_v)
             canvas.bind_all("<Shift-MouseWheel>", _on_mousewheel_h)
-            canvas.bind_all("<Button-4>", lambda e: canvas.yview_scroll(-1, "units"))
-            canvas.bind_all("<Button-5>", lambda e: canvas.yview_scroll(1, "units"))
-            canvas.bind_all("<Shift-Button-4>", lambda e: canvas.xview_scroll(-1, "units"))
-            canvas.bind_all("<Shift-Button-5>", lambda e: canvas.xview_scroll(1, "units"))
+            canvas.bind_all("<Button-4>", lambda e: canvas.yview_scroll(-1, "units") if canvas.winfo_exists() else None)
+            canvas.bind_all("<Button-5>", lambda e: canvas.yview_scroll(1, "units") if canvas.winfo_exists() else None)
+            canvas.bind_all("<Shift-Button-4>", lambda e: canvas.xview_scroll(-1, "units") if canvas.winfo_exists() else None)
+            canvas.bind_all("<Shift-Button-5>", lambda e: canvas.xview_scroll(1, "units") if canvas.winfo_exists() else None)
 
-        # Ejecutamos el bind inmediatamente sin depender de <Enter>
+        def unbind_scroll_events(event):
+            canvas.unbind_all("<MouseWheel>")
+            canvas.unbind_all("<Shift-MouseWheel>")
+            canvas.unbind_all("<Button-4>")
+            canvas.unbind_all("<Button-5>")
+            canvas.unbind_all("<Shift-Button-4>")
+            canvas.unbind_all("<Shift-Button-5>")
+
         bind_scroll_events()
+        canvas.bind("<Destroy>", unbind_scroll_events)
         
         # Permitir arrastrar la planilla con clic derecho o botón medio
         def start_pan(event):
@@ -549,13 +688,18 @@ class AppPromedios:
         self.canvas_window = canvas.create_window((0, 0), window=self.grid_container, anchor="nw")
 
         def on_frame_configure(event):
-            canvas.configure(scrollregion=canvas.bbox("all"))
+            bbox = canvas.bbox("all")
+            if bbox:
+                canvas.configure(scrollregion=bbox)
 
         def on_canvas_configure(event):
-            if event.width > self.grid_container.winfo_reqwidth():
+            if self.grid_container is None or not self.grid_container.winfo_exists():
+                return
+            req_w = self.grid_container.winfo_reqwidth()
+            if event.width > req_w:
                 canvas.itemconfig(self.canvas_window, width=event.width)
             else:
-                canvas.itemconfig(self.canvas_window, width=0)
+                canvas.itemconfig(self.canvas_window, width="")
 
         self.grid_container.bind("<Configure>", on_frame_configure)
         canvas.bind("<Configure>", on_canvas_configure)
@@ -599,7 +743,7 @@ class AppPromedios:
     def dibujar_fila_alumno(self, row, id_al, al_data, nombre_curso):
         bg_color = self.paleta["zebra_par"] if row % 2 == 0 else self.paleta["zebra_impar"]
         
-        ctk.CTkButton(self.grid_container, text="🗑", fg_color=bg_color, text_color=self.paleta["texto_secundario"], hover_color=self.paleta["card_btn_hover"],
+        ctk.CTkButton(self.grid_container, text="🗑", fg_color=bg_color, text_color=self.paleta["texto_secundario"], hover_color="#ef4444",
                       width=25, corner_radius=0, font=("Segoe UI Emoji", 14), command=lambda: self.eliminar_entidad("alumno", id_al, nombre_curso)).grid(row=row, column=0, sticky="nsew", padx=1, pady=1)
         
         ctk.CTkLabel(self.grid_container, text=id_al, font=self.font_grid_body, fg_color=bg_color, text_color=self.paleta["texto_principal"]).grid(row=row, column=1, sticky="nsew", padx=1, pady=1)
@@ -611,7 +755,11 @@ class AppPromedios:
             ent.bind("<Left>", lambda e, rr=r, cc=c: self._navigate_grid(e, rr, cc, "Left"))
             ent.bind("<Right>", lambda e, rr=r, cc=c: self._navigate_grid(e, rr, cc, "Right"))
 
-        ent_n = ctk.CTkEntry(self.grid_container, border_width=0, fg_color=bg_color, font=self.font_grid_body_bold, text_color=self.paleta["texto_principal"], corner_radius=0)
+        # Create CTkFonts to ensure proper DPI scaling on native tk.Entry
+        f_norm = ctk.CTkFont(family=self.font_grid_body[0], size=self.font_grid_body[1])
+        f_bold = ctk.CTkFont(family=self.font_grid_body_bold[0], size=self.font_grid_body_bold[1], weight="bold")
+
+        ent_n = tk.Entry(self.grid_container, borderwidth=0, bg=bg_color, font=f_bold, fg=self.paleta["texto_principal"], relief="flat")
         ent_n.insert(0, al_data.get(K_NOMBRE, "")); ent_n.grid(row=row, column=2, sticky="nsew", padx=1, pady=1)
         ent_n.bind("<KeyRelease>", self._marcar_cambios_pendientes)
         self.widgets_nombres_alumnos[id_al] = ent_n
@@ -623,7 +771,7 @@ class AppPromedios:
             e_dict = {"p": [], "ex": None}
             notas_data = al_data["trimestres"][t_nom]
             for j in range(3):
-                e = ctk.CTkEntry(self.grid_container, width=60, justify=tk.CENTER, font=self.font_grid_body, fg_color=bg_color, text_color=self.paleta["texto_notas"], border_width=0, corner_radius=0, validate='key', validatecommand=self.vcmd)
+                e = tk.Entry(self.grid_container, width=6, justify=tk.CENTER, font=f_norm, bg=bg_color, fg=self.paleta["texto_notas"], borderwidth=0, relief="flat", validate='key', validatecommand=self.vcmd)
                 val = notas_data["principales"][j]
                 if val is not None:
                     e.insert(0, str(int(val)) if isinstance(val, float) and val.is_integer() else str(val))
@@ -632,7 +780,7 @@ class AppPromedios:
                 register_nav(e, row, c_idx)
                 c_idx += 1; e_dict["p"].append(e)
             
-            ex = ctk.CTkEntry(self.grid_container, width=60, justify=tk.CENTER, font=self.font_grid_body, fg_color=bg_color, text_color=self.paleta["texto_notas"], border_width=0, corner_radius=0, validate='key', validatecommand=self.vcmd)
+            ex = tk.Entry(self.grid_container, width=6, justify=tk.CENTER, font=f_norm, bg=bg_color, fg=self.paleta["texto_notas"], borderwidth=0, relief="flat", validate='key', validatecommand=self.vcmd)
             val_ex = notas_data[K_EXTRAS][0] if notas_data[K_EXTRAS] else None
             if val_ex is not None:
                 ex.insert(0, str(int(val_ex)) if isinstance(val_ex, float) and val_ex.is_integer() else str(val_ex))
@@ -642,11 +790,12 @@ class AppPromedios:
             c_idx += 1; e_dict["ex"] = ex
             self.widgets_entradas[id_al].append(e_dict)
             
-            l = ctk.CTkLabel(self.grid_container, text="-", font=self.font_grid_body, fg_color=bg_color, text_color=self.paleta["texto_notas"], anchor="center")
+            # Promedio trimestral (NEGRITA solicitada)
+            l = ctk.CTkLabel(self.grid_container, text="-", font=self.font_grid_body_bold, fg_color=bg_color, text_color=self.paleta["texto_notas"], anchor="center")
             l.grid(row=row, column=c_idx, sticky="nsew", padx=1, pady=1); c_idx += 1
             
-            # --- NUEVO CAMPO RECUPERATORIO ---
-            e_recup = ctk.CTkEntry(self.grid_container, width=60, justify=tk.CENTER, font=self.font_grid_body, fg_color=bg_color, text_color=self.paleta["texto_notas"], border_width=0, corner_radius=0, validate='key', validatecommand=self.vcmd)
+            # --- NUEVO CAMPO RECUPERATORIO (NEGRITA solicitada) ---
+            e_recup = tk.Entry(self.grid_container, width=6, justify=tk.CENTER, font=f_bold, bg=bg_color, fg=self.paleta["texto_notas"], borderwidth=0, relief="flat", validate='key', validatecommand=self.vcmd)
             val_recup = notas_data.get(K_RECUPERATORIO)
             if val_recup is not None:
                 e_recup.insert(0, str(int(val_recup)) if isinstance(val_recup, float) and val_recup.is_integer() else str(val_recup))
@@ -659,11 +808,10 @@ class AppPromedios:
 
             self.widgets_resultados[id_al]["trim"].append(l)
 
-        # --- FILAS DE PROMEDIOS FINALES ---
+        # --- FILAS DE PROMEDIOS FINALES (TODAS NEGRITA solicitada) ---
         for j in range(4):
             gap = (3, 1) if j == 0 else 1
-            font = self.font_grid_body_bold if j == 3 else self.font_grid_body
-            l_f = ctk.CTkLabel(self.grid_container, text="-", font=font, fg_color=bg_color, text_color=self.paleta["texto_notas"], anchor="center")
+            l_f = ctk.CTkLabel(self.grid_container, text="-", font=self.font_grid_body_bold, fg_color=bg_color, text_color=self.paleta["texto_notas"], anchor="center")
             l_f.grid(row=row, column=21+j, sticky="nsew", padx=gap, pady=1)
             self.widgets_resultados[id_al]["fin"].append(l_f)
             
@@ -682,7 +830,7 @@ class AppPromedios:
     def _actualizar_promedios_ui(self, id_al, resultados):
         """Actualiza la UI de un alumno con los resultados calculados."""
         # Obtener el color base de la fila (Zebra striping)
-        color_base_fila = self.widgets_nombres_alumnos[id_al].cget("fg_color")
+        color_base_fila = self.widgets_nombres_alumnos[id_al].cget("bg")
         
         for t_idx in range(len(NOMBRES_TRIMESTRES)):
             recup_widget = self.widgets_recuperatorios[id_al][t_idx]
@@ -691,12 +839,12 @@ class AppPromedios:
 
             if is_failing:
                 # Tono amarillento suave para indicar que se habilitó el recuperatorio
-                recup_widget.configure(state=tk.NORMAL, fg_color="#FEF9E7")
+                recup_widget.config(state=tk.NORMAL, bg="#FEF9E7")
             else:
                 if recup_widget.get().strip() == "":
-                    recup_widget.configure(state=tk.DISABLED, fg_color=color_base_fila)
+                    recup_widget.config(state=tk.DISABLED, disabledbackground=color_base_fila)
                 else:
-                    recup_widget.configure(state=tk.NORMAL, fg_color=color_base_fila)
+                    recup_widget.config(state=tk.NORMAL, bg=color_base_fila)
 
             prom_crudo_rnd = resultados["promedios_crudos_redondeados"][t_idx]
             self.widgets_resultados[id_al]["trim"][t_idx].configure(
@@ -735,7 +883,10 @@ class AppPromedios:
                 ent = self.matriz_entradas[(row, col)]
                 if ent.cget("state") == tk.NORMAL:
                     ent.focus_set()
-                    ent._entry.select_range(0, tk.END)
+                    if hasattr(ent, "_entry"):
+                        ent._entry.select_range(0, tk.END)
+                    else:
+                        ent.select_range(0, tk.END)
                     return "break"
 
     def agregar_alumno(self, nombre_curso):
@@ -1078,7 +1229,7 @@ class AppPromedios:
 
     def exportar_planilla_pdf(self, nombre_curso):
         if self.hay_cambios_sin_guardar:
-            messagebox.showwarning("Cambios Pendientes", "Tienes cambios sin guardar. Por favor, guarda la planilla antes de exportar para asegurar que los datos sean correctos.")
+            messagebox.showwarning("Cambios sin guardar", "Por favor, guarda la planilla antes de exportarla.")
             return
 
         file_path = filedialog.asksaveasfilename(
@@ -1092,12 +1243,19 @@ class AppPromedios:
             return
 
         curso_data = self.datos[K_COLEGIOS][self.colegio_seleccionado][K_CURSOS][nombre_curso]
-        success, error_message = exportar_a_pdf(curso_data, file_path, nombre_curso)
-
-        if success:
-            messagebox.showinfo("Exportación Exitosa", f"La planilla PDF lista para imprimir se guardó en:\n{file_path}")
-        else:
-            messagebox.showerror("Error de Exportación", f"No se pudo exportar la planilla a PDF.\n\nError: {error_message}")
+        colegio_sel = str(self.colegio_seleccionado) if self.colegio_seleccionado else ""
+        
+        # Ejecutar en hilo de fondo para evitar freeze de la UI
+        import threading
+        
+        def tarea_exportacion():
+            success, error_message = exportar_a_pdf(curso_data, file_path, nombre_curso, colegio_sel)
+            if success:
+                self.root.after(0, lambda: messagebox.showinfo("Exportación Exitosa", f"La planilla PDF lista para imprimir se guardó en:\n{file_path}"))
+            else:
+                self.root.after(0, lambda: messagebox.showerror("Error de Exportación", f"No se pudo exportar la planilla a PDF.\n\nError: {error_message}"))
+                
+        threading.Thread(target=tarea_exportacion, daemon=True).start()
 
     def accion_volver_desde_planilla(self):
         if self.hay_cambios_sin_guardar:
@@ -1125,3 +1283,91 @@ class AppPromedios:
                     self.root.destroy()
         else:
             self.root.destroy()
+
+    def filtrar_busqueda_predictiva(self, texto_ingresado, dropdown_frame):
+        """
+        Búsqueda predictiva global de alumnos en la base de datos.
+        """
+        for widget in dropdown_frame.winfo_children():
+            widget.destroy()
+
+        if not texto_ingresado:
+            return
+
+        texto_lower = texto_ingresado.lower()
+        resultados_reales = []
+        
+        # Búsqueda en los datos reales (construyendo estructura plana al vuelo)
+        colegios = self.datos.get(K_COLEGIOS, {})
+        for nombre_colegio, colegio_data in colegios.items():
+            cursos = colegio_data.get(K_CURSOS, {})
+            for nombre_curso, curso_data in cursos.items():
+                alumnos = curso_data.get(K_ALUMNOS, {})
+                for id_al, al_data in alumnos.items():
+                    nombre_alumno = al_data.get(K_NOMBRE, "").strip()
+                    
+                    # CONTROL DE CAMPOS VACÍOS: Ignorar alumnos sin nombre válido
+                    if not nombre_alumno or nombre_alumno == "-":
+                        continue
+                    
+                    # ALGORITMO PREDICTIVO: Coincidencia en minúsculas
+                    if (texto_lower in nombre_alumno.lower() or 
+                        texto_lower in nombre_curso.lower() or 
+                        texto_lower in nombre_colegio.lower()):
+                        
+                        resultados_reales.append({
+                            "id": id_al,
+                            "nombre": nombre_alumno,
+                            "curso": nombre_curso,
+                            "colegio": nombre_colegio
+                        })
+                        
+                        # Limitar resultados para optimización visual (Anti-Lag)
+                        if len(resultados_reales) >= 15:
+                            break
+                if len(resultados_reales) >= 15: break
+            if len(resultados_reales) >= 15: break
+        
+        if not resultados_reales:
+            lbl = ctk.CTkLabel(dropdown_frame, text="No se encontraron alumnos.", text_color="#9CA3AF", font=(self.font_body[0], 12))
+            lbl.pack(pady=15)
+            return
+
+        for res in resultados_reales:
+            row_frame = ctk.CTkFrame(dropdown_frame, fg_color="transparent", corner_radius=6, cursor="hand2")
+            row_frame.pack(fill=tk.X, padx=5, pady=2)
+            
+            def on_enter(e, f=row_frame): f.configure(fg_color="#F3F4F6")
+            def on_leave(e, f=row_frame): f.configure(fg_color="transparent")
+            
+            row_frame.bind("<Enter>", on_enter)
+            row_frame.bind("<Leave>", on_leave)
+            
+            lbl_nom = ctk.CTkLabel(row_frame, text=res["nombre"], font=(self.font_body[0], 14, "bold"), text_color="#111827", anchor="w")
+            lbl_nom.pack(side=tk.TOP, fill=tk.X, padx=12, pady=(8, 0))
+            
+            lbl_desc = ctk.CTkLabel(row_frame, text=f'{res["curso"]}  |  {res["colegio"]}', font=(self.font_body[0], 11), text_color="#6B7280", anchor="w")
+            lbl_desc.pack(side=tk.BOTTOM, fill=tk.X, padx=12, pady=(0, 8))
+            
+            # Propagar evento Hover a los hijos para evitar parpadeos (flickering)
+            lbl_nom.bind("<Enter>", on_enter)
+            lbl_nom.bind("<Leave>", on_leave)
+            lbl_desc.bind("<Enter>", on_enter)
+            lbl_desc.bind("<Leave>", on_leave)
+            
+            def click_handler(e, r=res):
+                self.navegar_a_planilla_alumno(r["id"], r["colegio"], r["curso"])
+                
+            row_frame.bind("<Button-1>", click_handler)
+            lbl_nom.bind("<Button-1>", click_handler)
+            lbl_desc.bind("<Button-1>", click_handler)
+
+    def navegar_a_planilla_alumno(self, alumno_id, colegio, curso):
+        """
+        Navega a la planilla del alumno seleccionado.
+        """
+        if hasattr(self, 'search_dropdown') and self.search_dropdown:
+            self.search_dropdown.place_forget()
+            
+        self.colegio_seleccionado = colegio
+        self.mostrar_apartado_curso(curso)
