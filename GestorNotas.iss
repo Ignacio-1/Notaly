@@ -1,11 +1,11 @@
 [Setup]
-AppName=Gestor Educativo Profesional
+AppName=Notaly
 AppVersion=1.0
 AppPublisher=Ignacio Olmedo
-DefaultDirName={autopf}\Gestor Educativo Profesional
-DefaultGroupName=Gestor Educativo Profesional
+DefaultDirName={autopf}\Notaly
+DefaultGroupName=Notaly
 OutputDir=Output
-OutputBaseFilename=Instalar_Promediador
+OutputBaseFilename=Instalar_Notaly
 Compression=lzma2
 SolidCompression=yes
 ArchitecturesInstallIn64BitMode=x64compatible
@@ -16,12 +16,12 @@ SetupIconFile=app_icon.ico
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-Source: "dist\GestorNotasEducativo.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "dist\Notaly.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "app_icon.ico"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
-Name: "{autoprograms}\Gestor Educativo Profesional"; Filename: "{app}\GestorNotasEducativo.exe"; IconFilename: "{app}\app_icon.ico"
-Name: "{autodesktop}\Gestor Educativo Profesional"; Filename: "{app}\GestorNotasEducativo.exe"; IconFilename: "{app}\app_icon.ico"; Tasks: desktopicon
+Name: "{autoprograms}\Notaly"; Filename: "{app}\Notaly.exe"; IconFilename: "{app}\app_icon.ico"
+Name: "{autodesktop}\Notaly"; Filename: "{app}\Notaly.exe"; IconFilename: "{app}\app_icon.ico"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\GestorNotasEducativo.exe"; Description: "{cm:LaunchProgram,Gestor Educativo Profesional}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\Notaly.exe"; Description: "{cm:LaunchProgram,Notaly}"; Flags: nowait postinstall skipifsilent

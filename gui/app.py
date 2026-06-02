@@ -76,34 +76,39 @@ class AppPromedios:
 
         # --- Fuentes ---
         self.font_title = (base_font, 34, "bold")
-        self.font_card_title = (base_font, 16, "bold")
-        self.font_button = (base_font, 14, "bold")
+        self.font_card_title = (base_font, 22, "bold")
+        self.font_button = (base_font, 13, "bold")
         self.font_body = (base_font, 14)
         self.font_grid_header = (base_font, 13, "bold")
+        self.font_grid_subheader = (base_font, 11)
         self.font_grid_body = (base_font, 14)
+        self.font_grid_body_bold = (base_font, 14, "bold")
 
         # --- Paleta de Colores ---
         self.paleta = {
-            "fondo_app": "#F4F7F9",      # Un gris muy claro, menos duro que el blanco puro
+            "fondo_app": "#F3F4F6",      
             "fondo_card": "#FFFFFF",
-            "texto_principal": "#2C3E50", # Un azul oscuro, más suave que el negro
-            "texto_secundario": "#95A5A6",
-            "borde_sutil": "#EAECEE",
-            "grid_bg": "#EAECEE",        # Color para las líneas de la grilla
+            "texto_principal": "#111827", 
+            "texto_secundario": "#6B7280",
+            "borde_sutil": "#E5E7EB",
+            "grid_bg": "#E5E7EB",        
 
-            "azul_fg": "#3498DB", "azul_hover": "#2980B9",
-            "verde_fg": "#2ECC71", "verde_hover": "#27AE60",
-            "rojo_fuerte": "#E74C3C",
+            "azul_fg": "#2563EB", "azul_hover": "#1D4ED8",
+            "verde_fg": "#10B981", "verde_hover": "#059669",
+            "rojo_fuerte": "#EF4444",
 
-            "card_btn_fg": "#F4F7F9",
-            "card_btn_hover": "#EAECEE",
+            "card_btn_fg": "#F9FAFB",
+            "card_btn_hover": "#F3F4F6",
             
-            "card_azul_texto": "#3498DB",
-            "card_verde_texto": "#27AE60",
-            "card_rojo_texto": "#E74C3C",
+            "card_azul_texto": "#2563EB",
+            "card_verde_texto": "#10B981",
+            "card_rojo_texto": "#EF4444",
 
-            "trimestre_1": "#FDEBD0", "trimestre_2": "#D4EFDF", "trimestre_3": "#E8DAEF", "final": "#FCF3CF",
-            "recuperatorio_bg": "#FAD7A0" # Naranja claro para el campo de recuperatorio
+            "trimestre_1": "#E0F2FE", "trimestre_2": "#D1FAE5", "trimestre_3": "#EDE9FE", "final": "#FEF3C7",
+            "zebra_par": "#F9FAFB",
+            "zebra_impar": "#FFFFFF",
+            "texto_notas": "#111827",
+            "texto_subtitulo": "#4B5563"
         }
         
         # --- Inicialización de Datos y Configuración ---
@@ -131,12 +136,14 @@ class AppPromedios:
         self.root.bind('<Configure>', self._on_resize) # Bind resize event
 
         # Firma fija
+        footer_frame = ctk.CTkFrame(self.root, fg_color="transparent")
+        footer_frame.pack(side=tk.BOTTOM, fill=tk.X, pady=15)
         ctk.CTkLabel(
-            self.root, 
+            footer_frame, 
             text="Software desarrollado por Ignacio Olmedo © 2026",
             font=(base_font, 12, "italic"),
             text_color=self.paleta["texto_secundario"]
-        ).pack(side=tk.BOTTOM, pady=10)
+        ).pack()
 
         self.mostrar_pantalla_colegios()
 
@@ -216,69 +223,92 @@ class AppPromedios:
         scroll_frame = ctk.CTkScrollableFrame(self.frame_actual, fg_color="transparent")
         scroll_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
 
-        ctk.CTkLabel(scroll_frame, text="Mis Instituciones", font=self.font_title, 
-                     text_color=self.paleta["texto_principal"]).pack(pady=30)
+        header = ctk.CTkFrame(scroll_frame, fg_color="transparent")
+        header.pack(fill=tk.X, pady=(10, 30), padx=10)
 
-        for nombre_ant in list(self.datos.get(K_COLEGIOS, {}).keys()):
-            # Usamos el nuevo método para crear la tarjeta
+        ctk.CTkLabel(header, text="Mis Instituciones", font=self.font_title, 
+                     text_color=self.paleta["texto_principal"]).pack(side=tk.LEFT)
+                     
+        ctk.CTkButton(
+            header, text="📥 Importar Datos", 
+            fg_color="transparent", border_width=1, border_color=self.paleta["borde_sutil"],
+            text_color=self.paleta["texto_secundario"], hover_color=self.paleta["card_btn_hover"],
+            font=self.font_button, corner_radius=8, height=36,
+            command=self.importar_datos
+        ).pack(side=tk.RIGHT, padx=10)
+
+        ctk.CTkButton(
+            header, text="+ Nueva Institución", 
+            fg_color=self.paleta["texto_principal"], hover_color="#374151",
+            text_color="#FFFFFF", font=self.font_button, corner_radius=8, height=36,
+            command=lambda: self.modal_crear("colegio")
+        ).pack(side=tk.RIGHT)
+
+        grid_frame = ctk.CTkFrame(scroll_frame, fg_color="transparent")
+        grid_frame.pack(fill=tk.BOTH, expand=True)
+        grid_frame.grid_columnconfigure((0, 1, 2, 3), weight=1)
+
+        for idx, nombre_ant in enumerate(list(self.datos.get(K_COLEGIOS, {}).keys())):
+            row = idx // 4
+            col = idx % 4
             self._crear_tarjeta(
-                parent=scroll_frame,
+                parent=grid_frame,
                 nombre_entidad=nombre_ant,
                 tipo_entidad="colegio",
                 boton_principal_config={
                     "text": "Entrar →",
-                    "fg_color": self.paleta["card_btn_fg"],
-                    "hover_color": self.paleta["card_btn_hover"],
-                    "text_color": self.paleta["card_azul_texto"],
+                    "fg_color": self.paleta["azul_fg"],
+                    "hover_color": self.paleta["azul_hover"],
+                    "text_color": "#FFFFFF",
                     "accion": self.renombrar_y_abrir_colegio
-                }
+                },
+                row=row,
+                col=col
             )
 
-        btn_frame = ctk.CTkFrame(scroll_frame, fg_color="transparent")
-        btn_frame.pack(pady=30)
-
-        ctk.CTkButton(
-            btn_frame, text="+ Nueva Institución", 
-            fg_color=self.paleta["azul_fg"], hover_color=self.paleta["azul_hover"],
-            font=self.font_button, corner_radius=10, height=45,
-            command=lambda: self.modal_crear("colegio")
-        ).pack(side=tk.LEFT, padx=10)
-
-        ctk.CTkButton(
-            btn_frame, text="📥 Importar Datos", 
-            fg_color="#7D3C98", hover_color="#6C3483",
-            font=self.font_button, corner_radius=10, height=45,
-            command=self.importar_datos
-        ).pack(side=tk.LEFT, padx=10)
-
-    def _crear_tarjeta(self, parent, nombre_entidad, tipo_entidad, boton_principal_config):
-        card = ctk.CTkFrame(parent, fg_color=self.paleta["fondo_card"], border_width=1, border_color=self.paleta["borde_sutil"], corner_radius=16)
-        card.pack(fill=tk.X, pady=8, ipady=12, padx=50)
+    def _crear_tarjeta(self, parent, nombre_entidad, tipo_entidad, boton_principal_config, row, col):
+        card = ctk.CTkFrame(parent, fg_color=self.paleta["fondo_card"], border_width=1, border_color=self.paleta["borde_sutil"], corner_radius=12)
+        card.grid(row=row, column=col, sticky="nsew", padx=15, pady=15)
         
-        entry_font = self.font_card_title
-        ent_nombre = ctk.CTkEntry(card, font=entry_font, fg_color="#F8F9FA", border_width=0)
+        # Icono Superior
+        icon_frame = ctk.CTkFrame(card, fg_color="transparent")
+        icon_frame.pack(pady=(25, 15))
+        try:
+            from PIL import Image
+            base_path = getattr(sys, '_MEIPASS', os.path.abspath("."))
+            icon_path = os.path.join(base_path, "app_icon.ico")
+            img = ctk.CTkImage(light_image=Image.open(icon_path), size=(56, 56))
+            ctk.CTkLabel(icon_frame, text="", image=img).pack()
+        except Exception:
+            ctk.CTkLabel(icon_frame, text="🏫" if tipo_entidad=="colegio" else "📚", font=("Segoe UI Emoji", 56)).pack()
+            
+        # Texto Dinámico Central
+        entry_font = (self.font_body[0], 20, "bold")
+        ent_nombre = ctk.CTkEntry(card, font=entry_font, fg_color=self.paleta["fondo_card"], text_color=self.paleta["texto_principal"], border_width=0, justify="center")
         ent_nombre.insert(0, nombre_entidad)
-        ent_nombre.pack(side=tk.LEFT, padx=20, fill=tk.X, expand=True, ipady=5)
+        ent_nombre.pack(fill=tk.X, padx=20, pady=(0, 25))
         
-        # Botón de acción principal (Entrar / Ver Planilla)
+        # Acciones Inferiores
+        btn_frame = ctk.CTkFrame(card, fg_color="transparent")
+        btn_frame.pack(fill=tk.X, side=tk.BOTTOM, pady=20, padx=20)
+        
         ctk.CTkButton(
-            card, text=boton_principal_config["text"],
+            btn_frame, text="🗑",
+            fg_color="transparent",
+            hover_color=self.paleta["card_btn_hover"],
+            text_color=self.paleta["texto_secundario"],
+            corner_radius=8, width=40, font=("Segoe UI Emoji", 16),
+            command=lambda n=nombre_entidad: self.eliminar_entidad(tipo_entidad, n)
+        ).pack(side=tk.LEFT)
+        
+        ctk.CTkButton(
+            btn_frame, text=boton_principal_config["text"],
             fg_color=boton_principal_config["fg_color"],
             hover_color=boton_principal_config["hover_color"],
             text_color=boton_principal_config["text_color"],
             font=self.font_button, corner_radius=8,
             command=lambda n=nombre_entidad, e=ent_nombre: boton_principal_config["accion"](n, e)
-        ).pack(side=tk.RIGHT, padx=10)
-        
-        # Botón de eliminar (común a ambos)
-        ctk.CTkButton(
-            card, text="Eliminar",
-            fg_color=self.paleta["card_btn_fg"],
-            hover_color=self.paleta["card_btn_hover"],
-            text_color=self.paleta["card_rojo_texto"],
-            corner_radius=8, font=self.font_button,
-            command=lambda n=nombre_entidad: self.eliminar_entidad(tipo_entidad, n)
-        ).pack(side=tk.RIGHT, padx=10)
+        ).pack(side=tk.RIGHT, expand=True, fill=tk.X, padx=(10, 0))
 
     def renombrar_y_abrir_colegio(self, nombre_ant, widget_entry):
         nuevo = widget_entry.get().strip().upper()
@@ -306,39 +336,47 @@ class AppPromedios:
         scroll_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
 
         header = ctk.CTkFrame(scroll_frame, fg_color="transparent")
-        header.pack(fill=tk.X, pady=10)
+        header.pack(fill=tk.X, pady=(10, 30), padx=10)
         
         ctk.CTkButton(
             header, text="← Volver", font=self.font_body, 
             command=self.mostrar_pantalla_colegios,
-            fg_color="transparent", text_color=self.paleta["azul_fg"],
-            hover_color=self.paleta["card_btn_hover"]
+            fg_color="transparent", text_color=self.paleta["texto_secundario"],
+            hover_color=self.paleta["card_btn_hover"], width=80
         ).pack(side=tk.LEFT)
         
         ctk.CTkLabel(header, text=f"Cursos en: {nombre_colegio}", font=self.font_title, 
                      text_color=self.paleta["texto_principal"]).pack(side=tk.LEFT, padx=30)
 
+        ctk.CTkButton(
+            header, text="+ Nuevo Curso", 
+            fg_color=self.paleta["texto_principal"], hover_color="#374151",
+            text_color="#FFFFFF", font=self.font_button, corner_radius=8, height=36,
+            command=lambda: self.modal_crear("curso")
+        ).pack(side=tk.RIGHT)
+
+        grid_frame = ctk.CTkFrame(scroll_frame, fg_color="transparent")
+        grid_frame.pack(fill=tk.BOTH, expand=True)
+        grid_frame.grid_columnconfigure((0, 1, 2, 3), weight=1)
+
         cursos = self.datos[K_COLEGIOS][nombre_colegio].get(K_CURSOS, {})
-        for nombre_curso in list(cursos.keys()):
+        for idx, nombre_curso in enumerate(list(cursos.keys())):
+            row = idx // 4
+            col = idx % 4
             self._crear_tarjeta(
-                parent=scroll_frame,
+                parent=grid_frame,
                 nombre_entidad=nombre_curso,
                 tipo_entidad="curso",
                 boton_principal_config={
                     "text": "Ver Planilla",
-                    "fg_color": self.paleta["card_btn_fg"],
-                    "hover_color": self.paleta["card_btn_hover"],
-                    "text_color": self.paleta["card_verde_texto"],
+                    "fg_color": self.paleta["azul_fg"],
+                    "hover_color": self.paleta["azul_hover"],
+                    "text_color": "#FFFFFF",
                     "accion": self.renombrar_y_abrir_planilla
-                }
+                },
+                row=row,
+                col=col
             )
-
-        ctk.CTkButton(
-            scroll_frame, text="+ Nuevo Curso",
-            fg_color=self.paleta["azul_fg"], hover_color=self.paleta["azul_hover"],
-            font=self.font_button, corner_radius=10, height=45,
-            command=lambda: self.modal_crear("curso")
-        ).pack(pady=30)
 
     def renombrar_y_abrir_planilla(self, nombre_ant, widget_e):
         nuevo = widget_e.get().strip().upper()
@@ -361,6 +399,15 @@ class AppPromedios:
         alto = 350 if tipo == "curso" else 250
         ventana.geometry(f"450x{alto}")
         ventana.configure(fg_color="white")
+        
+        try:
+            import os, sys
+            base_path = getattr(sys, '_MEIPASS', os.path.abspath("."))
+            icon_path = os.path.join(base_path, "app_icon.ico")
+            ventana.after(200, lambda: ventana.iconbitmap(icon_path))
+        except Exception:
+            pass
+            
         ventana.grab_set()
 
         ctk.CTkLabel(ventana, text=f"Nuevo {tipo.capitalize()}", font=self.font_card_title, text_color=self.paleta["azul_fg"]).pack(pady=20)
@@ -426,17 +473,27 @@ class AppPromedios:
         self.frame_actual = ctk.CTkFrame(self.root, fg_color=self.paleta["fondo_card"], corner_radius=0)
         self.frame_actual.pack(fill=tk.BOTH, expand=True)
 
-        toolbar = ctk.CTkFrame(self.frame_actual, fg_color=self.paleta["fondo_card"], border_width=1, border_color=self.paleta["borde_sutil"], corner_radius=0)
-        toolbar.pack(side=tk.TOP, fill=tk.X, ipady=8)
-        ctk.CTkButton(toolbar, text="← Volver", command=self.accion_volver_desde_planilla, fg_color="transparent", text_color=self.paleta["azul_fg"], hover_color=self.paleta["card_btn_hover"], font=self.font_body).pack(side=tk.LEFT, padx=20)
-        texto_cabecera = f"{self.colegio_seleccionado}  |  {nombre_curso}"
-        ctk.CTkLabel(toolbar, text=texto_cabecera, font=self.font_card_title, text_color=self.paleta["texto_principal"]).pack(side=tk.LEFT, padx=10)
+        toolbar = ctk.CTkFrame(self.frame_actual, fg_color=self.paleta["fondo_card"], border_width=0, corner_radius=0)
+        toolbar.pack(side=tk.TOP, fill=tk.X, padx=20, pady=15)
         
-        ctk.CTkButton(toolbar, text="GUARDAR y CALCULAR", fg_color=self.paleta["verde_fg"], hover_color=self.paleta["verde_hover"], font=self.font_button, corner_radius=8, command=lambda: self.guardar_notas_cuadricula(nombre_curso)).pack(side=tk.RIGHT, padx=30, ipady=5)
-        ctk.CTkButton(toolbar, text="Exp. PDF", fg_color="#FDF2F2", text_color="#C0392B", hover_color="#FADBD8", border_width=1, border_color="#E6B0AA", corner_radius=8, font=self.font_button, command=lambda: self.exportar_planilla_pdf(nombre_curso)).pack(side=tk.RIGHT, padx=5)
-        ctk.CTkButton(toolbar, text="Exp. TXT", fg_color=self.paleta["card_btn_fg"], text_color=self.paleta["texto_secundario"], hover_color=self.paleta["card_btn_hover"], border_width=1, border_color=self.paleta["borde_sutil"], corner_radius=8, font=self.font_button, command=lambda: self.exportar_planilla_texto(nombre_curso)).pack(side=tk.RIGHT, padx=5)
-        ctk.CTkButton(toolbar, text="Exp. CSV", fg_color=self.paleta["card_btn_fg"], text_color=self.paleta["texto_secundario"], hover_color=self.paleta["card_btn_hover"], border_width=1, border_color=self.paleta["borde_sutil"], corner_radius=8, font=self.font_button, command=lambda: self.exportar_planilla(nombre_curso)).pack(side=tk.RIGHT, padx=5)
-        ctk.CTkButton(toolbar, text="+ Alumno", fg_color=self.paleta["card_btn_fg"], text_color=self.paleta["card_azul_texto"], hover_color=self.paleta["card_btn_hover"], corner_radius=8, font=self.font_button, command=lambda: self.agregar_alumno(nombre_curso)).pack(side=tk.RIGHT, padx=10)
+        left_frame = ctk.CTkFrame(toolbar, fg_color="transparent")
+        left_frame.pack(side=tk.LEFT, fill=tk.Y)
+        ctk.CTkButton(left_frame, text="← Volver", command=self.accion_volver_desde_planilla, fg_color="transparent", text_color=self.paleta["texto_secundario"], hover_color=self.paleta["card_btn_hover"], font=self.font_body, width=80).pack(side=tk.LEFT, padx=(0, 15))
+        
+        texto_cabecera = f"{self.colegio_seleccionado}   |   {nombre_curso}"
+        ctk.CTkLabel(left_frame, text=texto_cabecera, font=self.font_card_title, text_color=self.paleta["texto_principal"]).pack(side=tk.LEFT)
+        
+        right_frame = ctk.CTkFrame(toolbar, fg_color="transparent")
+        right_frame.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        export_frame = ctk.CTkFrame(right_frame, fg_color=self.paleta["fondo_app"], corner_radius=6)
+        export_frame.pack(side=tk.LEFT, padx=15)
+        ctk.CTkButton(export_frame, text="PDF", fg_color="transparent", text_color=self.paleta["texto_secundario"], hover_color=self.paleta["card_btn_hover"], font=self.font_body, width=40, command=lambda: self.exportar_planilla_pdf(nombre_curso)).pack(side=tk.LEFT, padx=2, pady=2)
+        ctk.CTkButton(export_frame, text="TXT", fg_color="transparent", text_color=self.paleta["texto_secundario"], hover_color=self.paleta["card_btn_hover"], font=self.font_body, width=40, command=lambda: self.exportar_planilla_texto(nombre_curso)).pack(side=tk.LEFT, padx=2, pady=2)
+        ctk.CTkButton(export_frame, text="CSV", fg_color="transparent", text_color=self.paleta["texto_secundario"], hover_color=self.paleta["card_btn_hover"], font=self.font_body, width=40, command=lambda: self.exportar_planilla(nombre_curso)).pack(side=tk.LEFT, padx=2, pady=2)
+        
+        ctk.CTkButton(right_frame, text="+ Alumno", fg_color=self.paleta["texto_principal"], hover_color="#374151", corner_radius=6, font=self.font_button, width=100, command=lambda: self.agregar_alumno(nombre_curso)).pack(side=tk.LEFT, padx=10)
+        ctk.CTkButton(right_frame, text="GUARDAR Y CALCULAR", fg_color=self.paleta["azul_fg"], hover_color=self.paleta["azul_hover"], font=self.font_button, corner_radius=6, width=150, command=lambda: self.guardar_notas_cuadricula(nombre_curso)).pack(side=tk.LEFT)
 
         # Usamos un CTkScrollableFrame para simplificar enormemente el manejo del scroll
         # --- Contenedor con Scrollbars Horizontal y Vertical ---
@@ -489,12 +546,19 @@ class AppPromedios:
         canvas.bind("<B3-Motion>", pan)
 
         self.grid_container = ctk.CTkFrame(canvas, fg_color=self.paleta["grid_bg"])
-        canvas.create_window((0, 0), window=self.grid_container, anchor="nw")
+        self.canvas_window = canvas.create_window((0, 0), window=self.grid_container, anchor="nw")
 
         def on_frame_configure(event):
             canvas.configure(scrollregion=canvas.bbox("all"))
 
+        def on_canvas_configure(event):
+            if event.width > self.grid_container.winfo_reqwidth():
+                canvas.itemconfig(self.canvas_window, width=event.width)
+            else:
+                canvas.itemconfig(self.canvas_window, width=0)
+
         self.grid_container.bind("<Configure>", on_frame_configure)
+        canvas.bind("<Configure>", on_canvas_configure)
         
         # Hacemos que la columna del nombre del alumno sea la que se expanda
         self.grid_container.grid_columnconfigure(2, weight=1, minsize=250) # Asegura un ancho mínimo de 250px
@@ -505,39 +569,40 @@ class AppPromedios:
         self.matriz_entradas = {}
 
         # Headers  
-        ctk.CTkLabel(self.grid_container, text="N°", font=self.font_grid_header, fg_color="#E5E7E9", text_color=self.paleta["texto_principal"], corner_radius=0).grid(row=0, column=1, rowspan=2, sticky="nsew", padx=1, pady=1)
-        ctk.CTkLabel(self.grid_container, text="Nombre del Alumno", font=self.font_grid_header, fg_color="#E5E7E9", text_color=self.paleta["texto_principal"], corner_radius=0).grid(row=0, column=2, rowspan=2, sticky="nsew", padx=1, pady=1)
+        ctk.CTkLabel(self.grid_container, text="N°", font=self.font_grid_header, fg_color=self.paleta["fondo_card"], text_color=self.paleta["texto_principal"], corner_radius=0).grid(row=0, column=1, rowspan=2, sticky="nsew", padx=1, pady=1)
+        ctk.CTkLabel(self.grid_container, text="Nombre del Alumno", font=self.font_grid_header, fg_color=self.paleta["fondo_card"], text_color=self.paleta["texto_principal"], corner_radius=0).grid(row=0, column=2, rowspan=2, sticky="nsew", padx=1, pady=1)
 
         col_off = 3
         for t, color in zip(NOMBRES_TRIMESTRES, [self.paleta["trimestre_1"], self.paleta["trimestre_2"], self.paleta["trimestre_3"]]):
-            ctk.CTkLabel(self.grid_container, text=t, fg_color=color, text_color=self.paleta["texto_principal"], font=self.font_grid_header).grid(row=0, column=col_off, columnspan=6, sticky="nsew", padx=1, pady=1)
+            ctk.CTkLabel(self.grid_container, text=t, fg_color=color, text_color=self.paleta["texto_principal"], font=self.font_grid_header).grid(row=0, column=col_off, columnspan=6, sticky="nsew", padx=(1, 3) if t != NOMBRES_TRIMESTRES[-1] else 1, pady=1)
             for j, nom in enumerate(curso_data["nombres_columnas"][t]):
-                e = ctk.CTkEntry(self.grid_container, justify=tk.CENTER, width=60, font=self.font_grid_header, fg_color="#E5E7E9", text_color=self.paleta["texto_principal"], border_width=0, corner_radius=0)
+                e = ctk.CTkEntry(self.grid_container, justify=tk.CENTER, width=60, font=self.font_grid_subheader, fg_color=self.paleta["fondo_card"], text_color=self.paleta["texto_subtitulo"], border_width=0, corner_radius=0)
                 e.insert(0, nom)
                 e.bind("<KeyRelease>", self._marcar_cambios_pendientes)
                 e.grid(row=1, column=col_off + j, sticky="nsew", padx=1, pady=1)
                 self.widgets_nombres_cols[t].append(e)
-            ctk.CTkLabel(self.grid_container, text="Prom", width=60, font=self.font_grid_header, fg_color="#E5E7E9", text_color=self.paleta["texto_principal"]).grid(row=1, column=col_off+4, sticky="nsew", padx=1, pady=1)
-            ctk.CTkLabel(self.grid_container, text="Recup.", width=60, font=self.font_grid_header, fg_color="#E5E7E9", text_color=self.paleta["texto_principal"]).grid(row=1, column=col_off+5, sticky="nsew", padx=1, pady=1)
+            ctk.CTkLabel(self.grid_container, text="Prom", width=60, font=self.font_grid_subheader, fg_color=self.paleta["fondo_card"], text_color=self.paleta["texto_subtitulo"]).grid(row=1, column=col_off+4, sticky="nsew", padx=1, pady=1)
+            ctk.CTkLabel(self.grid_container, text="Recup.", width=60, font=self.font_grid_subheader, fg_color=self.paleta["fondo_card"], text_color=self.paleta["texto_subtitulo"]).grid(row=1, column=col_off+5, sticky="nsew", padx=(1, 3) if t != NOMBRES_TRIMESTRES[-1] else 1, pady=1)
             col_off += 6
         
-        # PROMEDIOS FINALES: Aplicamos el margen (30, 1) tanto a la cabecera principal como a los subtítulos
-        ctk.CTkLabel(self.grid_container, text="PROMEDIOS FINALES", fg_color=self.paleta["final"], text_color=self.paleta["texto_principal"], font=self.font_grid_header).grid(row=0, column=21, columnspan=4, sticky="nsew", padx=(30, 1), pady=1)
+        # PROMEDIOS FINALES
+        ctk.CTkLabel(self.grid_container, text="PROMEDIOS FINALES", fg_color=self.paleta["final"], text_color=self.paleta["texto_principal"], font=self.font_grid_header).grid(row=0, column=21, columnspan=4, sticky="nsew", padx=(3, 1), pady=1)
         
         for i, txt in enumerate(["T1", "T2", "T3", "TOTAL"]):
-            # El gap (30, 1) solo va en el primer elemento (T1) para empujar el resto
-            gap = (30, 1) if i == 0 else 1
-            ctk.CTkLabel(self.grid_container, text=txt, width=60, font=self.font_grid_header, fg_color="#E5E7E9", text_color=self.paleta["texto_principal"]).grid(row=1, column=21+i, sticky="nsew", padx=gap, pady=1)
+            gap = (3, 1) if i == 0 else 1
+            ctk.CTkLabel(self.grid_container, text=txt, width=60, font=self.font_grid_subheader, fg_color=self.paleta["fondo_card"], text_color=self.paleta["texto_subtitulo"]).grid(row=1, column=21+i, sticky="nsew", padx=gap, pady=1)
 
         # Dibujar las filas de los alumnos
         for i, id_al in enumerate(sorted(curso_data[K_ALUMNOS].keys(), key=int)):
             self.dibujar_fila_alumno(i+2, id_al, curso_data[K_ALUMNOS][id_al], nombre_curso)
 
     def dibujar_fila_alumno(self, row, id_al, al_data, nombre_curso):
-        ctk.CTkButton(self.grid_container, text="✕", fg_color=self.paleta["fondo_card"], text_color=self.paleta["card_rojo_texto"], hover_color=self.paleta["card_btn_hover"],
-                      width=25, corner_radius=4, font=self.font_body, command=lambda: self.eliminar_entidad("alumno", id_al, nombre_curso)).grid(row=row, column=0, sticky="nsew", padx=1, pady=1)
+        bg_color = self.paleta["zebra_par"] if row % 2 == 0 else self.paleta["zebra_impar"]
         
-        ctk.CTkLabel(self.grid_container, text=id_al, font=self.font_grid_body, fg_color=self.paleta["fondo_card"], text_color=self.paleta["texto_principal"]).grid(row=row, column=1, sticky="nsew", padx=1, pady=1)
+        ctk.CTkButton(self.grid_container, text="🗑", fg_color=bg_color, text_color=self.paleta["texto_secundario"], hover_color=self.paleta["card_btn_hover"],
+                      width=25, corner_radius=0, font=("Segoe UI Emoji", 14), command=lambda: self.eliminar_entidad("alumno", id_al, nombre_curso)).grid(row=row, column=0, sticky="nsew", padx=1, pady=1)
+        
+        ctk.CTkLabel(self.grid_container, text=id_al, font=self.font_grid_body, fg_color=bg_color, text_color=self.paleta["texto_principal"]).grid(row=row, column=1, sticky="nsew", padx=1, pady=1)
         
         def register_nav(ent, r, c):
             self.matriz_entradas[(r, c)] = ent
@@ -546,7 +611,7 @@ class AppPromedios:
             ent.bind("<Left>", lambda e, rr=r, cc=c: self._navigate_grid(e, rr, cc, "Left"))
             ent.bind("<Right>", lambda e, rr=r, cc=c: self._navigate_grid(e, rr, cc, "Right"))
 
-        ent_n = ctk.CTkEntry(self.grid_container, border_width=0, fg_color=self.paleta["fondo_card"], font=self.font_grid_body, corner_radius=0)
+        ent_n = ctk.CTkEntry(self.grid_container, border_width=0, fg_color=bg_color, font=self.font_grid_body_bold, text_color=self.paleta["texto_principal"], corner_radius=0)
         ent_n.insert(0, al_data.get(K_NOMBRE, "")); ent_n.grid(row=row, column=2, sticky="nsew", padx=1, pady=1)
         ent_n.bind("<KeyRelease>", self._marcar_cambios_pendientes)
         self.widgets_nombres_alumnos[id_al] = ent_n
@@ -558,77 +623,80 @@ class AppPromedios:
             e_dict = {"p": [], "ex": None}
             notas_data = al_data["trimestres"][t_nom]
             for j in range(3):
-                e = ctk.CTkEntry(self.grid_container, width=60, justify=tk.CENTER, font=self.font_grid_body, fg_color=self.paleta["fondo_card"], border_width=0, corner_radius=0, validate='key', validatecommand=self.vcmd)
+                e = ctk.CTkEntry(self.grid_container, width=60, justify=tk.CENTER, font=self.font_grid_body, fg_color=bg_color, text_color=self.paleta["texto_notas"], border_width=0, corner_radius=0, validate='key', validatecommand=self.vcmd)
                 val = notas_data["principales"][j]
                 if val is not None:
                     e.insert(0, str(int(val)) if isinstance(val, float) and val.is_integer() else str(val))
                 e.bind("<KeyRelease>", self._marcar_cambios_pendientes)
-                e.grid(row=row, column=c_idx, padx=1, pady=1)
+                e.grid(row=row, column=c_idx, sticky="nsew", padx=1, pady=1)
                 register_nav(e, row, c_idx)
                 c_idx += 1; e_dict["p"].append(e)
             
-            ex = ctk.CTkEntry(self.grid_container, width=60, justify=tk.CENTER, font=self.font_grid_body, fg_color="#FBFBFB", border_width=0, corner_radius=0, validate='key', validatecommand=self.vcmd)
+            ex = ctk.CTkEntry(self.grid_container, width=60, justify=tk.CENTER, font=self.font_grid_body, fg_color=bg_color, text_color=self.paleta["texto_notas"], border_width=0, corner_radius=0, validate='key', validatecommand=self.vcmd)
             val_ex = notas_data[K_EXTRAS][0] if notas_data[K_EXTRAS] else None
             if val_ex is not None:
                 ex.insert(0, str(int(val_ex)) if isinstance(val_ex, float) and val_ex.is_integer() else str(val_ex))
             ex.bind("<KeyRelease>", self._marcar_cambios_pendientes)
-            ex.grid(row=row, column=c_idx, padx=1, pady=1)
+            ex.grid(row=row, column=c_idx, sticky="nsew", padx=1, pady=1)
             register_nav(ex, row, c_idx)
             c_idx += 1; e_dict["ex"] = ex
             self.widgets_entradas[id_al].append(e_dict)
             
-            l = ctk.CTkLabel(self.grid_container, text="-", font=self.font_grid_header, fg_color="#FBFBFB", text_color=self.paleta["texto_principal"])
+            l = ctk.CTkLabel(self.grid_container, text="-", font=self.font_grid_body, fg_color=bg_color, text_color=self.paleta["texto_notas"], anchor="center")
             l.grid(row=row, column=c_idx, sticky="nsew", padx=1, pady=1); c_idx += 1
             
             # --- NUEVO CAMPO RECUPERATORIO ---
-            e_recup = ctk.CTkEntry(self.grid_container, width=60, justify=tk.CENTER, font=self.font_grid_body, fg_color=self.paleta["fondo_card"], border_width=0, corner_radius=0, validate='key', validatecommand=self.vcmd)
+            e_recup = ctk.CTkEntry(self.grid_container, width=60, justify=tk.CENTER, font=self.font_grid_body, fg_color=bg_color, text_color=self.paleta["texto_notas"], border_width=0, corner_radius=0, validate='key', validatecommand=self.vcmd)
             val_recup = notas_data.get(K_RECUPERATORIO)
             if val_recup is not None:
                 e_recup.insert(0, str(int(val_recup)) if isinstance(val_recup, float) and val_recup.is_integer() else str(val_recup))
             e_recup.bind("<KeyRelease>", self._marcar_cambios_pendientes)
-            e_recup.grid(row=row, column=c_idx, padx=1, pady=1)
+            gap = (1, 3) if t_idx < 2 else 1
+            e_recup.grid(row=row, column=c_idx, sticky="nsew", padx=gap, pady=1)
             register_nav(e_recup, row, c_idx)
             c_idx += 1
             self.widgets_recuperatorios[id_al].append(e_recup)
 
             self.widgets_resultados[id_al]["trim"].append(l)
 
-        # --- FILAS DE PROMEDIOS FINALES (CORREGIDO PARA ALINEAR CON EL CABECERAS) ---
+        # --- FILAS DE PROMEDIOS FINALES ---
         for j in range(4):
-            # Aplicamos el margen de 30 píxeles a la izquierda solo al primer cuadro (T1)
-            # Esto empuja toda la sección hacia la derecha para que coincida con el título
-            separacion_seccion = (30, 1) if j == 0 else 1
-            
-            l_f = ctk.CTkLabel(self.grid_container, text="-", font=self.font_grid_header, fg_color="#FBFBFB", text_color=self.paleta["texto_principal"])
-            l_f.grid(row=row, column=21+j, sticky="nsew", padx=separacion_seccion, pady=1)
+            gap = (3, 1) if j == 0 else 1
+            font = self.font_grid_body_bold if j == 3 else self.font_grid_body
+            l_f = ctk.CTkLabel(self.grid_container, text="-", font=font, fg_color=bg_color, text_color=self.paleta["texto_notas"], anchor="center")
+            l_f.grid(row=row, column=21+j, sticky="nsew", padx=gap, pady=1)
             self.widgets_resultados[id_al]["fin"].append(l_f)
             
         # --- CÁLCULO AUTOMÁTICO Y FORMATO DE COLOR AL CARGAR ---
         res_cargados = procesar_calificaciones_alumno(al_data[K_TRIMESTRES])
         self._actualizar_promedios_ui(id_al, res_cargados)
 
-    def _color_por_nota(self, nota: int | None) -> str:
+    def _color_por_nota(self, nota: int | float | None) -> str:
         """Retorna el color de la paleta según si la nota aprueba, desaprueba, o es nula."""
         if nota is None:
-            return self.paleta["texto_principal"]
+            return self.paleta["texto_notas"]
         if nota < NOTA_MINIMA_APROBACION:
             return self.paleta["rojo_fuerte"]
         return self.paleta["verde_fg"]
 
     def _actualizar_promedios_ui(self, id_al, resultados):
         """Actualiza la UI de un alumno con los resultados calculados."""
+        # Obtener el color base de la fila (Zebra striping)
+        color_base_fila = self.widgets_nombres_alumnos[id_al].cget("fg_color")
+        
         for t_idx in range(len(NOMBRES_TRIMESTRES)):
             recup_widget = self.widgets_recuperatorios[id_al][t_idx]
             prom_redondeado = resultados["promedios_crudos_redondeados"][t_idx]
             is_failing = prom_redondeado is not None and prom_redondeado <= UMBRAL_RECUPERATORIO
 
             if is_failing:
-                recup_widget.configure(state=tk.NORMAL, fg_color=self.paleta["recuperatorio_bg"])
+                # Tono amarillento suave para indicar que se habilitó el recuperatorio
+                recup_widget.configure(state=tk.NORMAL, fg_color="#FEF9E7")
             else:
                 if recup_widget.get().strip() == "":
-                    recup_widget.configure(state=tk.DISABLED, fg_color="#F0F0F0")
+                    recup_widget.configure(state=tk.DISABLED, fg_color=color_base_fila)
                 else:
-                    recup_widget.configure(state=tk.NORMAL, fg_color=self.paleta["fondo_card"])
+                    recup_widget.configure(state=tk.NORMAL, fg_color=color_base_fila)
 
             prom_crudo_rnd = resultados["promedios_crudos_redondeados"][t_idx]
             self.widgets_resultados[id_al]["trim"][t_idx].configure(
