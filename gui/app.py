@@ -699,7 +699,7 @@ class AppPromedios:
             if event.width > req_w:
                 canvas.itemconfig(self.canvas_window, width=event.width)
             else:
-                canvas.itemconfig(self.canvas_window, width="")
+                canvas.itemconfig(self.canvas_window, width=req_w)
 
         self.grid_container.bind("<Configure>", on_frame_configure)
         canvas.bind("<Configure>", on_canvas_configure)
