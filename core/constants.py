@@ -15,6 +15,21 @@ K_PRINCIPALES = "principales"
 K_EXTRAS = "extras"
 K_RECUPERATORIO = "recuperatorio"
 K_NOMBRES_COLUMNAS = "nombres_columnas"
+K_ASISTENCIAS = "asistencias"
+
+# --- Estados de asistencia ---
+ESTADO_PRESENTE = "P"
+ESTADO_AUSENTE = "A"
+ESTADO_TARDE = "T"
+ESTADO_JUSTIFICADO = "J"
+ESTADOS_ASISTENCIA = [ESTADO_PRESENTE, ESTADO_AUSENTE, ESTADO_TARDE, ESTADO_JUSTIFICADO]
+
+INFO_ESTADOS_ASISTENCIA = {
+    ESTADO_PRESENTE: {"nombre": "Presente", "color": "#10B981", "color_hover": "#059669", "texto_color": "#FFFFFF"},
+    ESTADO_AUSENTE: {"nombre": "Ausente", "color": "#EF4444", "color_hover": "#DC2626", "texto_color": "#FFFFFF"},
+    ESTADO_TARDE: {"nombre": "Tarde", "color": "#F59E0B", "color_hover": "#D97706", "texto_color": "#FFFFFF"},
+    ESTADO_JUSTIFICADO: {"nombre": "Justificado", "color": "#3B82F6", "color_hover": "#2563EB", "texto_color": "#FFFFFF"},
+}
 
 # --- Nombres de los trimestres (usados como claves y en la UI) ---
 TRIM_1 = "Primer trimestre"

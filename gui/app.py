@@ -1,5 +1,6 @@
 """Módulo principal de la interfaz gráfica del Gestor Educativo."""
 
+from datetime import datetime, date, timedelta
 import logging
 import os
 import platform
@@ -10,9 +11,20 @@ import tkinter as tk
 from tkinter import messagebox, filedialog
 
 from core import gestor_datos
-from core.calculos import procesar_calificaciones_alumno
+from core.calculos import (
+    procesar_calificaciones_alumno,
+    resumen_asistencia_dia,
+    resumen_asistencia_curso,
+)
 from core.constants import (
+    ESTADO_AUSENTE,
+    ESTADO_JUSTIFICADO,
+    ESTADO_PRESENTE,
+    ESTADO_TARDE,
+    ESTADOS_ASISTENCIA,
+    INFO_ESTADOS_ASISTENCIA,
     K_ALUMNOS,
+    K_ASISTENCIAS,
     K_COLEGIOS,
     K_CURSOS,
     K_EXTRAS,
@@ -31,7 +43,14 @@ from core.constants import (
     crear_trimestre_vacio,
     crear_trimestres_vacios,
 )
-from core.exportador import exportar_a_csv, exportar_a_texto, exportar_a_pdf
+from core.exportador import (
+    exportar_a_csv,
+    exportar_a_texto,
+    exportar_a_pdf,
+    exportar_asistencias_a_csv,
+    exportar_asistencias_a_texto,
+    exportar_asistencias_a_pdf,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -126,6 +145,14 @@ class AppPromedios:
         self.grid_container = None
         self._resize_timer = None
 
+        # Variables de estado para Asistencias
+        self.pestana_curso_activa = "notas"
+        self.fecha_asistencia_seleccionada = None
+        self.estados_asistencia_actuales = {}
+        self.hay_cambios_asistencia_sin_guardar = False
+        self.widgets_botones_asistencia = {}
+        self.lbl_resumen_asistencia = None
+
         # Validación para notas (0-10, permite decimales)
         self.vcmd = (self.root.register(self.solo_numeros), '%P')
         # Validación para cantidades (solo enteros positivos)
@@ -151,8 +178,14 @@ class AppPromedios:
         # Este evento se dispara con cualquier cambio de configuración, solo nos importa el tamaño de la ventana principal
         if event.widget == self.root:
             # Si estamos en la pantalla de la planilla, desactivamos temporalmente la columna responsiva para evitar el lag
-            if self.grid_container:
-                self.grid_container.grid_columnconfigure(2, weight=0)
+            if self.grid_container is not None:
+                try:
+                    if self.grid_container.winfo_exists():
+                        self.grid_container.grid_columnconfigure(2, weight=0)
+                    else:
+                        self.grid_container = None
+                except Exception:
+                    self.grid_container = None
             # Cancelamos el temporizador anterior para reiniciar la cuenta
             if self._resize_timer:
                 self.root.after_cancel(self._resize_timer)
@@ -162,8 +195,14 @@ class AppPromedios:
     def _on_resize_end(self):
         # Esto se llama cuando el redimensionamiento se ha detenido
         # Si estamos en la pantalla de la planilla, reactivamos la columna responsiva
-        if self.grid_container:
-            self.grid_container.grid_columnconfigure(2, weight=1)
+        if self.grid_container is not None:
+            try:
+                if self.grid_container.winfo_exists():
+                    self.grid_container.grid_columnconfigure(2, weight=1)
+                else:
+                    self.grid_container = None
+            except Exception:
+                self.grid_container = None
 
     def _marcar_cambios_pendientes(self, event=None):
         self.hay_cambios_sin_guardar = True
@@ -207,13 +246,22 @@ class AppPromedios:
         self.root.unbind_all("<Shift-Button-4>")
         self.root.unbind_all("<Shift-Button-5>")
         
+        self.grid_container = None
+
         if hasattr(self, 'search_dropdown') and self.search_dropdown:
-            self.search_dropdown.destroy()
+            try:
+                self.search_dropdown.destroy()
+            except Exception:
+                pass
             self.search_dropdown = None
             
         if self.frame_actual:
-            self.frame_actual.pack_forget()
-            self.frame_actual.destroy()
+            try:
+                self.frame_actual.pack_forget()
+                self.frame_actual.destroy()
+            except Exception:
+                pass
+            self.frame_actual = None
 
     # --- CRUD COLEGIOS ---
     def mostrar_pantalla_colegios(self):
@@ -595,6 +643,7 @@ class AppPromedios:
     def mostrar_apartado_curso(self, nombre_curso):
         self.limpiar_pantalla()
         self.curso_seleccionado = nombre_curso
+        self.pestana_curso_activa = "notas"
         self.hay_cambios_sin_guardar = False
         self.frame_actual = ctk.CTkFrame(self.root, fg_color=self.paleta["fondo_card"], corner_radius=0)
         self.frame_actual.pack(fill=tk.BOTH, expand=True)
@@ -609,6 +658,24 @@ class AppPromedios:
         texto_cabecera = f"{self.colegio_seleccionado}   |   {nombre_curso}"
         ctk.CTkLabel(left_frame, text=texto_cabecera, font=self.font_card_title, text_color=self.paleta["texto_principal"]).pack(side=tk.LEFT)
         
+        # Selector de Pestañas (Notas / Asistencias)
+        tabs_frame = ctk.CTkFrame(toolbar, fg_color=self.paleta["fondo_app"], corner_radius=8)
+        tabs_frame.pack(side=tk.LEFT, padx=30)
+        
+        ctk.CTkButton(
+            tabs_frame, text="📝 Notas", font=self.font_button,
+            fg_color=self.paleta["azul_fg"], text_color="#FFFFFF",
+            hover_color=self.paleta["azul_hover"], corner_radius=6, width=95, height=32,
+            command=lambda: None
+        ).pack(side=tk.LEFT, padx=3, pady=3)
+        
+        ctk.CTkButton(
+            tabs_frame, text="📋 Asistencias", font=self.font_button,
+            fg_color="transparent", text_color=self.paleta["texto_secundario"],
+            hover_color=self.paleta["card_btn_hover"], corner_radius=6, width=115, height=32,
+            command=lambda: self.accion_ir_a_asistencias(nombre_curso)
+        ).pack(side=tk.LEFT, padx=3, pady=3)
+
         right_frame = ctk.CTkFrame(toolbar, fg_color="transparent")
         right_frame.pack(side=tk.RIGHT, fill=tk.Y)
         
@@ -918,11 +985,15 @@ class AppPromedios:
             # Guardar la grilla antes de borrar para no perder cambios de otros alumnos
             self.guardar_notas_cuadricula(nombre_curso, show_success_message=False)
             
-            del self.datos[K_COLEGIOS][nombre_colegio][K_CURSOS][nombre_curso][K_ALUMNOS][id_ent]
-            alumnos_restantes = self.datos[K_COLEGIOS][nombre_colegio][K_CURSOS][nombre_curso][K_ALUMNOS]
-            self.datos[K_COLEGIOS][nombre_colegio][K_CURSOS][nombre_curso][K_ALUMNOS] = (
-                AppPromedios._reordenar_alumnos(alumnos_restantes)
-            )
+            curso = self.datos[K_COLEGIOS][nombre_colegio][K_CURSOS][nombre_curso]
+            del curso[K_ALUMNOS][id_ent]
+            alumnos_restantes = curso[K_ALUMNOS]
+            ids_viejos_ordenados = sorted(alumnos_restantes.keys(), key=int)
+            curso[K_ALUMNOS] = AppPromedios._reordenar_alumnos(alumnos_restantes)
+            if K_ASISTENCIAS in curso:
+                curso[K_ASISTENCIAS] = AppPromedios._reordenar_asistencias_alumnos(
+                    curso[K_ASISTENCIAS], ids_viejos_ordenados
+                )
 
         self._guardar_datos_con_recuperacion()
 
@@ -932,7 +1003,10 @@ class AppPromedios:
         elif tipo == "curso":
             self.mostrar_pantalla_cursos(nombre_colegio)
         elif tipo == "alumno":
-            self.mostrar_apartado_curso(nombre_curso)
+            if getattr(self, "pestana_curso_activa", "notas") == "asistencias":
+                self.mostrar_apartado_asistencias(nombre_curso, fecha_seleccionada=self.fecha_asistencia_seleccionada)
+            else:
+                self.mostrar_apartado_curso(nombre_curso)
 
     def guardar_notas_cuadricula(self, nombre_curso, show_success_message=True):
         """Guarda las notas de la cuadrícula, recalcula promedios y persiste."""
@@ -1181,6 +1255,25 @@ class AppPromedios:
             alumnos_reordenados[str(nuevo_id)] = alumnos_curso[viejo_id]
         return alumnos_reordenados
 
+    @staticmethod
+    def _reordenar_asistencias_alumnos(asistencias_curso: dict, ids_viejos_ordenados: list) -> dict:
+        """
+        Reordena los IDs de alumnos en el historial de asistencias tras una eliminación.
+        ids_viejos_ordenados: lista de IDs viejos ordenados que sobrevivieron (ej. ['1', '3']).
+        """
+        if not isinstance(asistencias_curso, dict):
+            return {}
+        mapa_ids = {str(viejo_id): str(nuevo_id) for nuevo_id, viejo_id in enumerate(ids_viejos_ordenados, start=1)}
+        nuevas_asistencias = {}
+        for fecha, registros_dia in asistencias_curso.items():
+            nuevos_registros = {}
+            if isinstance(registros_dia, dict):
+                for viejo_id, estado in registros_dia.items():
+                    if str(viejo_id) in mapa_ids:
+                        nuevos_registros[mapa_ids[str(viejo_id)]] = estado
+            nuevas_asistencias[fecha] = nuevos_registros
+        return nuevas_asistencias
+
     def exportar_planilla(self, nombre_curso):
         if self.hay_cambios_sin_guardar:
             messagebox.showwarning("Cambios Pendientes", "Tienes cambios sin guardar. Por favor, guarda la planilla antes de exportar para asegurar que los datos sean correctos.")
@@ -1268,12 +1361,646 @@ class AppPromedios:
         else:
             self.mostrar_pantalla_cursos(self.colegio_seleccionado)
 
+    # =========================================================================
+    # --- MÓDULO Y APARTADO DE ASISTENCIAS ---
+    # =========================================================================
+
+    def accion_ir_a_asistencias(self, nombre_curso):
+        """Transición desde Notas hacia la pestaña de Asistencias."""
+        if self.hay_cambios_sin_guardar:
+            respuesta = messagebox.askyesnocancel(
+                "Notas sin Guardar",
+                "Tienes notas sin guardar en la planilla.\n\n¿Deseas guardarlas antes de pasar a Asistencias?"
+            )
+            if respuesta is True:
+                if not self.guardar_notas_cuadricula(nombre_curso, show_success_message=False):
+                    return
+            elif respuesta is None:
+                return
+        self.mostrar_apartado_asistencias(nombre_curso)
+
+    def accion_ir_a_notas(self, nombre_curso):
+        """Transición desde Asistencias hacia la pestaña de Notas."""
+        if self.hay_cambios_asistencia_sin_guardar:
+            respuesta = messagebox.askyesnocancel(
+                "Asistencia sin Guardar",
+                "Tienes cambios de asistencia sin guardar.\n\n¿Deseas guardarlos antes de pasar a Notas?"
+            )
+            if respuesta is True:
+                if not self.guardar_asistencias_actuales(show_success_message=False):
+                    return
+            elif respuesta is None:
+                return
+        self.mostrar_apartado_curso(nombre_curso)
+
+    def accion_volver_desde_asistencias(self):
+        """Vuelve a la pantalla de cursos con confirmación de cambios pendientes."""
+        if self.hay_cambios_asistencia_sin_guardar:
+            respuesta = messagebox.askyesnocancel(
+                "Asistencia sin Guardar",
+                "Tienes cambios de asistencia sin guardar.\n\n¿Deseas guardarlos antes de volver?"
+            )
+            if respuesta is True:
+                if self.guardar_asistencias_actuales(show_success_message=False):
+                    self.mostrar_pantalla_cursos(self.colegio_seleccionado)
+            elif respuesta is False:
+                self.mostrar_pantalla_cursos(self.colegio_seleccionado)
+        else:
+            self.mostrar_pantalla_cursos(self.colegio_seleccionado)
+
+    @staticmethod
+    def _parsear_fecha_flexible(texto: str) -> str | None:
+        """Parsea fechas en formatos DD/MM/YYYY, DD-MM-YYYY, YYYY-MM-DD o YYYY/MM/DD."""
+        if not texto:
+            return None
+        texto = texto.strip()
+        formatos = ["%d/%m/%Y", "%d-%m-%Y", "%Y-%m-%d", "%Y/%m/%d", "%d/%m/%y", "%d-%m-%y"]
+        for fmt in formatos:
+            try:
+                dt = datetime.strptime(texto, fmt)
+                return dt.strftime("%Y-%m-%d")
+            except ValueError:
+                continue
+        return None
+
+    @staticmethod
+    def _formatear_fecha_legible(fecha_iso: str) -> str:
+        """Convierte 'YYYY-MM-DD' a 'DD/MM/YYYY'."""
+        try:
+            dt = datetime.strptime(fecha_iso, "%Y-%m-%d")
+            return dt.strftime("%d/%m/%Y")
+        except Exception:
+            return fecha_iso
+
+    def mostrar_apartado_asistencias(self, nombre_curso, fecha_seleccionada=None):
+        """Muestra la vista principal de toma y control de asistencia para un curso."""
+        self.limpiar_pantalla()
+        self.curso_seleccionado = nombre_curso
+        self.pestana_curso_activa = "asistencias"
+        self.hay_cambios_asistencia_sin_guardar = False
+        self.widgets_botones_asistencia = {}
+
+        # Determinar fecha ISO activa (hoy o la seleccionada)
+        if fecha_seleccionada:
+            fecha_iso = self._parsear_fecha_flexible(fecha_seleccionada) or fecha_seleccionada
+        else:
+            fecha_iso = datetime.now().strftime("%Y-%m-%d")
+        
+        self.fecha_asistencia_seleccionada = fecha_iso
+
+        # Cargar datos del curso
+        col = self.colegio_seleccionado
+        curso_data = self.datos[K_COLEGIOS][col][K_CURSOS][nombre_curso]
+        if K_ASISTENCIAS not in curso_data:
+            curso_data[K_ASISTENCIAS] = {}
+        asistencias_historial = curso_data[K_ASISTENCIAS]
+        alumnos_dict = curso_data.get(K_ALUMNOS, {})
+
+        # Cargar estados para la fecha seleccionada (o None para no marcados)
+        datos_guardados = asistencias_historial.get(fecha_iso, {})
+        self.estados_asistencia_actuales = {
+            str(id_al): datos_guardados.get(str(id_al), None)
+            for id_al in alumnos_dict.keys()
+        }
+
+        self.frame_actual = ctk.CTkFrame(self.root, fg_color=self.paleta["fondo_app"], corner_radius=0)
+        self.frame_actual.pack(fill=tk.BOTH, expand=True)
+
+        # --- TOOLBAR SUPERIOR ---
+        toolbar = ctk.CTkFrame(self.frame_actual, fg_color=self.paleta["fondo_card"], border_width=0, corner_radius=0)
+        toolbar.pack(side=tk.TOP, fill=tk.X, padx=0, pady=0)
+        
+        toolbar_inner = ctk.CTkFrame(toolbar, fg_color="transparent")
+        toolbar_inner.pack(fill=tk.X, padx=20, pady=15)
+
+        # Izquierda: Volver y Título
+        left_frame = ctk.CTkFrame(toolbar_inner, fg_color="transparent")
+        left_frame.pack(side=tk.LEFT, fill=tk.Y)
+        ctk.CTkButton(
+            left_frame, text="← Volver", command=self.accion_volver_desde_asistencias,
+            fg_color="transparent", text_color=self.paleta["texto_secundario"],
+            hover_color=self.paleta["card_btn_hover"], font=self.font_body, width=80
+        ).pack(side=tk.LEFT, padx=(0, 15))
+        
+        texto_cabecera = f"{self.colegio_seleccionado}   |   {nombre_curso}"
+        ctk.CTkLabel(left_frame, text=texto_cabecera, font=self.font_card_title, text_color=self.paleta["texto_principal"]).pack(side=tk.LEFT)
+
+        # Centro: Pestañas de navegación
+        tabs_frame = ctk.CTkFrame(toolbar_inner, fg_color=self.paleta["fondo_app"], corner_radius=8)
+        tabs_frame.pack(side=tk.LEFT, padx=30)
+        
+        ctk.CTkButton(
+            tabs_frame, text="📝 Notas", font=self.font_button,
+            fg_color="transparent", text_color=self.paleta["texto_secundario"],
+            hover_color=self.paleta["card_btn_hover"], corner_radius=6, width=95, height=32,
+            command=lambda: self.accion_ir_a_notas(nombre_curso)
+        ).pack(side=tk.LEFT, padx=3, pady=3)
+        
+        ctk.CTkButton(
+            tabs_frame, text="📋 Asistencias", font=self.font_button,
+            fg_color=self.paleta["azul_fg"], text_color="#FFFFFF",
+            hover_color=self.paleta["azul_hover"], corner_radius=6, width=115, height=32,
+            command=lambda: None
+        ).pack(side=tk.LEFT, padx=3, pady=3)
+
+        # Derecha: Exportar, Botón Hoy y Botón Guardar
+        right_frame = ctk.CTkFrame(toolbar_inner, fg_color="transparent")
+        right_frame.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        export_frame = ctk.CTkFrame(right_frame, fg_color=self.paleta["fondo_app"], corner_radius=6)
+        export_frame.pack(side=tk.LEFT, padx=10)
+        ctk.CTkButton(export_frame, text="PDF", fg_color="transparent", text_color=self.paleta["texto_secundario"], hover_color=self.paleta["card_btn_hover"], font=self.font_body, width=40, command=lambda: self.exportar_asistencias_pdf(nombre_curso)).pack(side=tk.LEFT, padx=2, pady=2)
+        ctk.CTkButton(export_frame, text="TXT", fg_color="transparent", text_color=self.paleta["texto_secundario"], hover_color=self.paleta["card_btn_hover"], font=self.font_body, width=40, command=lambda: self.exportar_asistencias_texto(nombre_curso)).pack(side=tk.LEFT, padx=2, pady=2)
+        ctk.CTkButton(export_frame, text="CSV", fg_color="transparent", text_color=self.paleta["texto_secundario"], hover_color=self.paleta["card_btn_hover"], font=self.font_body, width=40, command=lambda: self.exportar_asistencias_csv(nombre_curso)).pack(side=tk.LEFT, padx=2, pady=2)
+
+        ctk.CTkButton(
+            right_frame, text="📅 Tomar Asistencia Hoy",
+            fg_color=self.paleta["verde_fg"], hover_color=self.paleta["verde_hover"],
+            text_color="#FFFFFF", font=self.font_button, corner_radius=6, height=34,
+            command=lambda: self._tomar_asistencia_hoy(nombre_curso)
+        ).pack(side=tk.LEFT, padx=10)
+
+        ctk.CTkButton(
+            right_frame, text="GUARDAR ASISTENCIA",
+            fg_color=self.paleta["azul_fg"], hover_color=self.paleta["azul_hover"],
+            text_color="#FFFFFF", font=self.font_button, corner_radius=6, width=170, height=34,
+            command=lambda: self.guardar_asistencias_actuales(show_success_message=True)
+        ).pack(side=tk.LEFT)
+
+        # --- PANEL DE CONTROL DE FECHA Y ACCIONES RÁPIDAS ---
+        control_card = ctk.CTkFrame(
+            self.frame_actual, fg_color=self.paleta["fondo_card"],
+            border_width=1, border_color=self.paleta["borde_sutil"], corner_radius=10
+        )
+        control_card.pack(fill=tk.X, padx=20, pady=(15, 10))
+
+        # Fila 1 del panel: Selector de fecha, navegación día +/- e historial
+        row1 = ctk.CTkFrame(control_card, fg_color="transparent")
+        row1.pack(fill=tk.X, padx=15, pady=(12, 8))
+
+        ctk.CTkLabel(row1, text="📅 Fecha:", font=self.font_grid_header, text_color=self.paleta["texto_principal"]).pack(side=tk.LEFT, padx=(0, 8))
+
+        ctk.CTkButton(
+            row1, text="◀", width=32, height=32, corner_radius=6,
+            fg_color=self.paleta["fondo_app"], text_color=self.paleta["texto_principal"],
+            hover_color=self.paleta["borde_sutil"], font=self.font_button,
+            command=lambda: self._cambiar_dia_asistencia(-1, nombre_curso)
+        ).pack(side=tk.LEFT, padx=2)
+
+        fecha_mostrada = self._formatear_fecha_legible(self.fecha_asistencia_seleccionada)
+        ent_fecha = ctk.CTkEntry(
+            row1, width=115, height=32, justify="center",
+            font=self.font_body, corner_radius=6, border_width=1, border_color=self.paleta["borde_sutil"]
+        )
+        ent_fecha.insert(0, fecha_mostrada)
+        ent_fecha.pack(side=tk.LEFT, padx=4)
+        ent_fecha.bind("<Return>", lambda e: self._cargar_fecha_asistencia_entry(ent_fecha, nombre_curso))
+
+        ctk.CTkButton(
+            row1, text="▶", width=32, height=32, corner_radius=6,
+            fg_color=self.paleta["fondo_app"], text_color=self.paleta["texto_principal"],
+            hover_color=self.paleta["borde_sutil"], font=self.font_button,
+            command=lambda: self._cambiar_dia_asistencia(1, nombre_curso)
+        ).pack(side=tk.LEFT, padx=2)
+
+        ctk.CTkButton(
+            row1, text="Cargar", width=65, height=32, corner_radius=6,
+            fg_color=self.paleta["texto_principal"], text_color="#FFFFFF",
+            hover_color="#374151", font=self.font_button,
+            command=lambda: self._cargar_fecha_asistencia_entry(ent_fecha, nombre_curso)
+        ).pack(side=tk.LEFT, padx=(6, 20))
+
+        # Historial de fechas registradas
+        ctk.CTkLabel(row1, text="Historial de fechas:", font=self.font_grid_header, text_color=self.paleta["texto_secundario"]).pack(side=tk.LEFT, padx=(0, 8))
+        
+        fechas_registradas = sorted(asistencias_historial.keys(), reverse=True)
+        opciones_historial = [self._formatear_fecha_legible(f) for f in fechas_registradas]
+        if not opciones_historial:
+            opciones_historial = ["(Sin fechas registradas)"]
+
+        combo_val = fecha_mostrada if self.fecha_asistencia_seleccionada in asistencias_historial else (opciones_historial[0] if opciones_historial else "")
+        opt_historial = ctk.CTkOptionMenu(
+            row1, values=opciones_historial, font=self.font_body,
+            fg_color=self.paleta["fondo_app"], text_color=self.paleta["texto_principal"],
+            button_color=self.paleta["borde_sutil"], button_hover_color=self.paleta["card_btn_hover"],
+            corner_radius=6, height=32, width=170,
+            command=lambda sel: self._cargar_fecha_asistencia_historial(sel, nombre_curso)
+        )
+        if combo_val in opciones_historial:
+            opt_historial.set(combo_val)
+        else:
+            opt_historial.set("Elegir fecha...")
+        opt_historial.pack(side=tk.LEFT, padx=(0, 15))
+
+        # Badge de estado de la fecha
+        esta_registrada = self.fecha_asistencia_seleccionada in asistencias_historial
+        badge_bg = "#DCFCE7" if esta_registrada else "#F3F4F6"
+        badge_fg = "#166534" if esta_registrada else "#6B7280"
+        badge_txt = "● Clase Registrada" if esta_registrada else "○ Nueva Clase"
+
+        badge_frame = ctk.CTkFrame(row1, fg_color=badge_bg, corner_radius=12)
+        badge_frame.pack(side=tk.LEFT, padx=5)
+        ctk.CTkLabel(badge_frame, text=badge_txt, font=self.font_grid_subheader, text_color=badge_fg).pack(padx=10, pady=3)
+
+        if esta_registrada:
+            ctk.CTkButton(
+                row1, text="🗑️ Eliminar día", width=110, height=30, corner_radius=6,
+                fg_color="transparent", text_color=self.paleta["rojo_fuerte"],
+                hover_color="#FEE2E2", font=self.font_grid_subheader,
+                command=lambda: self.eliminar_fecha_asistencia_actual(nombre_curso)
+            ).pack(side=tk.RIGHT)
+
+        # Fila 2 del panel: Acciones masivas y Contador en tiempo real
+        row2 = ctk.CTkFrame(control_card, fg_color="transparent")
+        row2.pack(fill=tk.X, padx=15, pady=(4, 12))
+
+        # Botones rápidos
+        quick_frame = ctk.CTkFrame(row2, fg_color="transparent")
+        quick_frame.pack(side=tk.LEFT)
+
+        ctk.CTkButton(
+            quick_frame, text="✓ Todos Presentes", height=28, corner_radius=6,
+            fg_color="#ECFDF5", text_color="#065F46", hover_color="#D1FAE5", font=self.font_button,
+            command=lambda: self._marcar_todos_asistencia(ESTADO_PRESENTE)
+        ).pack(side=tk.LEFT, padx=(0, 6))
+
+        ctk.CTkButton(
+            quick_frame, text="✗ Todos Ausentes", height=28, corner_radius=6,
+            fg_color="#FEF2F2", text_color="#991B1B", hover_color="#FEE2E2", font=self.font_button,
+            command=lambda: self._marcar_todos_asistencia(ESTADO_AUSENTE)
+        ).pack(side=tk.LEFT, padx=6)
+
+        ctk.CTkButton(
+            quick_frame, text="↺ Desmarcar Todos", height=28, corner_radius=6,
+            fg_color=self.paleta["fondo_app"], text_color=self.paleta["texto_secundario"],
+            hover_color=self.paleta["borde_sutil"], font=self.font_button,
+            command=self._limpiar_todos_asistencia
+        ).pack(side=tk.LEFT, padx=6)
+
+        # Resumen dinámico en tiempo real
+        self.lbl_resumen_asistencia = ctk.CTkLabel(
+            row2, text="", font=self.font_grid_body_bold, text_color=self.paleta["texto_principal"]
+        )
+        self.lbl_resumen_asistencia.pack(side=tk.RIGHT, padx=10)
+
+        # --- LISTA DE ALUMNOS (SCROLLABLE FRAME) ---
+        if not alumnos_dict:
+            placeholder = ctk.CTkFrame(self.frame_actual, fg_color=self.paleta["fondo_card"], corner_radius=10)
+            placeholder.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
+            ctk.CTkLabel(
+                placeholder, text="📋 No hay alumnos cargados en este curso.",
+                font=self.font_card_title, text_color=self.paleta["texto_secundario"]
+            ).pack(pady=(60, 10))
+            ctk.CTkLabel(
+                placeholder, text="Para tomar asistencia, primero debes agregar los alumnos en la pestaña de Notas.",
+                font=self.font_body, text_color=self.paleta["texto_secundario"]
+            ).pack(pady=(0, 20))
+            ctk.CTkButton(
+                placeholder, text="Ir a Notas para agregar alumnos", font=self.font_button,
+                fg_color=self.paleta["azul_fg"], hover_color=self.paleta["azul_hover"],
+                command=lambda: self.accion_ir_a_notas(nombre_curso)
+            ).pack()
+            self._actualizar_resumen_asistencia_ui()
+            return
+
+        scroll_alumnos = ctk.CTkScrollableFrame(
+            self.frame_actual, fg_color="transparent", corner_radius=0
+        )
+        scroll_alumnos.pack(fill=tk.BOTH, expand=True, padx=20, pady=(5, 10))
+
+        alumnos_ordenados = sorted(alumnos_dict.keys(), key=int)
+        for idx, id_al in enumerate(alumnos_ordenados):
+            datos_al = alumnos_dict[id_al]
+            nombre_al = datos_al.get(K_NOMBRE, "").strip() or f"Alumno #{id_al}"
+
+            fila_card = ctk.CTkFrame(
+                scroll_alumnos, fg_color=self.paleta["fondo_card"],
+                border_width=1, border_color=self.paleta["borde_sutil"], corner_radius=8
+            )
+            fila_card.pack(fill=tk.X, pady=3, padx=2)
+
+            inner_fila = ctk.CTkFrame(fila_card, fg_color="transparent")
+            inner_fila.pack(fill=tk.X, padx=15, pady=8)
+
+            # Número y Nombre del alumno
+            lbl_num = ctk.CTkLabel(
+                inner_fila, text=f"#{id_al}", width=36,
+                font=self.font_grid_body_bold, text_color=self.paleta["texto_secundario"]
+            )
+            lbl_num.pack(side=tk.LEFT, padx=(0, 10))
+
+            lbl_nombre = ctk.CTkLabel(
+                inner_fila, text=nombre_al,
+                font=self.font_grid_body_bold, text_color=self.paleta["texto_principal"]
+            )
+            lbl_nombre.pack(side=tk.LEFT, padx=5)
+
+            # Botones de selección de 4 estados
+            btn_group = ctk.CTkFrame(inner_fila, fg_color="transparent")
+            btn_group.pack(side=tk.RIGHT)
+
+            self.widgets_botones_asistencia[str(id_al)] = {}
+
+            for estado in ESTADOS_ASISTENCIA:
+                info = INFO_ESTADOS_ASISTENCIA[estado]
+                nombre_btn = f"{estado} - {info['nombre']}"
+                btn = ctk.CTkButton(
+                    btn_group, text=nombre_btn, font=self.font_grid_header,
+                    width=115, height=32, corner_radius=6,
+                    command=lambda est=estado, al_id=str(id_al): self._actualizar_estado_alumno_asistencia(al_id, est)
+                )
+                btn.pack(side=tk.LEFT, padx=3)
+                self.widgets_botones_asistencia[str(id_al)][estado] = btn
+
+            self._actualizar_estilo_botones_alumno(str(id_al))
+
+        self._actualizar_resumen_asistencia_ui()
+
+    def _actualizar_estado_alumno_asistencia(self, id_alumno: str, nuevo_estado: str):
+        """Actualiza el estado de asistencia de un alumno individual al hacer clic."""
+        actual = self.estados_asistencia_actuales.get(id_alumno)
+        if actual == nuevo_estado:
+            self.estados_asistencia_actuales[id_alumno] = None
+        else:
+            self.estados_asistencia_actuales[id_alumno] = nuevo_estado
+        
+        self.hay_cambios_asistencia_sin_guardar = True
+        self._actualizar_estilo_botones_alumno(id_alumno)
+        self._actualizar_resumen_asistencia_ui()
+
+    def _actualizar_estilo_botones_alumno(self, id_alumno: str):
+        """Actualiza visualmente el color y borde de los botones de un alumno."""
+        estado_actual = self.estados_asistencia_actuales.get(id_alumno)
+        botones_alumno = self.widgets_botones_asistencia.get(id_alumno, {})
+
+        for estado, btn in botones_alumno.items():
+            info = INFO_ESTADOS_ASISTENCIA[estado]
+            if estado == estado_actual:
+                btn.configure(
+                    fg_color=info["color"],
+                    hover_color=info["color_hover"],
+                    text_color=info["texto_color"],
+                    border_width=0,
+                )
+            else:
+                btn.configure(
+                    fg_color=self.paleta["fondo_app"],
+                    hover_color=self.paleta["borde_sutil"],
+                    text_color=self.paleta["texto_secundario"],
+                    border_width=1,
+                    border_color=self.paleta["borde_sutil"],
+                )
+
+    def _marcar_todos_asistencia(self, estado: str):
+        """Marca a todos los alumnos con el estado seleccionado."""
+        for id_al in self.estados_asistencia_actuales.keys():
+            self.estados_asistencia_actuales[id_al] = estado
+            self._actualizar_estilo_botones_alumno(id_al)
+        self.hay_cambios_asistencia_sin_guardar = True
+        self._actualizar_resumen_asistencia_ui()
+
+    def _limpiar_todos_asistencia(self):
+        """Desmarca a todos los alumnos."""
+        for id_al in self.estados_asistencia_actuales.keys():
+            self.estados_asistencia_actuales[id_al] = None
+            self._actualizar_estilo_botones_alumno(id_al)
+        self.hay_cambios_asistencia_sin_guardar = True
+        self._actualizar_resumen_asistencia_ui()
+
+    def _actualizar_resumen_asistencia_ui(self):
+        """Calcula y refresca el contador de asistencias en tiempo real."""
+        if not self.lbl_resumen_asistencia or not self.lbl_resumen_asistencia.winfo_exists():
+            return
+        p = sum(1 for e in self.estados_asistencia_actuales.values() if e == ESTADO_PRESENTE)
+        a = sum(1 for e in self.estados_asistencia_actuales.values() if e == ESTADO_AUSENTE)
+        t = sum(1 for e in self.estados_asistencia_actuales.values() if e == ESTADO_TARDE)
+        j = sum(1 for e in self.estados_asistencia_actuales.values() if e == ESTADO_JUSTIFICADO)
+        sin_marcar = sum(1 for e in self.estados_asistencia_actuales.values() if e is None)
+        total = len(self.estados_asistencia_actuales)
+
+        resumen_txt = f"🟢 Presentes: {p}  •  🔴 Ausentes: {a}  •  🟡 Tardes: {t}  •  🔵 Justif.: {j}  •  ⚪ Sin marcar: {sin_marcar}  (Total: {total})"
+        self.lbl_resumen_asistencia.configure(text=resumen_txt)
+
+    def _tomar_asistencia_hoy(self, nombre_curso):
+        """Carga la fecha de hoy para tomar asistencia."""
+        hoy_iso = datetime.now().strftime("%Y-%m-%d")
+        if self.hay_cambios_asistencia_sin_guardar and self.fecha_asistencia_seleccionada != hoy_iso:
+            resp = messagebox.askyesnocancel(
+                "Asistencia sin Guardar",
+                "Tienes cambios sin guardar en la fecha actual.\n\n¿Deseas guardarlos antes de ir al día de hoy?"
+            )
+            if resp is True:
+                if not self.guardar_asistencias_actuales(show_success_message=False):
+                    return
+            elif resp is None:
+                return
+        self.mostrar_apartado_asistencias(nombre_curso, fecha_seleccionada=hoy_iso)
+
+    def _cambiar_dia_asistencia(self, delta_dias: int, nombre_curso: str):
+        """Navega al día anterior o siguiente."""
+        if self.hay_cambios_asistencia_sin_guardar:
+            resp = messagebox.askyesnocancel(
+                "Asistencia sin Guardar",
+                "Tienes cambios sin guardar.\n\n¿Deseas guardarlos antes de cambiar de fecha?"
+            )
+            if resp is True:
+                if not self.guardar_asistencias_actuales(show_success_message=False):
+                    return
+            elif resp is None:
+                return
+
+        try:
+            dt = datetime.strptime(self.fecha_asistencia_seleccionada, "%Y-%m-%d")
+            nueva_fecha = (dt + timedelta(days=delta_dias)).strftime("%Y-%m-%d")
+            self.mostrar_apartado_asistencias(nombre_curso, fecha_seleccionada=nueva_fecha)
+        except Exception:
+            pass
+
+    def _cargar_fecha_asistencia_entry(self, entry_widget, nombre_curso: str):
+        """Valida y carga la fecha ingresada manualmente en el entry."""
+        texto = entry_widget.get().strip()
+        fecha_iso = self._parsear_fecha_flexible(texto)
+        if not fecha_iso:
+            messagebox.showerror(
+                "Fecha Inválida",
+                f"El formato de fecha '{texto}' no es válido.\n\nPor favor, usa un formato como DD/MM/AAAA o AAAA-MM-DD."
+            )
+            return
+
+        if self.hay_cambios_asistencia_sin_guardar and fecha_iso != self.fecha_asistencia_seleccionada:
+            resp = messagebox.askyesnocancel(
+                "Asistencia sin Guardar",
+                "Tienes cambios sin guardar.\n\n¿Deseas guardarlos antes de cambiar de fecha?"
+            )
+            if resp is True:
+                if not self.guardar_asistencias_actuales(show_success_message=False):
+                    return
+            elif resp is None:
+                return
+
+        self.mostrar_apartado_asistencias(nombre_curso, fecha_seleccionada=fecha_iso)
+
+    def _cargar_fecha_asistencia_historial(self, seleccion: str, nombre_curso: str):
+        """Carga una fecha seleccionada desde el menú desplegable de historial."""
+        if not seleccion or seleccion.startswith("("):
+            return
+        fecha_iso = self._parsear_fecha_flexible(seleccion)
+        if not fecha_iso:
+            return
+
+        if self.hay_cambios_asistencia_sin_guardar and fecha_iso != self.fecha_asistencia_seleccionada:
+            resp = messagebox.askyesnocancel(
+                "Asistencia sin Guardar",
+                "Tienes cambios sin guardar.\n\n¿Deseas guardarlos antes de cambiar de fecha?"
+            )
+            if resp is True:
+                if not self.guardar_asistencias_actuales(show_success_message=False):
+                    return
+            elif resp is None:
+                return
+
+        self.mostrar_apartado_asistencias(nombre_curso, fecha_seleccionada=fecha_iso)
+
+    def guardar_asistencias_actuales(self, show_success_message=True) -> bool:
+        """Guarda y persiste los estados de asistencia de la fecha activa."""
+        col = self.colegio_seleccionado
+        curso = self.curso_seleccionado
+        if not col or not curso or not self.fecha_asistencia_seleccionada:
+            return False
+
+        curso_data = self.datos[K_COLEGIOS][col][K_CURSOS][curso]
+        if K_ASISTENCIAS not in curso_data:
+            curso_data[K_ASISTENCIAS] = {}
+
+        # Guardar alumnos que tengan estado registrado
+        registros_dia = {}
+        for id_al, estado in self.estados_asistencia_actuales.items():
+            if estado in ESTADOS_ASISTENCIA:
+                registros_dia[str(id_al)] = estado
+
+        curso_data[K_ASISTENCIAS][self.fecha_asistencia_seleccionada] = registros_dia
+
+        exito = self._guardar_datos_con_recuperacion()
+        if exito:
+            self.hay_cambios_asistencia_sin_guardar = False
+            fecha_legible = self._formatear_fecha_legible(self.fecha_asistencia_seleccionada)
+            if show_success_message:
+                messagebox.showinfo(
+                    "Asistencia Guardada",
+                    f"¡La asistencia del día {fecha_legible} se ha guardado correctamente!"
+                )
+                self.mostrar_apartado_asistencias(curso, fecha_seleccionada=self.fecha_asistencia_seleccionada)
+            return True
+        return False
+
+    def eliminar_fecha_asistencia_actual(self, nombre_curso: str):
+        """Elimina el registro completo de la fecha seleccionada con confirmación."""
+        fecha_legible = self._formatear_fecha_legible(self.fecha_asistencia_seleccionada)
+        if not messagebox.askyesno(
+            "Confirmar Eliminación",
+            f"¿Estás seguro de eliminar el registro de asistencia del día {fecha_legible}?"
+        ):
+            return
+
+        col = self.colegio_seleccionado
+        curso_data = self.datos[K_COLEGIOS][col][K_CURSOS][nombre_curso]
+        if K_ASISTENCIAS in curso_data and self.fecha_asistencia_seleccionada in curso_data[K_ASISTENCIAS]:
+            del curso_data[K_ASISTENCIAS][self.fecha_asistencia_seleccionada]
+            self._guardar_datos_con_recuperacion()
+            messagebox.showinfo("Registro Eliminado", f"Se eliminó el registro de asistencia del día {fecha_legible}.")
+            self.mostrar_apartado_asistencias(nombre_curso)
+
+    def exportar_asistencias_csv(self, nombre_curso: str):
+        """Exporta el registro de asistencias a formato CSV."""
+        if self.hay_cambios_asistencia_sin_guardar:
+            messagebox.showwarning("Cambios Pendientes", "Tienes cambios de asistencia sin guardar. Por favor, guárdalos antes de exportar.")
+            return
+
+        file_path = filedialog.asksaveasfilename(
+            title="Exportar Asistencias como CSV",
+            initialfile=f"Asistencias - {nombre_curso}.csv",
+            defaultextension=".csv",
+            filetypes=[("Archivos CSV", "*.csv"), ("Todos los archivos", "*.*")]
+        )
+        if not file_path:
+            return
+
+        curso_data = self.datos[K_COLEGIOS][self.colegio_seleccionado][K_CURSOS][nombre_curso]
+        success, error_message = exportar_asistencias_a_csv(curso_data, file_path)
+        if success:
+            messagebox.showinfo("Exportación Exitosa", f"El registro de asistencias se exportó correctamente a:\n{file_path}")
+        else:
+            messagebox.showerror("Error de Exportación", f"No se pudo exportar las asistencias.\n\nError: {error_message}")
+
+    def exportar_asistencias_texto(self, nombre_curso: str):
+        """Exporta el registro de asistencias a formato TXT."""
+        if self.hay_cambios_asistencia_sin_guardar:
+            messagebox.showwarning("Cambios Pendientes", "Tienes cambios de asistencia sin guardar. Por favor, guárdalos antes de exportar.")
+            return
+
+        file_path = filedialog.asksaveasfilename(
+            title="Exportar Asistencias como Texto",
+            initialfile=f"Asistencias - {nombre_curso}.txt",
+            defaultextension=".txt",
+            filetypes=[("Archivos de texto", "*.txt"), ("Todos los archivos", "*.*")]
+        )
+        if not file_path:
+            return
+
+        curso_data = self.datos[K_COLEGIOS][self.colegio_seleccionado][K_CURSOS][nombre_curso]
+        colegio_sel = str(self.colegio_seleccionado) if self.colegio_seleccionado else ""
+        success, error_message = exportar_asistencias_a_texto(curso_data, file_path, nombre_curso, colegio_sel)
+        if success:
+            messagebox.showinfo("Exportación Exitosa", f"El registro de asistencias se exportó como texto a:\n{file_path}")
+        else:
+            messagebox.showerror("Error de Exportación", f"No se pudo exportar las asistencias a texto.\n\nError: {error_message}")
+
+    def exportar_asistencias_pdf(self, nombre_curso: str):
+        """Exporta el registro de asistencias a formato PDF."""
+        if self.hay_cambios_asistencia_sin_guardar:
+            messagebox.showwarning("Cambios sin Guardar", "Por favor, guarda las asistencias antes de exportarlas a PDF.")
+            return
+
+        file_path = filedialog.asksaveasfilename(
+            title="Exportar Asistencias a PDF",
+            initialfile=f"Asistencias - {nombre_curso}.pdf",
+            defaultextension=".pdf",
+            filetypes=[("Archivos PDF", "*.pdf"), ("Todos los archivos", "*.*")]
+        )
+        if not file_path:
+            return
+
+        curso_data = self.datos[K_COLEGIOS][self.colegio_seleccionado][K_CURSOS][nombre_curso]
+        colegio_sel = str(self.colegio_seleccionado) if self.colegio_seleccionado else ""
+
+        import threading
+        def tarea_exportacion():
+            success, error_message = exportar_asistencias_a_pdf(curso_data, file_path, nombre_curso, colegio_sel)
+            if success:
+                self.root.after(0, lambda: messagebox.showinfo("Exportación Exitosa", f"El registro de asistencias en PDF se guardó en:\n{file_path}"))
+            else:
+                self.root.after(0, lambda: messagebox.showerror("Error de Exportación", f"No se pudo exportar las asistencias a PDF.\n\nError: {error_message}"))
+
+        threading.Thread(target=tarea_exportacion, daemon=True).start()
+
     def al_cerrar(self):
         if self.hay_cambios_sin_guardar:
             if self.curso_seleccionado:
-                respuesta = messagebox.askyesnocancel("Salir", "Tienes cambios sin guardar en la planilla. ¿Deseas guardarlos antes de salir?")
+                respuesta = messagebox.askyesnocancel("Salir", "Tienes cambios sin guardar en la planilla de notas. ¿Deseas guardarlos antes de salir?")
                 if respuesta is True:
                     if self.guardar_notas_cuadricula(self.curso_seleccionado, show_success_message=False):
+                        self.root.destroy()
+                elif respuesta is False:
+                    self.root.destroy()
+            else:
+                respuesta = messagebox.askyesno("Salir", "Tienes cambios sin guardar que se perderán. ¿Deseas salir de todas formas?")
+                if respuesta:
+                    self.root.destroy()
+        elif self.hay_cambios_asistencia_sin_guardar:
+            if self.curso_seleccionado:
+                respuesta = messagebox.askyesnocancel("Salir", "Tienes cambios sin guardar en la asistencia. ¿Deseas guardarlos antes de salir?")
+                if respuesta is True:
+                    if self.guardar_asistencias_actuales(show_success_message=False):
                         self.root.destroy()
                 elif respuesta is False:
                     self.root.destroy()

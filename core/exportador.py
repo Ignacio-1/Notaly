@@ -313,3 +313,248 @@ def exportar_a_pdf(curso_data: dict, file_path: str, nombre_curso: str, nombre_c
         return True, None
     except Exception as e:
         return False, str(e)
+
+
+def exportar_asistencias_a_texto(curso_data: dict, file_path: str, nombre_curso: str, nombre_colegio: str = "") -> tuple[bool, str | None]:
+    """
+    Exporta el historial de asistencias de un curso a un archivo TXT formateado.
+    """
+    try:
+        from .calculos import resumen_asistencia_curso
+        from .constants import K_ASISTENCIAS, INFO_ESTADOS_ASISTENCIA
+
+        resumen = resumen_asistencia_curso(curso_data)
+        asistencias = curso_data.get(K_ASISTENCIAS, {})
+        fechas = resumen["fechas"]
+        alumnos_ordenados = sorted(
+            curso_data.get(K_ALUMNOS, {}).items(),
+            key=lambda item: int(item[0]),
+        )
+
+        with open(file_path, 'w', encoding='utf-8') as f:
+            titulo = f"{nombre_colegio.upper()} - " if nombre_colegio else ""
+            f.write(f"{titulo}REGISTRO DE ASISTENCIAS - CURSO: {nombre_curso}\n")
+            f.write("=" * 60 + "\n\n")
+
+            f.write(f"Total de clases registradas: {len(fechas)}\n")
+            if fechas:
+                f.write(f"Período: {fechas[0]} al {fechas[-1]}\n")
+            f.write("\n" + "-" * 60 + "\n\n")
+
+            # Detalle por fecha
+            f.write("DETALLE POR FECHA:\n")
+            f.write("-" * 40 + "\n")
+            for fecha in fechas:
+                f.write(f"\nFecha: {fecha}\n")
+                datos_dia = asistencias.get(fecha, {})
+                for id_alumno, datos_alumno in alumnos_ordenados:
+                    nom = datos_alumno.get(K_NOMBRE, "") or f"Alumno {id_alumno}"
+                    estado = datos_dia.get(str(id_alumno), "-")
+                    nombre_estado = INFO_ESTADOS_ASISTENCIA.get(estado, {}).get("nombre", estado if estado != "-" else "Sin registro")
+                    f.write(f"  [{estado}] {nom} (N° {id_alumno}): {nombre_estado}\n")
+
+            # Resumen global por alumno
+            f.write("\n\n" + "=" * 60 + "\n")
+            f.write("RESUMEN GLOBAL POR ALUMNO:\n")
+            f.write("=" * 60 + "\n\n")
+
+            for id_alumno, datos_alumno in alumnos_ordenados:
+                stats = resumen["por_alumno"].get(str(id_alumno), {})
+                nom = stats.get("nombre", "") or f"Alumno {id_alumno}"
+                porc = stats.get("porcentaje_asistencia")
+                porc_str = f"{porc}%" if porc is not None else "N/A"
+
+                f.write(f"ALUMNO: {nom} (N° {id_alumno})\n")
+                f.write(f"  - Presentes (P):    {stats.get('presentes', 0)}\n")
+                f.write(f"  - Tardes (T):       {stats.get('tardes', 0)}\n")
+                f.write(f"  - Ausentes (A):     {stats.get('ausentes', 0)}\n")
+                f.write(f"  - Justificados (J): {stats.get('justificados', 0)}\n")
+                f.write(f"  - Total clases:     {stats.get('total_dias', 0)}\n")
+                f.write(f"  => % Asistencia:    {porc_str}\n")
+                f.write("-" * 40 + "\n")
+
+        return True, None
+    except (IOError, OSError, Exception) as e:
+        return False, str(e)
+
+
+def exportar_asistencias_a_csv(curso_data: dict, file_path: str) -> tuple[bool, str | None]:
+    """
+    Exporta las asistencias de un curso a un archivo CSV.
+    """
+    try:
+        from .calculos import resumen_asistencia_curso
+        from .constants import K_ASISTENCIAS
+
+        resumen = resumen_asistencia_curso(curso_data)
+        fechas = resumen["fechas"]
+        asistencias = curso_data.get(K_ASISTENCIAS, {})
+
+        alumnos_ordenados = sorted(
+            curso_data.get(K_ALUMNOS, {}).items(),
+            key=lambda item: int(item[0]),
+        )
+
+        with open(file_path, 'w', newline='', encoding='utf-8-sig') as csvfile:
+            writer = csv.writer(csvfile)
+
+            # Cabecera
+            header = ["N°", "Nombre"] + fechas + [
+                "Presentes (P)", "Ausentes (A)", "Tardes (T)", "Justificados (J)", "Total Clases", "% Asistencia"
+            ]
+            writer.writerow(header)
+
+            for id_alumno, datos_alumno in alumnos_ordenados:
+                stats = resumen["por_alumno"].get(str(id_alumno), {})
+                row = [id_alumno, datos_alumno.get(K_NOMBRE, "")]
+
+                for fecha in fechas:
+                    estado = asistencias.get(fecha, {}).get(str(id_alumno), "")
+                    row.append(estado)
+
+                porc = stats.get("porcentaje_asistencia")
+                row.extend([
+                    stats.get("presentes", 0),
+                    stats.get("ausentes", 0),
+                    stats.get("tardes", 0),
+                    stats.get("justificados", 0),
+                    stats.get("total_dias", 0),
+                    f"{porc}%" if porc is not None else "",
+                ])
+                writer.writerow(row)
+
+        return True, None
+    except (IOError, OSError, Exception) as e:
+        return False, str(e)
+
+
+def exportar_asistencias_a_pdf(curso_data: dict, file_path: str, nombre_curso: str, nombre_colegio: str = "") -> tuple[bool, str | None]:
+    """
+    Exporta el registro de asistencias de un curso a un archivo PDF en formato A4 Horizontal.
+    """
+    class PDFWithFooter(FPDF):
+        def footer(self):
+            self.set_y(-15)
+            self.set_draw_color(226, 232, 240)
+            self.set_line_width(0.2)
+            self.line(10, self.get_y(), 287, self.get_y())
+            self.set_font('helvetica', 'I', 8)
+            self.set_text_color(156, 163, 175)
+            self.cell(0, 10, 'Registro de asistencia generado por NOTALY', align='R')
+
+    try:
+        from .calculos import resumen_asistencia_curso
+        from .constants import K_ASISTENCIAS
+
+        resumen = resumen_asistencia_curso(curso_data)
+        fechas = resumen["fechas"]
+        asistencias = curso_data.get(K_ASISTENCIAS, {})
+
+        alumnos_ordenados = sorted(
+            curso_data.get(K_ALUMNOS, {}).items(),
+            key=lambda item: int(item[0]),
+        )
+
+        pdf = PDFWithFooter(orientation='L', unit='mm', format='A4')
+        pdf.set_auto_page_break(auto=True, margin=15)
+        pdf.add_page()
+
+        # Título
+        pdf.set_font('helvetica', 'B', 14)
+        titulo_texto = f'{nombre_colegio.upper()} - REGISTRO DE ASISTENCIA - CURSO: {nombre_curso}' if nombre_colegio else f'REGISTRO DE ASISTENCIA - CURSO: {nombre_curso}'
+        pdf.cell(0, 10, titulo_texto, border=0, align='C')
+        pdf.ln(12)
+
+        # Determinar anchos de columna
+        # Ancho total disponible aprox 277 mm
+        w_n = 8
+        w_nombre = 45
+        w_stats = 10  # Para P, A, T, J
+        w_total = 12
+        w_porc = 14
+        stats_total_w = w_stats * 4 + w_total + w_porc  # 66 mm
+
+        espacio_fechas = 277 - (w_n + w_nombre + stats_total_w) # aprox 158 mm
+        max_fechas_por_pagina = 18
+
+        # Si hay muchas fechas, ajustamos el ancho de cada columna de fecha
+        num_fechas = len(fechas)
+        if num_fechas > 0:
+            w_fecha = max(8.0, min(14.0, espacio_fechas / num_fechas))
+        else:
+            w_fecha = 14.0
+
+        header_h = 7.0
+        row_h = 6.5
+        font_size = 8.0
+
+        # Cabecera
+        pdf.set_font('helvetica', 'B', font_size)
+        pdf.set_fill_color(240, 240, 240)
+
+        pdf.cell(w_n, header_h, 'N', border=1, align='C', fill=True)
+        pdf.cell(w_nombre, header_h, 'Nombre del Alumno', border=1, align='C', fill=True)
+
+        for fecha in fechas:
+            # Formato fecha corto DD/MM
+            partes = fecha.split('-')
+            fecha_corta = f"{partes[2]}/{partes[1]}" if len(partes) == 3 else fecha
+            pdf.cell(w_fecha, header_h, fecha_corta, border=1, align='C', fill=True)
+
+        pdf.cell(w_stats, header_h, 'P', border=1, align='C', fill=True)
+        pdf.cell(w_stats, header_h, 'A', border=1, align='C', fill=True)
+        pdf.cell(w_stats, header_h, 'T', border=1, align='C', fill=True)
+        pdf.cell(w_stats, header_h, 'J', border=1, align='C', fill=True)
+        pdf.cell(w_total, header_h, 'Total', border=1, align='C', fill=True)
+        pdf.cell(w_porc, header_h, '% Asist', border=1, align='C', fill=True)
+        pdf.ln()
+
+        # Filas de alumnos
+        pdf.set_font('helvetica', '', font_size)
+
+        for id_alumno, datos_alumno in alumnos_ordenados:
+            stats = resumen["por_alumno"].get(str(id_alumno), {})
+            pdf.cell(w_n, row_h, str(id_alumno), border=1, align='C')
+
+            nombre = datos_alumno.get(K_NOMBRE, "")
+            if len(nombre) > 23:
+                nombre = nombre[:20] + "..."
+            pdf.cell(w_nombre, row_h, nombre, border=1, align='L')
+
+            for fecha in fechas:
+                estado = asistencias.get(fecha, {}).get(str(id_alumno), "-")
+                if estado == "P":
+                    pdf.set_text_color(16, 185, 129)
+                elif estado == "A":
+                    pdf.set_text_color(239, 68, 68)
+                elif estado == "T":
+                    pdf.set_text_color(245, 158, 11)
+                elif estado == "J":
+                    pdf.set_text_color(59, 130, 246)
+                else:
+                    pdf.set_text_color(160, 160, 160)
+
+                pdf.cell(w_fecha, row_h, estado, border=1, align='C')
+                pdf.set_text_color(0, 0, 0)
+
+            pdf.cell(w_stats, row_h, str(stats.get('presentes', 0)), border=1, align='C')
+            pdf.cell(w_stats, row_h, str(stats.get('ausentes', 0)), border=1, align='C')
+            pdf.cell(w_stats, row_h, str(stats.get('tardes', 0)), border=1, align='C')
+            pdf.cell(w_stats, row_h, str(stats.get('justificados', 0)), border=1, align='C')
+            pdf.cell(w_total, row_h, str(stats.get('total_dias', 0)), border=1, align='C')
+
+            porc = stats.get('porcentaje_asistencia')
+            porc_str = f"{porc}%" if porc is not None else "-"
+            if porc is not None and porc < 75:
+                pdf.set_text_color(220, 50, 50)
+                pdf.set_font('helvetica', 'B', font_size)
+            pdf.cell(w_porc, row_h, porc_str, border=1, align='C')
+            pdf.set_text_color(0, 0, 0)
+            pdf.set_font('helvetica', '', font_size)
+
+            pdf.ln()
+
+        pdf.output(file_path)
+        return True, None
+    except Exception as e:
+        return False, str(e)

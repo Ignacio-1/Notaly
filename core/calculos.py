@@ -83,3 +83,117 @@ def procesar_calificaciones_alumno(trimestres_data: dict) -> dict:
         "notas_finales_redondeadas": [redondeo_especial(p) for p in resultados_finales_trimestrales],
         "nota_final_total_redondeada": redondeo_especial(promedio_final_total),
     }
+
+
+def resumen_asistencia_dia(asistencias_dia: dict) -> dict:
+    """
+    Calcula el conteo de cada estado para un día específico de asistencia.
+
+    Args:
+        asistencias_dia: Diccionario {id_alumno: estado_asistencia}
+
+    Returns:
+        Diccionario con conteos: presentes, ausentes, tardes, justificados, total_registrados.
+    """
+    conteos = {
+        "presentes": 0,
+        "ausentes": 0,
+        "tardes": 0,
+        "justificados": 0,
+        "total_registrados": 0,
+    }
+    if not isinstance(asistencias_dia, dict):
+        return conteos
+
+    for estado in asistencias_dia.values():
+        if estado == "P":
+            conteos["presentes"] += 1
+            conteos["total_registrados"] += 1
+        elif estado == "A":
+            conteos["ausentes"] += 1
+            conteos["total_registrados"] += 1
+        elif estado == "T":
+            conteos["tardes"] += 1
+            conteos["total_registrados"] += 1
+        elif estado == "J":
+            conteos["justificados"] += 1
+            conteos["total_registrados"] += 1
+
+    return conteos
+
+
+def resumen_asistencia_curso(curso_data: dict) -> dict:
+    """
+    Calcula las estadísticas globales de asistencia para cada alumno del curso.
+
+    Args:
+        curso_data: Diccionario del curso con claves 'alumnos' y 'asistencias'.
+
+    Returns:
+        Diccionario con estructura:
+        {
+            "total_fechas": int,
+            "fechas": list[str] (ordenadas cronológicamente),
+            "por_alumno": {
+                id_alumno: {
+                    "nombre": str,
+                    "presentes": int,
+                    "ausentes": int,
+                    "tardes": int,
+                    "justificados": int,
+                    "total_dias": int,
+                    "porcentaje_asistencia": float | None,
+                }
+            }
+        }
+    """
+    from .constants import K_ALUMNOS, K_ASISTENCIAS, K_NOMBRE
+
+    alumnos = curso_data.get(K_ALUMNOS, {})
+    asistencias = curso_data.get(K_ASISTENCIAS, {})
+
+    fechas_ordenadas = sorted(asistencias.keys())
+    total_fechas = len(fechas_ordenadas)
+
+    resumen_alumnos = {}
+
+    for id_alumno, datos_alumno in alumnos.items():
+        nombre = datos_alumno.get(K_NOMBRE, "")
+        p = 0
+        a = 0
+        t = 0
+        j = 0
+
+        for fecha in fechas_ordenadas:
+            estado = asistencias.get(fecha, {}).get(str(id_alumno))
+            if estado == "P":
+                p += 1
+            elif estado == "A":
+                a += 1
+            elif estado == "T":
+                t += 1
+            elif estado == "J":
+                j += 1
+
+        total_dias_alumno = p + a + t + j
+        if total_dias_alumno > 0:
+            porcentaje = round(((p + t) / total_dias_alumno) * 100, 1)
+        else:
+            porcentaje = None
+
+        resumen_alumnos[str(id_alumno)] = {
+            "nombre": nombre,
+            "presentes": p,
+            "ausentes": a,
+            "tardes": t,
+            "justificados": j,
+            "total_dias": total_dias_alumno,
+            "porcentaje_asistencia": porcentaje,
+        }
+
+    return {
+        "total_fechas": total_fechas,
+        "fechas": fechas_ordenadas,
+        "por_alumno": resumen_alumnos,
+    }
+
