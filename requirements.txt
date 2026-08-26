@@ -1,7 +1,9 @@
 # Dependencias de producción
 customtkinter>=5.2.0
+flet>=0.28.0
 colorama==0.4.6
 fpdf2==2.8.7
+
 
 # Dependencias de desarrollo
 pytest>=7.0.0

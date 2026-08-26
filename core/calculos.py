@@ -64,7 +64,7 @@ def procesar_calificaciones_alumno(trimestres_data: dict) -> dict:
     resultados_crudos_trimestrales = []
 
     for nombre_trimestre in NOMBRES_TRIMESTRES:
-        datos_trimestre = trimestres_data[nombre_trimestre]
+        datos_trimestre = trimestres_data.get(nombre_trimestre, {}) if isinstance(trimestres_data, dict) else {}
         promedio_final = calcular_nota_final_trimestre(datos_trimestre)
         promedio_crudo = calcular_promedio_crudo_trimestre(datos_trimestre)
         resultados_finales_trimestrales.append(promedio_final)

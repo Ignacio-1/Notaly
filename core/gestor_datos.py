@@ -39,6 +39,13 @@ def _get_config_dir() -> Path:
     Returns:
         Path al directorio de configuración de la aplicación.
     """
+    # Si Flet o el entorno móvil define una ruta de almacenamiento
+    flet_storage = os.getenv("FLET_APP_STORAGE_DATA")
+    if flet_storage:
+        config_dir = Path(flet_storage) / APP_NAME
+        config_dir.mkdir(parents=True, exist_ok=True)
+        return config_dir
+
     if sys.platform == "win32":
         # Windows: C:\Users\<User>\AppData\Roaming\<AppName>
         appdata = Path.home() / "AppData" / "Roaming"
@@ -51,7 +58,7 @@ def _get_config_dir() -> Path:
         # macOS: /Users/<User>/Library/Application Support/<AppName>
         config_dir = Path.home() / "Library" / "Application Support" / APP_NAME
     else:
-        # Linux y otros: /home/<user>/.config/<AppName>
+        # Linux, Android y otros: /home/<user>/.config/<AppName>
         config_dir = Path.home() / ".config" / APP_NAME
 
     config_dir.mkdir(parents=True, exist_ok=True)
@@ -61,6 +68,14 @@ def _get_config_dir() -> Path:
 # Archivo de configuración que guarda la RUTA de la base de datos.
 # Se almacena en una ubicación estándar del sistema operativo.
 CONFIG_FILE = _get_config_dir() / "config_path.json"
+
+
+def obtener_ruta_datos_por_defecto() -> str:
+    """
+    Retorna la ruta absoluta por defecto para el archivo de datos JSON.
+    """
+    return str(_get_config_dir() / DATA_FILENAME)
+
 
 
 def _escribir_archivo_seguro(ruta: Path, contenido: str) -> None:
