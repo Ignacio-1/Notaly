@@ -13,23 +13,47 @@ jobs:
       - name: Clonar repositorio
         uses: actions/checkout@v4
 
+      - name: Instalar dependencias del sistema
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev ninja-build
+
       - name: Configurar Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
+      - name: Configurar Flutter SDK
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
       - name: Configurar Python 3.12
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
-      - name: Instalar dependencias
+      - name: Instalar dependencias Python
         run: |
           python -m pip install --upgrade pip
           pip install flet[all] fpdf2
 
+      - name: Aceptar licencias de Android
+        run: |
+          yes | flutter doctor --android-licenses || true
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+
       - name: Compilar APK con Flet
+        run: |
+          flet build apk mobile_app.py \
+            --yes \
+            --project notaly \
+            --product "Notaly" \
+            --org com.notaly.app \
+            --build-version 2.0.0
+
+      - name: Firmar APK con apksigner (si los secrets estan configurados)
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
@@ -37,33 +61,31 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           if [ -n "$KEYSTORE_BASE64" ]; then
-            echo "Secrets de firma detectados. Configurando release.keystore..."
+            echo "Secrets detectados. Decodificando Keystore y firmando APK..."
             echo "$KEYSTORE_BASE64" | base64 -d > release.keystore
-            flet build apk . \
-              --yes \
-              --project notaly \
-              --product "Notaly" \
-              --org com.notaly.app \
-              --module-name mobile.main \
-              --build-version 2.0.0 \
-              --android-signing-key-store release.keystore \
-              --android-signing-key-store-password "$KEYSTORE_PASSWORD" \
-              --android-signing-key-alias "$KEY_ALIAS" \
-              --android-signing-key-password "$KEY_PASSWORD"
+            APKSIGNER=$(find $ANDROID_HOME/build-tools -name apksigner | sort -V | tail -n 1)
+            echo "Usando apksigner ubicado en: $APKSIGNER"
+            for apk in build/apk/*.apk; do
+              if [ -f "$apk" ]; then
+                echo "Firmando $apk..."
+                $APKSIGNER sign --ks release.keystore \
+                  --ks-pass "pass:$KEYSTORE_PASSWORD" \
+                  --ks-key-alias "$KEY_ALIAS" \
+                  --key-pass "pass:$KEY_PASSWORD" \
+                  --out "${apk%.apk}-signed.apk" "$apk"
+              fi
+            done
             rm -f release.keystore
+            echo "Firmado completado exitosamente."
           else
-            echo "Compilando sin secrets de firma..."
-            flet build apk . \
-              --yes \
-              --project notaly \
-              --product "Notaly" \
-              --org com.notaly.app \
-              --module-name mobile.main \
-              --build-version 2.0.0
+            echo "No se configuraron secrets de firma. Se usara el APK generado por defecto."
           fi
 
       - name: Subir APK como artefacto de descarga
         uses: actions/upload-artifact@v4
         with:
           name: Notaly-Android-APK
-          path: build/apk/*.apk
+          path: |
+            build/apk/*-signed.apk
+            build/apk/*.apk
+          retention-days: 30
