@@ -35,10 +35,6 @@ jobs:
           pip install flet[all] fpdf2
 
       - name: Compilar APK con Flet
-        run: |
-          flet build apk mobile/main.py --project notaly --org com.notaly.app --product-name "Notaly" --build-version 2.0.0
-
-      - name: Firmar APK con apksigner
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
@@ -46,30 +42,31 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           if [ -n "$KEYSTORE_BASE64" ]; then
-            echo "Secrets detectados. Decodificando Keystore y firmando..."
+            echo "Secrets de firma detectados. Configurando release.keystore..."
             echo "$KEYSTORE_BASE64" | base64 -d > release.keystore
-            APKSIGNER=$(find $ANDROID_HOME/build-tools -name apksigner | sort -V | tail -n 1)
-            echo "Usando apksigner ubicado en: $APKSIGNER"
-            for apk in build/apk/*.apk; do
-              if [ -f "$apk" ]; then
-                echo "Firmando $apk..."
-                $APKSIGNER sign --ks release.keystore \
-                  --ks-pass "pass:$KEYSTORE_PASSWORD" \
-                  --ks-key-alias "$KEY_ALIAS" \
-                  --key-pass "pass:$KEY_PASSWORD" \
-                  --out "${apk%.apk}-signed.apk" "$apk"
-              fi
-            done
+            flet build apk . \
+              --project notaly \
+              --product "Notaly" \
+              --org com.notaly.app \
+              --module-name mobile.main \
+              --build-version 2.0.0 \
+              --android-signing-key-store release.keystore \
+              --android-signing-key-store-password "$KEYSTORE_PASSWORD" \
+              --android-signing-key-alias "$KEY_ALIAS" \
+              --android-signing-key-password "$KEY_PASSWORD"
             rm -f release.keystore
-            echo "Firmado completado exitosamente."
           else
-            echo "No se configuraron secrets de firma. Se usara el APK estandar generado."
+            echo "Compilando sin secrets de firma..."
+            flet build apk . \
+              --project notaly \
+              --product "Notaly" \
+              --org com.notaly.app \
+              --module-name mobile.main \
+              --build-version 2.0.0
           fi
 
       - name: Subir APK como artefacto de descarga
         uses: actions/upload-artifact@v4
         with:
           name: Notaly-Android-APK
-          path: |
-            build/apk/*-signed.apk
-            build/apk/*.apk
+          path: build/apk/*.apk
