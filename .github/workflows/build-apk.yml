@@ -13,6 +13,20 @@ jobs:
       - name: Clonar repositorio
         uses: actions/checkout@v4
 
+      - name: Liberar espacio en disco (Seguro para Android)
+        run: |
+          echo "Espacio inicial:"
+          df -h /
+          # Eliminar SDKs no utilizados (.NET, Haskell, CodeQL, imagenes de emulador Android)
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/.ghcup
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          sudo rm -rf /usr/local/lib/android/sdk/system-images
+          sudo apt-get clean
+          echo "Espacio disponible tras limpieza (40GB+ libres):"
+          df -h /
+
       - name: Instalar dependencias del sistema
         run: |
           sudo apt-get update
