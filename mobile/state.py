@@ -159,8 +159,8 @@ class AppState:
             cursos = [c for c in cursos if query in c.lower()]
         return sorted(cursos)
 
-    def add_curso(self, nombre_colegio: str, nombre_curso: str) -> tuple[bool, str]:
-        """Crea un nuevo curso dentro de un colegio."""
+    def add_curso(self, nombre_colegio: str, nombre_curso: str, cantidad_alumnos: int = 0) -> tuple[bool, str]:
+        """Crea un nuevo curso dentro de un colegio con una cantidad inicial opcional de alumnos."""
         nombre_curso = nombre_curso.strip()
         if not nombre_curso:
             return False, "El nombre del curso no puede estar vacío."
@@ -170,8 +170,18 @@ class AppState:
         if nombre_curso in cursos_dict:
             return False, f"El curso '{nombre_curso}' ya existe en este colegio."
 
+        alumnos_dict = {}
+        if cantidad_alumnos > 0:
+            alumnos_dict = {
+                str(i): {
+                    K_NOMBRE: "",
+                    K_TRIMESTRES: crear_trimestres_vacios(),
+                }
+                for i in range(1, cantidad_alumnos + 1)
+            }
+
         cursos_dict[nombre_curso] = {
-            K_ALUMNOS: {},
+            K_ALUMNOS: alumnos_dict,
             K_ASISTENCIAS: {},
             K_NOMBRES_COLUMNAS: {
                 t: list(NOMBRES_COLUMNAS_DEFAULT) for t in NOMBRES_TRIMESTRES
@@ -431,6 +441,15 @@ class AppState:
         if not curso_dict:
             return {}
         return dict(curso_dict.get(K_ASISTENCIAS, {}).get(fecha, {}))
+
+    def get_fechas_asistencias(self, colegio: str | None = None, curso: str | None = None) -> list[str]:
+        """Retorna la lista de fechas (ISO YYYY-MM-DD) con asistencias registradas ordenadas descendentemente."""
+        curso_dict = self.get_curso_data(colegio, curso)
+        if not curso_dict:
+            return []
+        asistencias = curso_dict.get(K_ASISTENCIAS, {})
+        fechas = [f for f, datos in asistencias.items() if datos]
+        return sorted(fechas, reverse=True)
 
     def set_asistencia_alumno(
         self,

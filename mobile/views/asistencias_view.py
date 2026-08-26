@@ -7,6 +7,7 @@ from datetime import datetime, date, timedelta
 import flet as ft
 from mobile.state import AppState
 from mobile.components.export_dialog import ExportDialog
+from mobile.components.date_picker_dialog import DatePickerDialog
 from core.constants import (
     ESTADO_PRESENTE,
     ESTADO_AUSENTE,
@@ -70,13 +71,30 @@ class AsistenciasView(ft.Container):
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
         )
 
-        # 2. Selector y navegación de Fecha
+        # 2. Selector y navegación de Fecha con Búsqueda de Calendario
         fecha_str = self._formatear_fecha(fecha_actual)
+        btn_fecha_central = ft.Container(
+            content=ft.Row(
+                [
+                    ft.Icon(ft.Icons.CALENDAR_MONTH, color=ft.Colors.PRIMARY, size=20),
+                    ft.Text(fecha_str, size=15, weight=ft.FontWeight.BOLD),
+                    ft.Icon(ft.Icons.ARROW_DROP_DOWN, color=ft.Colors.PRIMARY, size=20),
+                ],
+                alignment=ft.MainAxisAlignment.CENTER,
+                spacing=4,
+            ),
+            ink=True,
+            border_radius=8,
+            padding=ft.Padding(left=8, right=8, top=6, bottom=6),
+            tooltip="Buscar fecha en el calendario",
+            on_click=lambda e: self._abrir_selector_fecha(),
+        )
+
         date_bar = ft.Card(
             elevation=1,
             shape=ft.RoundedRectangleBorder(radius=10),
             content=ft.Container(
-                padding=ft.Padding(left=8, right=8, top=6, bottom=6),
+                padding=ft.Padding(left=4, right=4, top=4, bottom=4),
                 content=ft.Row(
                     [
                         ft.IconButton(
@@ -84,18 +102,16 @@ class AsistenciasView(ft.Container):
                             tooltip="Día Anterior",
                             on_click=lambda e: self._cambiar_dia(-1),
                         ),
-                        ft.Row(
-                            [
-                                ft.Icon(ft.Icons.CALENDAR_MONTH, color=ft.Colors.PRIMARY, size=20),
-                                ft.Text(fecha_str, size=15, weight=ft.FontWeight.BOLD),
-                            ],
-                            alignment=ft.MainAxisAlignment.CENTER,
-                            spacing=6,
-                        ),
+                        btn_fecha_central,
                         ft.IconButton(
                             icon=ft.Icons.CHEVRON_RIGHT,
                             tooltip="Día Siguiente",
                             on_click=lambda e: self._cambiar_dia(1),
+                        ),
+                        ft.IconButton(
+                            icon=ft.Icons.EVENT,
+                            tooltip="Elegir Fecha en Calendario",
+                            on_click=lambda e: self._abrir_selector_fecha(),
                         ),
                         ft.TextButton(
                             "Hoy",
@@ -300,6 +316,22 @@ class AsistenciasView(ft.Container):
 
     def _ir_a_hoy(self):
         self.state.asistencia_fecha = datetime.now().strftime("%Y-%m-%d")
+        self._build_ui()
+        self.app_page.update()
+
+    def _abrir_selector_fecha(self):
+        fechas_reg = self.state.get_fechas_asistencias()
+        dlg = DatePickerDialog(
+            fecha_actual_iso=self.state.asistencia_fecha,
+            fechas_con_asistencia=fechas_reg,
+            on_date_selected=self._seleccionar_fecha_personalizada,
+            page=self.app_page,
+        )
+        self.app_page.show_dialog(dlg)
+        self.app_page.update()
+
+    def _seleccionar_fecha_personalizada(self, nueva_fecha_iso: str):
+        self.state.asistencia_fecha = nueva_fecha_iso
         self._build_ui()
         self.app_page.update()
 

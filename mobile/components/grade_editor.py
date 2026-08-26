@@ -1,6 +1,6 @@
 """
-Diálogo interactivo y táctil para ingresar y editar notas en Android/móvil.
-Ofrece botones de selección rápida (1-10) y campo numérico para decimales.
+Diálogo interactivo para ingresar y editar notas en Android/móvil.
+Ofrece un campo numérico optimizado con soporte para calificaciones enteras y decimales (1 a 10).
 """
 
 import flet as ft
@@ -21,7 +21,7 @@ class GradeEditorDialog(ft.AlertDialog):
         self.on_close_cb = on_close
         self.app_page = page
 
-        # Campo de texto para notas decimales o edición manual
+        # Campo de texto para notas decimales o enteras
         initial_val_str = ""
         if valor_actual is not None:
             if isinstance(valor_actual, float) and valor_actual.is_integer():
@@ -32,48 +32,22 @@ class GradeEditorDialog(ft.AlertDialog):
         self.txt_nota = ft.TextField(
             value=initial_val_str,
             label="Calificación (1 a 10)",
-            hint_text="Ej: 7 o 7.5",
+            hint_text="",
             keyboard_type=ft.KeyboardType.NUMBER,
             text_align=ft.TextAlign.CENTER,
-            text_size=22,
+            text_size=24,
             autofocus=True,
-            dense=True,
+            dense=False,
             border_color=ft.Colors.PRIMARY,
+            on_submit=lambda e: self._guardar_desde_input(),
         )
 
         self.error_text = ft.Text("", color=ft.Colors.ERROR, size=12, visible=False)
 
-        # Botones de acceso rápido 1 al 10
-        grid_buttons = []
-        for i in range(1, 11):
-            btn_color = ft.Colors.GREEN_700 if i >= 6 else ft.Colors.RED_700
-            grid_buttons.append(
-                ft.FilledButton(
-                    content=ft.Text(str(i), weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
-                    style=ft.ButtonStyle(
-                        bgcolor=btn_color,
-                        color=ft.Colors.WHITE,
-                        padding=ft.Padding(left=0, right=0, top=12, bottom=12),
-                        shape=ft.RoundedRectangleBorder(radius=8),
-                    ),
-                    on_click=lambda e, val=i: self._seleccionar_nota_rapida(val),
-                )
-            )
-
-        # Matriz 5x2 de botones rápidos
-        quick_grid = ft.GridView(
-            runs_count=5,
-            max_extent=55,
-            spacing=6,
-            run_spacing=6,
-            height=110,
-            controls=grid_buttons,
-        )
-
         content = ft.Column(
             tight=True,
-            spacing=14,
-            width=320,
+            spacing=12,
+            width=300,
             controls=[
                 ft.Container(
                     content=ft.Column(
@@ -87,8 +61,6 @@ class GradeEditorDialog(ft.AlertDialog):
                 ),
                 self.txt_nota,
                 self.error_text,
-                ft.Text("Selección rápida:", weight=ft.FontWeight.W_500, size=12, color=ft.Colors.GREY_700),
-                quick_grid,
             ],
         )
 
@@ -110,10 +82,6 @@ class GradeEditorDialog(ft.AlertDialog):
             actions_alignment=ft.MainAxisAlignment.END,
             modal=True,
         )
-
-    def _seleccionar_nota_rapida(self, valor: int):
-        self.on_save(valor)
-        self._cerrar()
 
     def _guardar_desde_input(self):
         raw = self.txt_nota.value.strip().replace(",", ".")

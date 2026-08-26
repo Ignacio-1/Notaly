@@ -4,7 +4,7 @@ Vista de Cursos: Listado, búsqueda y gestión de cursos pertenecientes al coleg
 
 import flet as ft
 from mobile.state import AppState
-from mobile.components.student_dialog import CreateEntityDialog, RenameDialog, ConfirmDeleteDialog
+from mobile.components.student_dialog import CreateCursoDialog, RenameDialog, ConfirmDeleteDialog
 
 
 class CursosView(ft.Container):
@@ -187,18 +187,16 @@ class CursosView(ft.Container):
         self.on_navigate(pestana)
 
     def _abrir_modal_crear(self, e):
-        def confirmar_creacion(nuevo_nombre):
-            exito, msg = self.state.add_curso(self.state.selected_colegio, nuevo_nombre)
+        def confirmar_creacion(nuevo_nombre, cant_alumnos):
+            exito, msg = self.state.add_curso(self.state.selected_colegio, nuevo_nombre, cant_alumnos)
             if exito:
                 self._build_ui()
                 self.app_page.update()
             else:
                 self._mostrar_snackbar(msg, error=True)
 
-        dlg = CreateEntityDialog(
+        dlg = CreateCursoDialog(
             titulo=f"Nuevo Curso en {self.state.selected_colegio}",
-            label_campo="Nombre del Curso",
-            hint="Ej: 3° A - Turno Tarde",
             on_confirm=confirmar_creacion,
             page=self.app_page,
         )

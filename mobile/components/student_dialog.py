@@ -59,6 +59,85 @@ class CreateEntityDialog(ft.AlertDialog):
                 pass
 
 
+class CreateCursoDialog(ft.AlertDialog):
+    """Diálogo para crear un Curso con nombre y cantidad inicial de alumnos."""
+
+    def __init__(
+        self,
+        titulo: str,
+        on_confirm: Callable[[str, int], None],
+        hint: str = "",
+        page: ft.Page | None = None,
+    ):
+        self.on_confirm = on_confirm
+        self.app_page = page
+        self.txt_nombre = ft.TextField(
+            label="Año y División / Nombre",
+            hint_text=hint,
+            autofocus=True,
+            capitalization=ft.TextCapitalization.WORDS,
+        )
+        self.txt_cantidad = ft.TextField(
+            label="Cantidad inicial de alumnos",
+            hint_text="",
+            value="",
+            keyboard_type=ft.KeyboardType.NUMBER,
+        )
+        self.lbl_error = ft.Text("", color=ft.Colors.ERROR, size=12, visible=False)
+
+        super().__init__(
+            title=ft.Text(titulo, weight=ft.FontWeight.BOLD),
+            content=ft.Column(
+                [
+                    self.txt_nombre,
+                    self.txt_cantidad,
+                    self.lbl_error,
+                ],
+                tight=True,
+                width=320,
+                spacing=12,
+            ),
+            actions=[
+                ft.TextButton("Cancelar", on_click=lambda e: self._cerrar()),
+                ft.FilledButton("Crear Curso", on_click=lambda e: self._confirmar()),
+            ],
+            actions_alignment=ft.MainAxisAlignment.END,
+            modal=True,
+        )
+
+    def _confirmar(self):
+        nom = self.txt_nombre.value.strip()
+        if not nom:
+            self.lbl_error.value = "El nombre del curso no puede estar vacío."
+            self.lbl_error.visible = True
+            if self.app_page:
+                self.app_page.update()
+            return
+
+        cant_str = self.txt_cantidad.value.strip()
+        cant = 0
+        if cant_str:
+            if not cant_str.isdigit():
+                self.lbl_error.value = "La cantidad debe ser un número entero positivo."
+                self.lbl_error.visible = True
+                if self.app_page:
+                    self.app_page.update()
+                return
+            cant = int(cant_str)
+
+        self.on_confirm(nom, cant)
+        self._cerrar()
+
+    def _cerrar(self):
+        self.open = False
+        if self.app_page:
+            try:
+                self.app_page.pop_dialog()
+                self.app_page.update()
+            except Exception:
+                pass
+
+
 class RenameDialog(ft.AlertDialog):
     """Diálogo para renombrar cualquier entidad."""
 

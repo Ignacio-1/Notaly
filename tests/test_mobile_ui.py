@@ -13,12 +13,14 @@ from mobile.views.notas_view import NotasView
 from mobile.views.asistencias_view import AsistenciasView
 from mobile.components.student_dialog import (
     CreateEntityDialog,
+    CreateCursoDialog,
     RenameDialog,
     ConfirmDeleteDialog,
     CustomizeColumnsDialog,
 )
 from mobile.components.grade_editor import GradeEditorDialog
 from mobile.components.export_dialog import ExportDialog
+from mobile.components.date_picker_dialog import DatePickerDialog
 from core.constants import (
     ESTADO_PRESENTE,
     ESTADO_AUSENTE,
@@ -258,9 +260,36 @@ class TestNavigationAndStateFlow:
         nombres = [al['nombre'] for al in alumnos.values()]
         assert nombres == ['Alvarez Sofia', 'Zarate Lucas']
 
+    def test_create_curso_dialog_with_initial_students(self, isolated_app_state, mock_page_mobile):
+        created = []
+        def on_confirm(nombre, cant):
+            created.append((nombre, cant))
+            isolated_app_state.add_curso("Colegio Nacional", nombre, cant)
+
+        dlg = CreateCursoDialog(
+            titulo="Nuevo Curso en Colegio Nacional",
+            on_confirm=on_confirm,
+            page=mock_page_mobile,
+        )
+        mock_page_mobile.show_dialog(dlg)
+
+        dlg.txt_nombre.value = "2° B"
+        dlg.txt_cantidad.value = "10"
+        dlg._confirmar()
+
+        assert len(created) == 1
+        assert created[0] == ("2° B", 10)
+        assert mock_page_mobile.active_dialog is None
+
+        # Verificar que el curso fue creado con 10 alumnos
+        curso_data = isolated_app_state.get_curso_data("Colegio Nacional", "2° B")
+        assert len(curso_data[K_ALUMNOS]) == 10
+        assert "1" in curso_data[K_ALUMNOS]
+        assert "10" in curso_data[K_ALUMNOS]
+
 
 class TestGradeEditorInteraction:
-    def test_grade_editor_quick_numpad_and_decimals(self, isolated_app_state, mock_page_mobile):
+    def test_grade_editor_input_and_decimals(self, isolated_app_state, mock_page_mobile):
         isolated_app_state.selected_colegio = 'Colegio Nacional'
         isolated_app_state.selected_curso = '5to A'
 
@@ -278,11 +307,15 @@ class TestGradeEditorInteraction:
         )
         mock_page_mobile.show_dialog(dlg)
         assert mock_page_mobile.active_dialog is dlg
+        assert dlg.txt_nota.value == '8'
 
-        dlg._seleccionar_nota_rapida(10)
+        # Guardar valor entero
+        dlg.txt_nota.value = '10'
+        dlg._guardar_desde_input()
         assert saved_values[-1] == 10
         assert mock_page_mobile.active_dialog is None
 
+        # Guardar valor decimal
         mock_page_mobile.show_dialog(dlg)
         dlg.txt_nota.value = '8.75'
         dlg._guardar_desde_input()
@@ -328,6 +361,34 @@ class TestAttendanceInteraction:
         assert kpis['presentes'] == 2
         assert kpis['ausentes'] == 0
         assert kpis['porcentaje_asistencia'] == 100.0
+
+    def test_attendance_custom_date_picker_and_search(self, isolated_app_state, mock_page_mobile):
+        isolated_app_state.selected_colegio = 'Colegio Nacional'
+        isolated_app_state.selected_curso = '5to A'
+        view = AsistenciasView(isolated_app_state, mock_page_mobile, on_navigate=lambda x: None)
+
+        # 1. Abrir diálogo de selector de fecha
+        view._abrir_selector_fecha()
+        assert isinstance(mock_page_mobile.active_dialog, DatePickerDialog)
+        dlg = mock_page_mobile.active_dialog
+
+        # 2. Navegar meses
+        mes_inicial = dlg.current_view_month
+        dlg._cambiar_mes(1)
+        assert dlg.current_view_month == (mes_inicial % 12) + 1
+
+        # 3. Seleccionar día específico por calendario
+        dlg._seleccionar_fecha("2026-05-15")
+        assert isolated_app_state.asistencia_fecha == "2026-05-15"
+        assert mock_page_mobile.active_dialog is None
+
+        # 4. Selección manual por texto DD/MM/AAAA
+        view._abrir_selector_fecha()
+        dlg2 = mock_page_mobile.active_dialog
+        dlg2.txt_manual.value = "10/03/2026"
+        dlg2._confirmar_manual()
+        assert isolated_app_state.asistencia_fecha == "2026-03-10"
+        assert mock_page_mobile.active_dialog is None
 
 
 class TestUnsavedDialogsAndModals:

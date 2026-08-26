@@ -100,7 +100,6 @@ def main(page: ft.Page):
                     ft.Text("Versión 2.0 (Multiplataforma)", size=13, color=ft.Colors.SECONDARY),
                     ft.Divider(height=12),
                     ft.Text("Gestión integral de colegios, cursos, calificaciones por trimestres, recuperatorios, asistencias y reportes PDF.", size=13),
-                    ft.Text(f"Ruta de base de datos:\n{state.data_path}", size=11, color=ft.Colors.GREY_600),
                 ],
                 tight=True,
                 width=320,
