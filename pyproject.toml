@@ -14,3 +14,14 @@ search_path = ["."]
 extraPaths = ["."]
 venvPath = "."
 venv = "venv"
+
+[tool.flet]
+project_name = "notaly"
+product_name = "Notaly"
+org_name = "com.notaly.app"
+module_name = "mobile_app"
+build_version = "2.0.0"
+
+[tool.flet.app]
+path = "."
+module = "mobile_app"

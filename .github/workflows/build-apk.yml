@@ -46,7 +46,8 @@ jobs:
 
       - name: Compilar APK con Flet
         run: |
-          flet build apk mobile_app.py \
+          flet build apk . \
+            --module-name mobile_app \
             --yes \
             --project notaly \
             --product "Notaly" \
