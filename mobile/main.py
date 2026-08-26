@@ -24,6 +24,9 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+from mobile.components.cloud_backup_dialog import CloudBackupDialog
+
+
 def main(page: ft.Page):
     page.title = "Notaly - Gestor Educativo"
     page.theme_mode = ft.ThemeMode.LIGHT
@@ -55,6 +58,11 @@ def main(page: ft.Page):
             main_container.content = AsistenciasView(state, page, on_navigate=navigate)
         page.update()
 
+    def abrir_modal_nube():
+        dlg = CloudBackupDialog(state, page)
+        page.show_dialog(dlg)
+        page.update()
+
     def abrir_modal_backup():
         def guardar_backup():
             try:
@@ -79,11 +87,11 @@ def main(page: ft.Page):
                 page.update()
 
         dlg = ft.AlertDialog(
-            title=ft.Text("Copia de Seguridad", weight=ft.FontWeight.BOLD),
+            title=ft.Text("Copia Local", weight=ft.FontWeight.BOLD),
             content=ft.Text("¿Deseas exportar una copia de seguridad completa de la base de datos a tu carpeta de Descargas?"),
             actions=[
                 ft.TextButton("Cancelar", on_click=lambda e: (page.pop_dialog(), page.update())),
-                ft.FilledButton("Exportar Backup", on_click=lambda e: (page.pop_dialog(), page.update(), guardar_backup())),
+                ft.FilledButton("Exportar a Descargas", on_click=lambda e: (page.pop_dialog(), page.update(), guardar_backup())),
             ],
             actions_alignment=ft.MainAxisAlignment.END,
             modal=True,
@@ -126,8 +134,13 @@ def main(page: ft.Page):
                 icon=ft.Icons.MORE_VERT,
                 items=[
                     ft.PopupMenuItem(
-                        icon=ft.Icons.BACKUP,
-                        content=ft.Text("Copia de Seguridad"),
+                        icon=ft.Icons.CLOUD_SYNC,
+                        content=ft.Text("Copia en la Nube (Google Drive)"),
+                        on_click=lambda e: abrir_modal_nube(),
+                    ),
+                    ft.PopupMenuItem(
+                        icon=ft.Icons.DOWNLOAD_FOR_OFFLINE,
+                        content=ft.Text("Copia Local (.json)"),
                         on_click=lambda e: abrir_modal_backup(),
                     ),
                     ft.PopupMenuItem(
@@ -139,6 +152,7 @@ def main(page: ft.Page):
             ),
         ],
     )
+
 
     page.add(main_container)
 

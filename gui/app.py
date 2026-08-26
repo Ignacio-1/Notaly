@@ -51,6 +51,7 @@ from core.exportador import (
     exportar_asistencias_a_texto,
     exportar_asistencias_a_pdf,
 )
+from gui.cloud_backup_modal import CloudBackupModal
 
 logger = logging.getLogger(__name__)
 
@@ -322,6 +323,14 @@ class AppPromedios:
             command=lambda: self.modal_crear("colegio")
         ).pack(side=tk.RIGHT)
         
+        ctk.CTkButton(
+            right_frame, text="☁️ Nube (Drive)", 
+            fg_color="transparent", border_width=1, border_color=self.paleta["borde_sutil"],
+            text_color=self.paleta["azul_fg"], hover_color=self.paleta["card_btn_hover"],
+            font=self.font_button, corner_radius=8, height=36,
+            command=self.abrir_modal_nube
+        ).pack(side=tk.RIGHT, padx=(10, 0))
+
         ctk.CTkButton(
             right_frame, text="📥 Importar Datos", 
             fg_color="transparent", border_width=1, border_color=self.paleta["borde_sutil"],
@@ -1219,6 +1228,14 @@ class AppPromedios:
 
         # Refrescar la pantalla
         self.mostrar_pantalla_colegios()
+
+    def abrir_modal_nube(self):
+        """Abre la ventana modal de sincronización con Google Drive."""
+        def _on_updated():
+            self.datos = gestor_datos.cargar_datos(self.ruta_datos)
+            self.mostrar_pantalla_colegios()
+
+        CloudBackupModal(self.root, self.paleta, _on_updated)
 
     def _guardar_datos_con_recuperacion(self):
         """Intenta guardar los datos y maneja errores ofreciendo recuperación."""

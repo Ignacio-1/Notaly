@@ -17,6 +17,7 @@ dist/
 
 # Archivos de datos de la aplicación
 config_path.json
+cloud_auth.json
 data.json
 *.bak
 *.tmp
