@@ -13,24 +13,34 @@ jobs:
       - name: Clonar repositorio
         uses: actions/checkout@v4
 
-      - name: Liberar espacio en disco (Seguro para Android)
+      - name: Liberar espacio en disco (Maximo ~70GB libres)
         run: |
-          echo "Espacio inicial:"
+          echo "Espacio antes de la limpieza:"
           df -h /
-          # Eliminar SDKs no utilizados (.NET, Haskell, CodeQL, imagenes de emulador Android)
+          
+          # Detener docker y eliminar todas las imagenes cacheadas (~30 GB)
+          sudo systemctl stop docker || true
+          sudo rm -rf /var/lib/docker
+          
+          # Eliminar frameworks no utilizados (~35 GB)
           sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/share/boost
           sudo rm -rf /opt/ghc
           sudo rm -rf /usr/local/.ghcup
-          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          sudo rm -rf /usr/share/swift
+          sudo rm -rf /opt/julia
+          
+          # Eliminar solo imagenes pesadas de emuladores Android (~10 GB, manteniendo SDK intacto)
           sudo rm -rf /usr/local/lib/android/sdk/system-images
+          
+          # Limpiar caches del sistema
           sudo apt-get clean
-          echo "Espacio disponible tras limpieza (40GB+ libres):"
+          sudo apt-get autoclean
+          sudo apt-get autoremove -y
+          sudo rm -rf /var/log/*
+          
+          echo "Espacio disponible despues de la limpieza:"
           df -h /
-
-      - name: Instalar dependencias del sistema
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev ninja-build
 
       - name: Configurar Java 17
         uses: actions/setup-java@v4
@@ -48,6 +58,11 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Instalar dependencias del sistema
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev ninja-build
+
       - name: Instalar dependencias Python
         run: |
           python -m pip install --upgrade pip
@@ -58,10 +73,11 @@ jobs:
           yes | flutter doctor --android-licenses || true
           yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
 
-      - name: Compilar APK con Flet
+      - name: Compilar APK con Flet (Android 64-bit ARM64)
         run: |
           flet build apk . \
             --module-name mobile_app \
+            --arch arm64-v8a \
             --yes \
             --project notaly \
             --product "Notaly" \
