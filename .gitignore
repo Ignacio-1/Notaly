@@ -27,3 +27,7 @@ data.json
 # Archivos de IDE
 .vscode/
 .idea/
+
+
+*.jks
+*.keystore

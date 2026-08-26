@@ -1,4 +1,4 @@
-name: Compilar APK Android (Notaly)
+name: Compilar y Firmar APK Android (Notaly)
 
 on:
   workflow_dispatch:
@@ -38,8 +38,27 @@ jobs:
         run: |
           flet build apk mobile/main.py --project notaly --org com.notaly.app --product-name "Notaly" --build-version 2.0.0
 
+      - name: Firmar APK con Keystore (si los secrets estan configurados)
+        id: sign_apk
+        if: ${{ env.KEYSTORE_BASE64 != '' }}
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        uses: rignaneseleo/signer-action@v1
+        with:
+          action: 'sign'
+          releaseDirectory: 'build/apk'
+          signingKeyBase64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          alias: ${{ secrets.KEY_ALIAS }}
+          keyStorePassword: ${{ secrets.KEYSTORE_PASSWORD }}
+          keyPassword: ${{ secrets.KEY_PASSWORD }}
+
       - name: Subir APK como artefacto de descarga
         uses: actions/upload-artifact@v4
         with:
           name: Notaly-Android-APK
-          path: build/apk/*.apk
+          path: |
+            build/apk/*-signed.apk
+            build/apk/*.apk
