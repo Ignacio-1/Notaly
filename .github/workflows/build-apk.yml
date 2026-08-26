@@ -38,23 +38,33 @@ jobs:
         run: |
           flet build apk mobile/main.py --project notaly --org com.notaly.app --product-name "Notaly" --build-version 2.0.0
 
-      - name: Firmar APK con apksigner (si los secrets estan configurados)
-        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+      - name: Firmar APK con apksigner
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
-          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > release.keystore
-          APKSIGNER=$(find $ANDROID_HOME/build-tools -name apksigner | sort -V | tail -n 1)
-          echo "Usando apksigner ubicado en: $APKSIGNER"
-          for apk in build/apk/*.apk; do
-            if [ -f "$apk" ]; then
-              echo "Firmando $apk..."
-              $APKSIGNER sign --ks release.keystore \
-                --ks-pass "pass:${{ secrets.KEYSTORE_PASSWORD }}" \
-                --ks-key-alias "${{ secrets.KEY_ALIAS }}" \
-                --key-pass "pass:${{ secrets.KEY_PASSWORD }}" \
-                --out "${apk%.apk}-signed.apk" "$apk"
-            fi
-          done
-          rm -f release.keystore
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "Secrets detectados. Decodificando Keystore y firmando..."
+            echo "$KEYSTORE_BASE64" | base64 -d > release.keystore
+            APKSIGNER=$(find $ANDROID_HOME/build-tools -name apksigner | sort -V | tail -n 1)
+            echo "Usando apksigner ubicado en: $APKSIGNER"
+            for apk in build/apk/*.apk; do
+              if [ -f "$apk" ]; then
+                echo "Firmando $apk..."
+                $APKSIGNER sign --ks release.keystore \
+                  --ks-pass "pass:$KEYSTORE_PASSWORD" \
+                  --ks-key-alias "$KEY_ALIAS" \
+                  --key-pass "pass:$KEY_PASSWORD" \
+                  --out "${apk%.apk}-signed.apk" "$apk"
+              fi
+            done
+            rm -f release.keystore
+            echo "Firmado completado exitosamente."
+          else
+            echo "No se configuraron secrets de firma. Se usara el APK estandar generado."
+          fi
 
       - name: Subir APK como artefacto de descarga
         uses: actions/upload-artifact@v4
