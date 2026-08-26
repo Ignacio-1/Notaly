@@ -19,11 +19,6 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Configurar Flutter SDK
-        uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-
       - name: Configurar Python 3.12
         uses: actions/setup-python@v5
         with:
@@ -45,6 +40,7 @@ jobs:
             echo "Secrets de firma detectados. Configurando release.keystore..."
             echo "$KEYSTORE_BASE64" | base64 -d > release.keystore
             flet build apk . \
+              --yes \
               --project notaly \
               --product "Notaly" \
               --org com.notaly.app \
@@ -58,6 +54,7 @@ jobs:
           else
             echo "Compilando sin secrets de firma..."
             flet build apk . \
+              --yes \
               --project notaly \
               --product "Notaly" \
               --org com.notaly.app \
