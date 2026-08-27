@@ -8,7 +8,7 @@ import tkinter as tk
 from tkinter import messagebox
 import customtkinter as ctk
 
-from core.cloud_drive import cloud_drive
+from core.cloud_drive import cloud_drive, extraer_codigo_oauth
 from core import gestor_datos
 
 
@@ -22,7 +22,7 @@ class CloudBackupModal(ctk.CTkToplevel):
         self.on_data_updated = on_data_updated_callback
 
         self.title("Copia de Seguridad en la Nube")
-        self.geometry("520x440")
+        self.geometry("520x460")
         self.resizable(False, False)
         self.transient(parent)
         self.grab_set()
@@ -31,7 +31,7 @@ class CloudBackupModal(ctk.CTkToplevel):
         self.update_idletasks()
         try:
             x = parent.winfo_x() + (parent.winfo_width() // 2) - (520 // 2)
-            y = parent.winfo_y() + (parent.winfo_height() // 2) - (440 // 2)
+            y = parent.winfo_y() + (parent.winfo_height() // 2) - (460 // 2)
             self.geometry(f"+{x}+{y}")
         except Exception:
             pass
@@ -213,6 +213,17 @@ class CloudBackupModal(ctk.CTkToplevel):
                 hover_color=self.paleta.get("azul_hover", "#1D4ED8"),
                 font=("Segoe UI", 13, "bold"),
                 command=self._iniciar_login,
+            ).pack(fill=tk.X, pady=(0, 6))
+
+            ctk.CTkButton(
+                no_auth_frame,
+                text="¿Problemas con la redirección? Pegar código manual",
+                height=24,
+                fg_color="transparent",
+                text_color=self.paleta.get("azul_fg", "#2563EB"),
+                hover_color="#F3F4F6",
+                font=("Segoe UI", 11),
+                command=self._pedir_codigo_manual,
             ).pack(fill=tk.X)
 
             # Tarjeta de acciones desactivada
@@ -222,6 +233,38 @@ class CloudBackupModal(ctk.CTkToplevel):
                 font=("Segoe UI", 11, "italic"),
                 text_color="#9CA3AF",
             ).pack(pady=30)
+
+    def _pedir_codigo_manual(self):
+        input_dlg = ctk.CTkInputDialog(
+            text="Pega el enlace de la barra de direcciones o el código de Google:",
+            title="Vincular Cuenta Manualmente"
+        )
+        texto = input_dlg.get_input()
+        if not texto:
+            return
+        codigo = extraer_codigo_oauth(texto)
+        if not codigo:
+            messagebox.showerror("Error", "No se detectó un código o enlace válido.", parent=self)
+            return
+
+        self._set_status("Vinculando cuenta con Google...")
+        def _task():
+            cloud_drive._shutdown_server()
+            success, message = cloud_drive.exchange_code_for_tokens(codigo)
+            if success:
+                self.after(0, lambda: [
+                    self._set_status("¡Cuenta conectada exitosamente!"),
+                    self._refrescar_ui(),
+                    self._consultar_info_backup_async(),
+                    messagebox.showinfo("Éxito", "¡Cuenta vinculada correctamente!", parent=self),
+                ])
+            else:
+                self.after(0, lambda: [
+                    self._set_status(f"Error: {message}", error=True),
+                    self._refrescar_ui(),
+                    messagebox.showerror("Error de Vinculación", message, parent=self),
+                ])
+        threading.Thread(target=_task, daemon=True).start()
 
     def _iniciar_login(self):
         can_auth, msg = cloud_drive.can_authenticate()

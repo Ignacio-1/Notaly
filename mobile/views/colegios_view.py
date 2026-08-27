@@ -161,7 +161,7 @@ class ColegiosView(ft.Container):
         dlg = CreateEntityDialog(
             titulo="Nuevo Colegio",
             label_campo="Nombre del Colegio",
-            hint="Ej: Instituto San Martín",
+            hint="",
             on_confirm=confirmar_creacion,
             page=self.app_page,
         )

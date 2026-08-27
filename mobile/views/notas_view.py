@@ -498,7 +498,7 @@ class NotasView(ft.Container):
         dlg = CreateEntityDialog(
             titulo="Agregar Alumno",
             label_campo="Nombre y Apellido",
-            hint="Ej: Juan Pérez",
+            hint="",
             on_confirm=confirmar,
             page=self.app_page,
         )

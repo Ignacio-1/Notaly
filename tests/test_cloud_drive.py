@@ -515,3 +515,48 @@ def test_cerrar_sesion_limpia_memoria_y_disco(isolated_drive_manager):
     assert manager.get_user_email() == "Desconocido"
     assert manager.get_user_name() == "Usuario"
     assert not auth_file.exists()
+
+
+# =============================================================================
+# --- 4. PRUEBAS DE EXTRACCIÓN DE CÓDIGO Y SERVIDOR OAUTH ---
+# =============================================================================
+
+def test_extraer_codigo_oauth_formatos():
+    """Verifica que extraer_codigo_oauth maneje URLs completas, queries y códigos puros."""
+    from core.cloud_drive import extraer_codigo_oauth
+
+    # URL completa de redirección
+    url = "http://localhost:8550/api/oauth/redirect?state=&code=4%2F0AZX123_abc&scope=email"
+    assert extraer_codigo_oauth(url) == "4/0AZX123_abc"
+
+    # Query simple
+    query = "code=4/0AZX456_def&scope=drive"
+    assert extraer_codigo_oauth(query) == "4/0AZX456_def"
+
+    # Código puro
+    puro = "4/0AZX789_ghi"
+    assert extraer_codigo_oauth(puro) == "4/0AZX789_ghi"
+
+    # Con espacios
+    espaciado = "  4/0AZX_spaced  "
+    assert extraer_codigo_oauth(espaciado) == "4/0AZX_spaced"
+
+    # Vacío o None
+    assert extraer_codigo_oauth("") == ""
+    assert extraer_codigo_oauth(None) == ""
+
+
+def test_iniciar_auth_desktop_invoca_custom_browser_opener(isolated_drive_manager):
+    """Verifica que iniciar_auth_desktop invoque la función personalizada de apertura de navegador."""
+    manager, _ = isolated_drive_manager
+    custom_opener = MagicMock()
+    callback = MagicMock()
+
+    with patch.object(manager, "can_authenticate", return_value=(True, "")), \
+         patch("threading.Thread") as mock_thread:
+        auth_url = manager.iniciar_auth_desktop(callback, open_browser_func=custom_opener)
+
+        assert "accounts.google.com" in auth_url
+        assert custom_opener.called
+        assert custom_opener.call_args[0][0] == auth_url
+

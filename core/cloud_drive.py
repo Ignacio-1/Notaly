@@ -45,6 +45,30 @@ def _get_auth_file() -> Path:
     return _get_config_dir() / AUTH_FILENAME
 
 
+def extraer_codigo_oauth(input_text: str) -> str:
+    """
+    Extrae el código de autorización OAuth 2.0 a partir de:
+    - Una URL completa de redireccionamiento (ej. http://localhost:8550/api/oauth/redirect?code=4/0A...)
+    - Un fragmento de consulta (ej. code=4/0A...)
+    - El código puro (ej. 4/0A...)
+    """
+    if not input_text:
+        return ""
+    texto = input_text.strip()
+    if "code=" in texto:
+        try:
+            parsed = urllib.parse.urlparse(texto)
+            qs = urllib.parse.parse_qs(parsed.query if parsed.query else texto)
+            if "code" in qs and qs["code"]:
+                return qs["code"][0]
+        except Exception:
+            pass
+        for parte in texto.split("&"):
+            if "code=" in parte:
+                return urllib.parse.unquote(parte.split("code=", 1)[1])
+    return urllib.parse.unquote(texto)
+
+
 class GoogleDriveManager:
     """Administrador de autenticación OAuth 2.0 y operaciones en Google Drive appDataFolder."""
 
@@ -376,22 +400,42 @@ class GoogleDriveManager:
             return False, f"Error al conectar con Google Drive: {e}"
 
     # =========================================================================
-    # --- SERVIDOR OAUTH LOCAL PARA ESCRITORIO (PC) ---
+    # --- SERVIDOR OAUTH LOCAL PARA ESCRITORIO Y MÓVIL ---
     # =========================================================================
 
-    def iniciar_auth_desktop(self, on_finish: Callable[[bool, str], None]) -> None:
+    def iniciar_auth_desktop(
+        self,
+        on_finish: Callable[[bool, str], None],
+        open_browser_func: Callable[[str], None] | None = None
+    ) -> str:
         """
-        Inicia el flujo OAuth en PC abriendo el navegador del usuario y escuchando
+        Inicia el flujo OAuth en PC o móvil abriendo el navegador del usuario y escuchando
         la respuesta en http://localhost:8550/api/oauth/redirect.
+
+        Args:
+            on_finish: Callback (success, message) al completar la autenticación.
+            open_browser_func: Función opcional para abrir URLs (ej. page.launch_url en Flet).
+                               Si es None, utiliza webbrowser.open().
+
+        Returns:
+            URL de autenticación de Google generada.
         """
         ok, msg = self.can_authenticate()
+        auth_url = self.get_auth_url(REDIRECT_URI_DESKTOP)
         if not ok:
             on_finish(False, msg)
-            return
+            return auth_url
 
         if self._server_running:
-            on_finish(False, "Ya hay un proceso de autenticación en curso.")
-            return
+            if open_browser_func:
+                try:
+                    open_browser_func(auth_url)
+                except Exception as e:
+                    logger.warning("Fallo al abrir navegador con open_browser_func: %s", e)
+                    webbrowser.open(auth_url)
+            else:
+                webbrowser.open(auth_url)
+            return auth_url
 
         class OAuthCallbackHandler(BaseHTTPRequestHandler):
             def log_message(self, format, *args):
@@ -444,9 +488,15 @@ class GoogleDriveManager:
                 manager._shutdown_server()
                 on_finish(False, f"Autorización cancelada: {err}")
 
+        class ReusableHTTPServer(HTTPServer):
+            allow_reuse_address = True
+
         def _run_server():
             try:
-                self._httpd = HTTPServer(("localhost", REDIRECT_PORT), OAuthCallbackHandler)
+                try:
+                    self._httpd = ReusableHTTPServer(("127.0.0.1", REDIRECT_PORT), OAuthCallbackHandler)
+                except Exception:
+                    self._httpd = ReusableHTTPServer(("", REDIRECT_PORT), OAuthCallbackHandler)
                 self._server_running = True
                 logger.info("Servidor OAuth local iniciado en puerto %d", REDIRECT_PORT)
                 self._httpd.serve_forever()
@@ -458,13 +508,25 @@ class GoogleDriveManager:
         server_thread = threading.Thread(target=_run_server, daemon=True)
         server_thread.start()
 
-        # Abrir el navegador del usuario con la URL de OAuth
-        auth_url = self.get_auth_url(REDIRECT_URI_DESKTOP)
-        webbrowser.open(auth_url)
+        # Abrir el navegador usando la función provista (ej. Flet launch_url) o webbrowser
+        if open_browser_func:
+            try:
+                open_browser_func(auth_url)
+            except Exception as e:
+                logger.warning("Fallo al abrir navegador con open_browser_func: %s", e)
+                webbrowser.open(auth_url)
+        else:
+            webbrowser.open(auth_url)
+
+        return auth_url
 
     def _shutdown_server(self) -> None:
         """Detiene el servidor HTTP local tras completar la autorización."""
         if self._httpd:
+            try:
+                self._httpd.server_close()
+            except Exception:
+                pass
             try:
                 threading.Thread(target=self._httpd.shutdown).start()
             except Exception:

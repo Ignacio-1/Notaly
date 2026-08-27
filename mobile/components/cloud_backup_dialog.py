@@ -5,7 +5,7 @@ Desarrollado para Flet (compatible con Android y PC).
 
 import threading
 import flet as ft
-from core.cloud_drive import cloud_drive
+from core.cloud_drive import cloud_drive, extraer_codigo_oauth
 from core import gestor_datos
 from mobile.state import AppState
 
@@ -16,10 +16,18 @@ class CloudBackupDialog(ft.AlertDialog):
     def __init__(self, state: AppState, page: ft.Page):
         self.app_state = state
         self.app_page = page
+        self._login_in_progress = False
+        self._auth_url = ""
 
         self.loading_indicator = ft.ProgressRing(width=24, height=24, stroke_width=3, visible=False)
         self.status_message = ft.Text("", size=12, color=ft.Colors.SECONDARY, selectable=True)
         self.backup_info_text = ft.Text("Buscando copias en la nube...", size=13, italic=True)
+        self.code_input = ft.TextField(
+            hint_text="Pega aquí el enlace o código de Google...",
+            text_size=12,
+            dense=True,
+            expand=True,
+        )
 
         # Contenedores dinámicos
         self.account_container = ft.Container()
@@ -76,6 +84,7 @@ class CloudBackupDialog(ft.AlertDialog):
     def _refrescar_ui(self):
         """Reconstruye el contenido según el estado de autenticación."""
         if cloud_drive.is_authenticated():
+            self._login_in_progress = False
             email = cloud_drive.get_user_email()
             nombre = cloud_drive.get_user_name()
             
@@ -125,6 +134,52 @@ class CloudBackupDialog(ft.AlertDialog):
                 ],
                 spacing=10,
             )
+        elif self._login_in_progress:
+            # Vista interactiva durante el proceso de login en navegador
+            self.account_container.content = ft.Container(
+                bgcolor=ft.Colors.SURFACE_CONTAINER_HIGH,
+                padding=14,
+                border_radius=10,
+                content=ft.Column(
+                    [
+                        ft.Row(
+                            [
+                                ft.ProgressRing(width=20, height=20, stroke_width=2),
+                                ft.Text("Esperando autorización en el navegador...", size=13, weight=ft.FontWeight.W_500, expand=True),
+                            ],
+                            spacing=10,
+                        ),
+                        ft.Container(height=4),
+                        ft.OutlinedButton(
+                            "Reabrir Navegador",
+                            icon=ft.Icons.OPEN_IN_BROWSER,
+                            width=360,
+                            on_click=lambda e: self._reabrir_navegador(),
+                        ),
+                        ft.Divider(height=12),
+                        ft.Text("¿El navegador no regresó a la app automáticamente?", size=12, weight=ft.FontWeight.BOLD),
+                        ft.Text("Copia el enlace o código de la barra de direcciones y pégalo aquí:", size=11, color=ft.Colors.SECONDARY),
+                        ft.Row(
+                            [
+                                self.code_input,
+                                ft.IconButton(
+                                    icon=ft.Icons.CHECK_CIRCLE,
+                                    icon_color=ft.Colors.PRIMARY,
+                                    tooltip="Vincular con este código",
+                                    on_click=lambda e: self._procesar_codigo_manual(),
+                                ),
+                            ],
+                            spacing=6,
+                        ),
+                        ft.TextButton(
+                            "Cancelar proceso",
+                            on_click=lambda e: self._cancelar_login(),
+                        ),
+                    ],
+                    spacing=8,
+                ),
+            )
+            self.actions_container.content = ft.Container()
         else:
             self.account_container.content = ft.Container(
                 bgcolor=ft.Colors.SURFACE_CONTAINER_HIGH,
@@ -160,9 +215,12 @@ class CloudBackupDialog(ft.AlertDialog):
             self._mostrar_snackbar(msg, error=True)
             return
 
-        self._set_cargando(True, "Abriendo navegador para iniciar sesión...")
+        self._login_in_progress = True
+        self.code_input.value = ""
+        self._refrescar_ui()
 
         def on_finish(success: bool, message: str):
+            self._login_in_progress = False
             self._set_cargando(False)
             if success:
                 self._mostrar_snackbar("¡Cuenta de Google conectada con éxito!")
@@ -172,8 +230,45 @@ class CloudBackupDialog(ft.AlertDialog):
                 self._mostrar_snackbar(f"Error al conectar: {message}", error=True)
                 self._refrescar_ui()
 
-        # Iniciar servidor OAuth en PC o abrir flujo
-        cloud_drive.iniciar_auth_desktop(on_finish)
+        # Iniciar servidor OAuth y abrir navegador nativo usando page.launch_url
+        self._auth_url = cloud_drive.iniciar_auth_desktop(
+            on_finish,
+            open_browser_func=lambda url: self.app_page.launch_url(url),
+        )
+
+    def _reabrir_navegador(self):
+        if self._auth_url:
+            self.app_page.launch_url(self._auth_url)
+
+    def _procesar_codigo_manual(self):
+        texto = self.code_input.value
+        codigo = extraer_codigo_oauth(texto)
+        if not codigo:
+            self._mostrar_snackbar("Por favor ingresa un código o enlace válido.", error=True)
+            return
+
+        self._set_cargando(True, "Vinculando cuenta...")
+
+        def _task():
+            cloud_drive._shutdown_server()
+            success, message = cloud_drive.exchange_code_for_tokens(codigo)
+            self._set_cargando(False)
+            self._login_in_progress = False
+            if success:
+                self._mostrar_snackbar("¡Cuenta de Google conectada con éxito!")
+                self._refrescar_ui()
+                self._consultar_info_backup_async()
+            else:
+                self._mostrar_snackbar(f"Error al vincular: {message}", error=True)
+                self._refrescar_ui()
+
+        threading.Thread(target=_task, daemon=True).start()
+
+    def _cancelar_login(self):
+        cloud_drive._shutdown_server()
+        self._login_in_progress = False
+        self._set_cargando(False)
+        self._refrescar_ui()
 
     def _cerrar_sesion(self):
         cloud_drive.cerrar_sesion()
