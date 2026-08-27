@@ -518,3 +518,198 @@ class AppState:
         alumnos = curso_dict.get(K_ALUMNOS, {})
         asistencias = curso_dict.get(K_ASISTENCIAS, {})
         return resumen_asistencia_curso(asistencias, alumnos)
+
+    # =========================================================================
+    # --- GESTIÓN DE COPIAS DE SEGURIDAD Y RESUMEN DE DATOS ---
+    # =========================================================================
+
+    def get_data_summary(self) -> dict:
+        """
+        Retorna un resumen cuantitativo y metadatos de los datos actuales en memoria / disco.
+        """
+        colegios = self.data.get(K_COLEGIOS, {})
+        total_colegios = len(colegios)
+        total_cursos = 0
+        total_alumnos = 0
+
+        for col_data in colegios.values():
+            cursos = col_data.get(K_CURSOS, {})
+            total_cursos += len(cursos)
+            for cur_data in cursos.values():
+                alumnos = cur_data.get(K_ALUMNOS, {})
+                total_alumnos += len(alumnos)
+
+        file_path = Path(self.data_path)
+        file_size_kb = 0.0
+        last_modified = "Sin guardar"
+        if file_path.exists():
+            try:
+                stat = file_path.stat()
+                file_size_kb = round(stat.st_size / 1024, 2)
+                last_modified = datetime.fromtimestamp(stat.st_mtime).strftime("%d/%m/%Y %H:%M:%S")
+            except Exception:
+                pass
+
+        return {
+            "total_colegios": total_colegios,
+            "total_cursos": total_cursos,
+            "total_alumnos": total_alumnos,
+            "file_size_kb": file_size_kb,
+            "last_modified": last_modified,
+            "data_path": str(file_path),
+        }
+
+    def create_local_backup(self, target_dir: str | Path | None = None) -> tuple[bool, str, Path | None]:
+        """
+        Crea una copia de seguridad timestamped en formato JSON.
+        Por defecto guarda en la carpeta Downloads/Descargas del usuario.
+        """
+        try:
+            if target_dir:
+                dest_dir = Path(target_dir)
+            else:
+                downloads = Path.home() / "Downloads"
+                descargas = Path.home() / "Descargas"
+                if downloads.exists():
+                    dest_dir = downloads
+                elif descargas.exists():
+                    dest_dir = descargas
+                else:
+                    docs = Path.home() / "Documents"
+                    dest_dir = docs if docs.exists() else Path.home()
+
+            dest_dir.mkdir(parents=True, exist_ok=True)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            backup_name = f"backup_notaly_{timestamp}.json"
+            backup_path = dest_dir / backup_name
+
+            import json
+            with open(backup_path, 'w', encoding='utf-8') as f:
+                json.dump(self.data, f, ensure_ascii=False, indent=2)
+
+            summary = self.get_data_summary()
+            msg = (
+                f"Copia creada exitosamente.\n\n"
+                f"• Archivo: {backup_name}\n"
+                f"• Instituciones: {summary['total_colegios']}\n"
+                f"• Cursos: {summary['total_cursos']}\n"
+                f"• Alumnos: {summary['total_alumnos']}\n"
+                f"• Ubicación: {backup_path}"
+            )
+            return True, msg, backup_path
+        except Exception as e:
+            logger.error("Error al crear copia local: %s", e)
+            return False, f"Error al generar la copia de seguridad: {e}", None
+
+    def find_local_backups(self) -> list[dict]:
+        """
+        Busca copias de seguridad de Notaly (.json) en Descargas, Documentos y carpeta de app.
+        Retorna lista de diccionarios con metadatos de cada archivo encontrado.
+        """
+        directorios_a_buscar = []
+        home = Path.home()
+        for folder in ["Downloads", "Descargas", "Documents", "Documentos"]:
+            d = home / folder
+            if d.exists() and d.is_dir():
+                directorios_a_buscar.append(d)
+
+        # También buscar en la carpeta donde reside el archivo de datos activo
+        if self.data_path:
+            parent_dir = Path(self.data_path).parent
+            if parent_dir.exists() and parent_dir not in directorios_a_buscar:
+                directorios_a_buscar.append(parent_dir)
+
+        backups_encontrados = []
+        rutas_procesadas = set()
+
+        for d in directorios_a_buscar:
+            try:
+                for file in d.glob("*.json"):
+                    try:
+                        resolved_str = str(file.resolve())
+                    except Exception:
+                        resolved_str = str(file)
+
+                    if self.data_path:
+                        try:
+                            if resolved_str == str(Path(self.data_path).resolve()):
+                                continue
+                        except Exception:
+                            pass
+
+                    if resolved_str in rutas_procesadas:
+                        continue
+
+                    # Filtrar archivos relevantes por nombre o patrón
+                    nombre_lower = file.name.lower()
+                    if "backup" in nombre_lower or "notaly" in nombre_lower or "promedio" in nombre_lower or "datos" in nombre_lower:
+                        try:
+                            datos = gestor_datos._intentar_cargar_archivo(file)
+                            if datos and K_COLEGIOS in datos:
+                                stat = file.stat()
+                                colegios = datos.get(K_COLEGIOS, {})
+                                total_cols = len(colegios)
+                                total_cur = sum(len(c.get(K_CURSOS, {})) for c in colegios.values())
+                                total_alum = sum(
+                                    len(cur.get(K_ALUMNOS, {}))
+                                    for col in colegios.values()
+                                    for cur in col.get(K_CURSOS, {}).values()
+                                )
+
+                                backups_encontrados.append({
+                                    "nombre": file.name,
+                                    "ruta": resolved_str,
+                                    "tamano_kb": round(stat.st_size / 1024, 1),
+                                    "fecha": datetime.fromtimestamp(stat.st_mtime).strftime("%d/%m/%Y %H:%M"),
+                                    "timestamp": stat.st_mtime,
+                                    "total_colegios": total_cols,
+                                    "total_cursos": total_cur,
+                                    "total_alumnos": total_alum,
+                                    "colegios_nombres": list(colegios.keys()),
+                                    "datos": datos,
+                                })
+                                rutas_procesadas.add(resolved_str)
+                        except Exception:
+                            continue
+            except (PermissionError, OSError):
+                continue
+
+        # Ordenar por fecha más reciente primero
+        backups_encontrados.sort(key=lambda x: x["timestamp"], reverse=True)
+        return backups_encontrados
+
+    def import_backup_data(self, datos_origen: dict, mode: str = "merge") -> tuple[bool, str, dict]:
+        """
+        Importa datos desde una copia de respaldo.
+        mode: "merge" (combina sin borrar) o "replace" (reemplaza toda la base).
+        """
+        if not isinstance(datos_origen, dict) or K_COLEGIOS not in datos_origen:
+            return False, "El archivo seleccionado no tiene el formato válido de Notaly.", {}
+
+        if mode == "replace":
+            self.data = datos_origen
+            self.save_data()
+            summary = self.get_data_summary()
+            msg = (
+                f"Base de datos reemplazada con éxito.\n\n"
+                f"• Instituciones: {summary['total_colegios']}\n"
+                f"• Cursos: {summary['total_cursos']}\n"
+                f"• Alumnos: {summary['total_alumnos']}"
+            )
+            return True, msg, {
+                "colegios_nuevos": summary["total_colegios"],
+                "cursos_nuevos": summary["total_cursos"],
+                "alumnos_nuevos": summary["total_alumnos"],
+            }
+        else:
+            # Mode merge / combinar
+            stats = gestor_datos.fusionar_datos(self.data, datos_origen)
+            self.save_data()
+            msg = (
+                f"Fusión de datos completada exitosamente.\n\n"
+                f"• Instituciones nuevas agregadas: {stats['colegios_nuevos']}\n"
+                f"• Cursos nuevos agregados: {stats['cursos_nuevos']}\n"
+                f"• Alumnos nuevos agregados: {stats['alumnos_nuevos']}"
+            )
+            return True, msg, stats
+

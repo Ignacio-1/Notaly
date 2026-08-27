@@ -24,7 +24,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-from mobile.components.cloud_backup_dialog import CloudBackupDialog
+from mobile.components.local_backup_dialog import LocalBackupDialog
 
 
 def main(page: ft.Page):
@@ -39,6 +39,10 @@ def main(page: ft.Page):
     # Configuración de márgenes y padding para móviles
     page.padding = 0
     page.spacing = 0
+
+    # Inicializar selector de archivos para respaldos / importaciones
+    file_picker = ft.FilePicker()
+    page.overlay.append(file_picker)
 
     # Inicializar estado global
     state = AppState(on_change=lambda: page.update())
@@ -58,44 +62,8 @@ def main(page: ft.Page):
             main_container.content = AsistenciasView(state, page, on_navigate=navigate)
         page.update()
 
-    def abrir_modal_nube():
-        dlg = CloudBackupDialog(state, page)
-        page.show_dialog(dlg)
-        page.update()
-
-    def abrir_modal_backup():
-        def guardar_backup():
-            try:
-                downloads = Path.home() / "Downloads"
-                if not downloads.exists():
-                    downloads = Path.home()
-                backup_file = downloads / f"backup_notaly_{Path(state.data_path).name}"
-                with open(backup_file, 'w', encoding='utf-8') as f:
-                    json.dump(state.data, f, ensure_ascii=False, indent=2)
-
-                sb = ft.SnackBar(
-                    content=ft.Text(f"Copia de seguridad guardada en: {backup_file}"),
-                    bgcolor=ft.Colors.GREEN_700,
-                )
-                page.overlay.append(sb)
-                sb.open = True
-                page.update()
-            except Exception as e:
-                sb = ft.SnackBar(content=ft.Text(f"Error al crear backup: {e}"), bgcolor=ft.Colors.ERROR)
-                page.overlay.append(sb)
-                sb.open = True
-                page.update()
-
-        dlg = ft.AlertDialog(
-            title=ft.Text("Copia Local", weight=ft.FontWeight.BOLD),
-            content=ft.Text("¿Deseas exportar una copia de seguridad completa de la base de datos a tu carpeta de Descargas?"),
-            actions=[
-                ft.TextButton("Cancelar", on_click=lambda e: (page.pop_dialog(), page.update())),
-                ft.FilledButton("Exportar a Descargas", on_click=lambda e: (page.pop_dialog(), page.update(), guardar_backup())),
-            ],
-            actions_alignment=ft.MainAxisAlignment.END,
-            modal=True,
-        )
+    def abrir_modal_copias():
+        dlg = LocalBackupDialog(state, page, file_picker=file_picker)
         page.show_dialog(dlg)
         page.update()
 
@@ -107,7 +75,7 @@ def main(page: ft.Page):
                     ft.Text("Notaly - Gestor Educativo Móvil", size=15, weight=ft.FontWeight.BOLD),
                     ft.Text("Versión 2.0 (Multiplataforma)", size=13, color=ft.Colors.SECONDARY),
                     ft.Divider(height=12),
-                    ft.Text("Gestión integral de colegios, cursos, calificaciones por trimestres, recuperatorios, asistencias y reportes PDF.", size=13),
+                    ft.Text("Gestión integral de colegios, cursos, calificaciones por trimestres, recuperatorios, asistencias y copias de seguridad locales.", size=13),
                 ],
                 tight=True,
                 width=320,
@@ -134,14 +102,9 @@ def main(page: ft.Page):
                 icon=ft.Icons.MORE_VERT,
                 items=[
                     ft.PopupMenuItem(
-                        icon=ft.Icons.CLOUD_SYNC,
-                        content=ft.Text("Copia en la Nube (Google Drive)"),
-                        on_click=lambda e: abrir_modal_nube(),
-                    ),
-                    ft.PopupMenuItem(
-                        icon=ft.Icons.DOWNLOAD_FOR_OFFLINE,
-                        content=ft.Text("Copia Local (.json)"),
-                        on_click=lambda e: abrir_modal_backup(),
+                        icon=ft.Icons.STORAGE_ROUNDED,
+                        content=ft.Text("Copias de Seguridad y Datos"),
+                        on_click=lambda e: abrir_modal_copias(),
                     ),
                     ft.PopupMenuItem(
                         icon=ft.Icons.INFO_OUTLINE,

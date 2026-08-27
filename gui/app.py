@@ -324,11 +324,11 @@ class AppPromedios:
         ).pack(side=tk.RIGHT)
         
         ctk.CTkButton(
-            right_frame, text="☁️ Nube (Drive)", 
+            right_frame, text="💾 Exportar Copia", 
             fg_color="transparent", border_width=1, border_color=self.paleta["borde_sutil"],
             text_color=self.paleta["azul_fg"], hover_color=self.paleta["card_btn_hover"],
             font=self.font_button, corner_radius=8, height=36,
-            command=self.abrir_modal_nube
+            command=self.exportar_copia_seguridad
         ).pack(side=tk.RIGHT, padx=(10, 0))
 
         ctk.CTkButton(
@@ -1228,6 +1228,36 @@ class AppPromedios:
 
         # Refrescar la pantalla
         self.mostrar_pantalla_colegios()
+
+    def exportar_copia_seguridad(self):
+        """Exporta una copia de seguridad local en formato JSON."""
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        sugerido = f"backup_notaly_{timestamp}.json"
+        
+        archivo = filedialog.asksaveasfilename(
+            title="Guardar Copia de Seguridad",
+            initialfile=sugerido,
+            defaultextension=".json",
+            filetypes=[
+                ("Archivos JSON", "*.json"),
+                ("Todos los archivos", "*.*")
+            ]
+        )
+        if not archivo:
+            return
+
+        try:
+            gestor_datos.guardar_datos(archivo, self.datos)
+            messagebox.showinfo(
+                "Copia Exitosa",
+                f"¡Copia de seguridad guardada con éxito!\n\n"
+                f"Ubicación:\n{archivo}"
+            )
+        except Exception as e:
+            messagebox.showerror(
+                "Error",
+                f"No se pudo crear la copia de seguridad:\n{e}"
+            )
 
     def abrir_modal_nube(self):
         """Abre la ventana modal de sincronización con Google Drive."""
