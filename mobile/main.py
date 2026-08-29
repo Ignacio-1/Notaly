@@ -40,9 +40,8 @@ def main(page: ft.Page):
     page.padding = 0
     page.spacing = 0
 
-    # Inicializar selector de archivos para respaldos / importaciones
+    # Inicializar selector de archivos para respaldos / importaciones (servicio Flet)
     file_picker = ft.FilePicker()
-    page.overlay.append(file_picker)
 
     # Inicializar estado global
     state = AppState(on_change=lambda: page.update())

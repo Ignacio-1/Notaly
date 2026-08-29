@@ -351,3 +351,22 @@ def test_local_backup_dialog_file_picker_result_handling(populated_state, mock_p
     # Debe abrir el diálogo de confirmación
     assert len(mock_page.dialog_stack) == 1
     assert "Confirmar Restauración" in mock_page.active_dialog.title.value
+
+
+def test_local_backup_dialog_file_picker_bytes_handling(populated_state, mock_page):
+    """Verifica que el procesamiento de archivo funcione con bytes en memoria (típico en Android/Web)."""
+    file_picker = ft.FilePicker()
+    dlg = LocalBackupDialog(populated_state, mock_page, file_picker=file_picker)
+
+    data = {K_COLEGIOS: {"Colegio Desde Bytes": {K_CURSOS: {}}}}
+    json_bytes = json.dumps(data).encode("utf-8")
+
+    mock_file = MagicMock()
+    mock_file.path = None
+    mock_file.bytes = json_bytes
+
+    dlg._procesar_archivo_seleccionado(mock_file)
+
+    # Debe abrir el diálogo de confirmación
+    assert len(mock_page.dialog_stack) == 1
+    assert "Confirmar Restauración" in mock_page.active_dialog.title.value

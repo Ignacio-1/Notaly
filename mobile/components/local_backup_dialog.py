@@ -67,8 +67,8 @@ class LocalBackupDialog(ft.AlertDialog):
             modal=True,
         )
 
-        # Configurar callback de FilePicker si está disponible
-        if self.file_picker:
+        # Configurar callback de FilePicker si está disponible (compatibilidad)
+        if self.file_picker and hasattr(self.file_picker, "on_result"):
             self.file_picker.on_result = self._on_file_picker_result
 
         # Renderizar pestaña inicial
@@ -472,13 +472,20 @@ class LocalBackupDialog(ft.AlertDialog):
             spacing=4,
         )
 
-        def abrir_selector_archivo(e):
+        async def abrir_selector_archivo(e):
             if self.file_picker:
-                self.file_picker.pick_files(
-                    dialog_title="Seleccionar copia de seguridad de Notaly",
-                    file_type=ft.FilePickerFileType.CUSTOM,
-                    allowed_extensions=["json"],
-                )
+                try:
+                    archivos = await self.file_picker.pick_files(
+                        dialog_title="Seleccionar copia de seguridad de Notaly",
+                        file_type=ft.FilePickerFileType.CUSTOM,
+                        allowed_extensions=["json"],
+                        with_data=True,
+                    )
+                    if archivos and len(archivos) > 0:
+                        self._procesar_archivo_seleccionado(archivos[0])
+                except Exception as err:
+                    logger.error(f"Error al abrir selector de archivos: {err}")
+                    self._mostrar_snackbar(f"Error al abrir selector de archivos: {err}", error=True)
             else:
                 self._mostrar_snackbar("Selector de archivos no disponible en esta sesión.", error=True)
 
@@ -513,21 +520,27 @@ class LocalBackupDialog(ft.AlertDialog):
         except Exception:
             pass
 
-    def _on_file_picker_result(self, e):
-        """Manejador cuando el usuario selecciona un archivo desde el FilePicker del sistema."""
-        if not hasattr(e, "files") or not e.files:
+    def _procesar_archivo_seleccionado(self, picked_file):
+        """Procesa el archivo seleccionado desde el FilePicker del sistema (ruta o bytes)."""
+        if not picked_file:
             return
 
-        picked_file = e.files[0]
-        ruta_archivo = picked_file.path
-
-        if not ruta_archivo:
-            self._mostrar_snackbar("No se pudo acceder a la ruta del archivo seleccionado.", error=True)
-            return
+        ruta_archivo = getattr(picked_file, "path", None)
+        file_bytes = getattr(picked_file, "bytes", None)
 
         try:
-            with open(ruta_archivo, 'r', encoding='utf-8') as f:
-                datos = json.load(f)
+            datos = None
+            if ruta_archivo and Path(ruta_archivo).is_file():
+                with open(ruta_archivo, "r", encoding="utf-8") as f:
+                    datos = json.load(f)
+            elif file_bytes:
+                datos = json.loads(file_bytes.decode("utf-8"))
+            elif ruta_archivo:
+                with open(ruta_archivo, "r", encoding="utf-8") as f:
+                    datos = json.load(f)
+            else:
+                self._mostrar_snackbar("No se pudo leer el contenido del archivo seleccionado.", error=True)
+                return
 
             if not isinstance(datos, dict) or K_COLEGIOS not in datos:
                 self._mostrar_snackbar("El archivo seleccionado no contiene datos válidos de Notaly.", error=True)
@@ -536,6 +549,15 @@ class LocalBackupDialog(ft.AlertDialog):
             self._mostrar_opciones_restauracion(datos)
         except Exception as err:
             self._mostrar_snackbar(f"Error al leer el archivo: {err}", error=True)
+
+    def _on_file_picker_result(self, e):
+        """Manejador para compatibilidad y pruebas de FilePicker."""
+        if hasattr(e, "files") and e.files:
+            self._procesar_archivo_seleccionado(e.files[0])
+        elif isinstance(e, list) and e:
+            self._procesar_archivo_seleccionado(e[0])
+        elif hasattr(e, "path") or hasattr(e, "bytes"):
+            self._procesar_archivo_seleccionado(e)
 
     def _mostrar_opciones_restauracion(self, datos_a_importar: dict):
         """Muestra el diálogo de decisión: Combinar Datos vs Reemplazar Todo."""
