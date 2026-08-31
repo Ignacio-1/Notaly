@@ -3,6 +3,8 @@ Módulo de estado global para la aplicación móvil Notaly.
 Centraliza la lógica de persistencia, navegación y manipulación de datos.
 """
 
+import os
+import json
 from datetime import datetime, date, timedelta
 import logging
 from pathlib import Path
@@ -559,72 +561,146 @@ class AppState:
             "data_path": str(file_path),
         }
 
+    def get_backup_directories(self) -> list[Path]:
+        """
+        Retorna la lista ordenada de directorios donde se pueden guardar o buscar copias de seguridad.
+        Maneja tanto Android (almacenamiento público y scoped storage) como Desktop/Linux/macOS.
+        """
+        candidates: list[Path] = []
+        seen: set[str] = set()
+
+        def add_candidate(p: Path | None):
+            if p is None:
+                return
+            try:
+                p_resolved = p.resolve()
+                p_str = str(p_resolved)
+            except Exception:
+                p_str = str(p)
+                p_resolved = p
+
+            if p_str not in seen:
+                seen.add(p_str)
+                candidates.append(p_resolved)
+
+        # 1. Android external storage (Downloads / Descargas / Documents)
+        android_paths = [
+            "/storage/emulated/0/Download",
+            "/storage/emulated/0/Downloads",
+            "/sdcard/Download",
+            "/sdcard/Downloads",
+            "/storage/emulated/0/Documents",
+            "/sdcard/Documents",
+        ]
+        ext_storage = os.getenv("EXTERNAL_STORAGE")
+        if ext_storage:
+            android_paths.insert(0, f"{ext_storage}/Download")
+            android_paths.insert(1, f"{ext_storage}/Downloads")
+
+        for p_str in android_paths:
+            p = Path(p_str)
+            if p.exists() and p.is_dir():
+                add_candidate(p)
+
+        # 2. Desktop user directories (evitando raíces de sistema como / o /data que no son carpetas de usuario válidas)
+        home = Path.home()
+        home_str = str(home).rstrip("\\/")
+        if home_str not in ["", "/", "/data", "/root"]:
+            for folder in ["Downloads", "Descargas", "Documents", "Documentos"]:
+                p = home / folder
+                if p.exists() and p.is_dir():
+                    add_candidate(p)
+
+        # 3. Carpeta de backups interna de la aplicación (100% garantizada para lectura/escritura)
+        if self.data_path:
+            parent_dir = Path(self.data_path).parent
+            add_candidate(parent_dir / "backups")
+            add_candidate(parent_dir)
+
+        # 4. Carpeta de configuración global de la app
+        try:
+            cfg_dir = gestor_datos._get_config_dir()
+            add_candidate(cfg_dir / "backups")
+            add_candidate(cfg_dir)
+        except Exception:
+            pass
+
+        return candidates
+
     def create_local_backup(self, target_dir: str | Path | None = None) -> tuple[bool, str, Path | None]:
         """
         Crea una copia de seguridad timestamped en formato JSON.
-        Por defecto guarda en la carpeta Downloads/Descargas del usuario.
+        Intenta guardar en Descargas/Documents y hace fallback seguro al almacenamiento
+        interno de la aplicación si el sistema deniega permisos (ej. Android Scoped Storage).
         """
-        try:
-            if target_dir:
-                dest_dir = Path(target_dir)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_name = f"backup_notaly_{timestamp}.json"
+
+        dest_dirs_to_try: list[Path] = []
+        if target_dir:
+            dest_dirs_to_try.append(Path(target_dir))
+        else:
+            dest_dirs_to_try = self.get_backup_directories()
+
+        if not dest_dirs_to_try:
+            if self.data_path:
+                dest_dirs_to_try.append(Path(self.data_path).parent)
             else:
-                downloads = Path.home() / "Downloads"
-                descargas = Path.home() / "Descargas"
-                if downloads.exists():
-                    dest_dir = downloads
-                elif descargas.exists():
-                    dest_dir = descargas
-                else:
-                    docs = Path.home() / "Documents"
-                    dest_dir = docs if docs.exists() else Path.home()
+                dest_dirs_to_try.append(gestor_datos._get_config_dir())
 
-            dest_dir.mkdir(parents=True, exist_ok=True)
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            backup_name = f"backup_notaly_{timestamp}.json"
-            backup_path = dest_dir / backup_name
+        ultimo_error: Exception | None = None
+        for dest_dir in dest_dirs_to_try:
+            try:
+                dest_dir.mkdir(parents=True, exist_ok=True)
+                backup_path = dest_dir / backup_name
 
-            import json
-            with open(backup_path, 'w', encoding='utf-8') as f:
-                json.dump(self.data, f, ensure_ascii=False, indent=2)
+                import json
+                temp_file = dest_dir / f"{backup_name}.tmp"
+                with open(temp_file, 'w', encoding='utf-8') as f:
+                    json.dump(self.data, f, ensure_ascii=False, indent=2)
+                    f.flush()
+                    os.fsync(f.fileno())
 
-            summary = self.get_data_summary()
-            msg = (
-                f"Copia creada exitosamente.\n\n"
-                f"• Archivo: {backup_name}\n"
-                f"• Instituciones: {summary['total_colegios']}\n"
-                f"• Cursos: {summary['total_cursos']}\n"
-                f"• Alumnos: {summary['total_alumnos']}\n"
-                f"• Ubicación: {backup_path}"
-            )
-            return True, msg, backup_path
-        except Exception as e:
-            logger.error("Error al crear copia local: %s", e)
-            return False, f"Error al generar la copia de seguridad: {e}", None
+                temp_file.replace(backup_path)
+
+                summary = self.get_data_summary()
+                msg = (
+                    f"Copia creada exitosamente.\n\n"
+                    f"• Archivo: {backup_name}\n"
+                    f"• Instituciones: {summary['total_colegios']}\n"
+                    f"• Cursos: {summary['total_cursos']}\n"
+                    f"• Alumnos: {summary['total_alumnos']}\n"
+                    f"• Ubicación: {backup_path}"
+                )
+                return True, msg, backup_path
+            except (PermissionError, OSError) as err:
+                ultimo_error = err
+                logger.warning("No se pudo escribir en '%s' (%s). Probando siguiente ubicación...", dest_dir, err)
+                continue
+            except Exception as e:
+                logger.error("Error inesperado al crear copia local en '%s': %s", dest_dir, e)
+                ultimo_error = e
+                continue
+
+        error_msg = f"Error al generar la copia de seguridad: {ultimo_error}" if ultimo_error else "No se encontró ningún directorio con permisos de escritura."
+        return False, error_msg, None
 
     def find_local_backups(self) -> list[dict]:
         """
-        Busca copias de seguridad de Notaly (.json) en Descargas, Documentos y carpeta de app.
+        Busca copias de seguridad de Notaly (.json) en Descargas, Documentos y carpetas de la app.
         Retorna lista de diccionarios con metadatos de cada archivo encontrado.
         """
-        directorios_a_buscar = []
-        home = Path.home()
-        for folder in ["Downloads", "Descargas", "Documents", "Documentos"]:
-            d = home / folder
-            if d.exists() and d.is_dir():
-                directorios_a_buscar.append(d)
-
-        # También buscar en la carpeta donde reside el archivo de datos activo
-        if self.data_path:
-            parent_dir = Path(self.data_path).parent
-            if parent_dir.exists() and parent_dir not in directorios_a_buscar:
-                directorios_a_buscar.append(parent_dir)
-
+        directorios_a_buscar = self.get_backup_directories()
         backups_encontrados = []
         rutas_procesadas = set()
 
         for d in directorios_a_buscar:
+            if not d.exists() or not d.is_dir():
+                continue
             try:
                 for file in d.glob("*.json"):
+                    if not file.is_file():
+                        continue
                     try:
                         resolved_str = str(file.resolve())
                     except Exception:
@@ -636,6 +712,10 @@ class AppState:
                                 continue
                         except Exception:
                             pass
+
+                    # Ignorar archivos de configuración o temporales
+                    if file.name in ["config_path.json", "datos_promedios.json"] or file.name.endswith(".tmp"):
+                        continue
 
                     if resolved_str in rutas_procesadas:
                         continue

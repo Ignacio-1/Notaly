@@ -370,3 +370,37 @@ def test_local_backup_dialog_file_picker_bytes_handling(populated_state, mock_pa
     # Debe abrir el diálogo de confirmación
     assert len(mock_page.dialog_stack) == 1
     assert "Confirmar Restauración" in mock_page.active_dialog.title.value
+
+
+def test_create_local_backup_android_home_slash_data(populated_state):
+    """Verifica que si Path.home() devuelve /data (entorno Android), no intente escribir en /data y guarde en el almacenamiento interno de la app."""
+    with patch("pathlib.Path.home", return_value=Path("/data")):
+        exito, msg, backup_path = populated_state.create_local_backup()
+
+    assert exito is True
+    assert backup_path is not None
+    assert str(backup_path).startswith(str(Path(populated_state.data_path).parent))
+    assert backup_path.exists()
+
+
+def test_create_local_backup_permission_denied_fallback(populated_state, tmp_path):
+    """Verifica que si una ruta arroja PermissionError (ej. Scoped Storage), haga fallback a la siguiente ubicación sin fallar."""
+    restricted_dir = tmp_path / "RestrictedDownloads"
+    safe_dir = tmp_path / "SafeAppBackups"
+
+    with patch.object(populated_state, "get_backup_directories", return_value=[restricted_dir, safe_dir]):
+        import builtins
+        original_open = builtins.open
+
+        def fake_open(file, mode="r", *args, **kwargs):
+            if str(restricted_dir) in str(file) and "w" in mode:
+                raise PermissionError("[Errno 13] Permission denied: '/storage/emulated/0/Download'")
+            return original_open(file, mode, *args, **kwargs)
+
+        with patch("builtins.open", side_effect=fake_open):
+            exito, msg, backup_path = populated_state.create_local_backup()
+
+    assert exito is True
+    assert backup_path is not None
+    assert backup_path.exists()
+    assert str(safe_dir) in str(backup_path)

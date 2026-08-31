@@ -338,6 +338,30 @@ class LocalBackupDialog(ft.AlertDialog):
             else:
                 self._mostrar_snackbar(msg, error=True)
 
+        async def exportar_archivo_picker(e):
+            if self.file_picker and hasattr(self.file_picker, "save_file"):
+                try:
+                    from datetime import datetime
+                    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    file_name = f"backup_notaly_{ts}.json"
+                    json_str = json.dumps(self.app_state.data, ensure_ascii=False, indent=2)
+                    json_bytes = json_str.encode("utf-8")
+
+                    guardado = await self.file_picker.save_file(
+                        dialog_title="Guardar copia de seguridad de Notaly",
+                        file_name=file_name,
+                        file_type=ft.FilePickerFileType.CUSTOM,
+                        allowed_extensions=["json"],
+                        src_bytes=json_bytes,
+                    )
+                    if guardado:
+                        self._mostrar_snackbar("¡Archivo exportado con éxito!")
+                except Exception as err:
+                    logger.error(f"Error al exportar archivo: {err}")
+                    self._mostrar_snackbar(f"Error al exportar archivo: {err}", error=True)
+            else:
+                self._mostrar_snackbar("Selector de archivos no disponible en esta sesión.", error=True)
+
         def copiar_datos_portapapeles(e):
             json_str = json.dumps(self.app_state.data, ensure_ascii=False, indent=2)
             self._copiar_al_portapapeles(json_str, "¡Copia completa copiada al portapapeles!")
@@ -369,13 +393,19 @@ class LocalBackupDialog(ft.AlertDialog):
                         spacing=6,
                     ),
                 ),
-                ft.Container(height=10),
+                ft.Container(height=6),
                 ft.FilledButton(
-                    "Generar Copia en Descargas",
+                    "Crear Copia de Seguridad",
                     icon=ft.Icons.DOWNLOAD,
                     width=360,
                     height=45,
                     on_click=ejecutar_creacion_copia,
+                ),
+                ft.OutlinedButton(
+                    "Exportar con Selector del Sistema",
+                    icon=ft.Icons.DRIVE_FILE_MOVE,
+                    width=360,
+                    on_click=exportar_archivo_picker,
                 ),
                 ft.OutlinedButton(
                     "Copiar Datos al Portapapeles",
@@ -383,15 +413,15 @@ class LocalBackupDialog(ft.AlertDialog):
                     width=360,
                     on_click=copiar_datos_portapapeles,
                 ),
-                ft.Container(height=6),
+                ft.Container(height=4),
                 ft.Text(
-                    "Consejo: Las copias se guardan en tu carpeta de Descargas (Downloads) para que puedas transferirlas fácilmente por WhatsApp, correo o cable USB.",
+                    "Consejo: Las copias se guardan en tu dispositivo para que puedas transferirlas o restaurarlas en cualquier momento desde la pestaña 'Restaurar'.",
                     size=11,
                     color=ft.Colors.SECONDARY,
                     italic=True,
                 ),
             ],
-            spacing=8,
+            spacing=6,
         )
         try:
             self.app_page.update()
