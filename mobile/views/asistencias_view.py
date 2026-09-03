@@ -125,18 +125,17 @@ class AsistenciasView(ft.Container):
         )
 
         # 3. Estadísticas del Día
-        resumen_dia = self.state.get_resumen_asistencia_dia(fecha_actual, colegio, curso)
-        presentes = resumen_dia["presentes"]
-        ausentes = resumen_dia["ausentes"]
-        tardes = resumen_dia["tardes"]
-        justificados = resumen_dia["justificados"]
-        porc_dia = resumen_dia.get("porcentaje_asistencia", 0.0)
+        self.kpi_presentes_text = ft.Text("", weight=ft.FontWeight.BOLD, size=15, color="#166534")
+        self.kpi_ausentes_text = ft.Text("", weight=ft.FontWeight.BOLD, size=15, color="#991B1B")
+        self.kpi_tardes_text = ft.Text("", weight=ft.FontWeight.BOLD, size=15, color="#92400E")
+        self.kpi_justificados_text = ft.Text("", weight=ft.FontWeight.BOLD, size=15, color="#1E40AF")
+        self.kpi_porc_text = ft.Text("", weight=ft.FontWeight.BOLD, size=15, color="#374151")
 
-        def make_kpi(label, val, color_bg, color_fg):
+        def make_kpi(label, text_ctrl, color_bg, color_fg):
             return ft.Container(
                 content=ft.Column(
                     [
-                        ft.Text(str(val), weight=ft.FontWeight.BOLD, size=15, color=color_fg),
+                        text_ctrl,
                         ft.Text(label, size=11, color=color_fg, weight=ft.FontWeight.W_500),
                     ],
                     horizontal_alignment=ft.CrossAxisAlignment.CENTER,
@@ -151,17 +150,18 @@ class AsistenciasView(ft.Container):
 
         kpi_row = ft.Row(
             [
-                make_kpi("Presentes", presentes, "#DCFCE7", "#166534"),
-                make_kpi("Ausentes", ausentes, "#FEE2E2", "#991B1B"),
-                make_kpi("Tardes", tardes, "#FEF3C7", "#92400E"),
-                make_kpi("Justificados", justificados, "#DBEAFE", "#1E40AF"),
-                make_kpi("% Asist.", f"{porc_dia}%", "#F3F4F6", "#374151"),
+                make_kpi("Presentes", self.kpi_presentes_text, "#DCFCE7", "#166534"),
+                make_kpi("Ausentes", self.kpi_ausentes_text, "#FEE2E2", "#991B1B"),
+                make_kpi("Tardes", self.kpi_tardes_text, "#FEF3C7", "#92400E"),
+                make_kpi("Justificados", self.kpi_justificados_text, "#DBEAFE", "#1E40AF"),
+                make_kpi("% Asist.", self.kpi_porc_text, "#F3F4F6", "#374151"),
             ],
             spacing=6,
         )
+        self._actualizar_kpis_ui(fecha_actual, colegio, curso)
 
         # 4. Barra de Acciones de Asistencia
-        btn_guardar = ft.FilledButton(
+        self.btn_guardar = ft.FilledButton(
             "Guardar",
             icon=ft.Icons.SAVE,
             style=ft.ButtonStyle(
@@ -173,7 +173,7 @@ class AsistenciasView(ft.Container):
 
         actions_bar = ft.Row(
             [
-                btn_guardar,
+                self.btn_guardar,
                 ft.OutlinedButton(
                     "Todos Presentes",
                     icon=ft.Icons.DONE_ALL,
@@ -209,7 +209,27 @@ class AsistenciasView(ft.Container):
             spacing=8,
         )
 
+    def _actualizar_kpis_ui(self, fecha: str | None = None, colegio: str | None = None, curso: str | None = None):
+        fecha_act = fecha or self.state.asistencia_fecha
+        col = colegio or self.state.selected_colegio or ""
+        cur = curso or self.state.selected_curso or ""
+        resumen_dia = self.state.get_resumen_asistencia_dia(fecha_act, col, cur)
+        self.kpi_presentes_text.value = str(resumen_dia["presentes"])
+        self.kpi_ausentes_text.value = str(resumen_dia["ausentes"])
+        self.kpi_tardes_text.value = str(resumen_dia["tardes"])
+        self.kpi_justificados_text.value = str(resumen_dia["justificados"])
+        porc = resumen_dia.get("porcentaje_asistencia", 0.0)
+        self.kpi_porc_text.value = f"{porc}%"
+
+    def _actualizar_boton_guardar(self):
+        if hasattr(self, "btn_guardar"):
+            self.btn_guardar.style = ft.ButtonStyle(
+                bgcolor=ft.Colors.AMBER_800 if self.state.has_unsaved_asistencias else ft.Colors.PRIMARY,
+                color=ft.Colors.WHITE,
+            )
+
     def _construir_lista_alumnos(self, alumnos: dict, asistencias_dia: dict, fecha: str) -> ft.Control:
+        self.alumnos_botones = {}
         if not alumnos:
             return ft.Container(
                 content=ft.Column(
@@ -234,13 +254,14 @@ class AsistenciasView(ft.Container):
             # Selector de estado táctil con 4 botones: P, A, T, J
             def make_state_btn(estado_code, label, color_hex, student_id):
                 seleccionado = estado_actual == estado_code
-                return ft.Container(
-                    content=ft.Text(
-                        label,
-                        weight=ft.FontWeight.BOLD if seleccionado else ft.FontWeight.NORMAL,
-                        color=ft.Colors.WHITE if seleccionado else color_hex,
-                        size=13,
-                    ),
+                txt_widget = ft.Text(
+                    label,
+                    weight=ft.FontWeight.BOLD if seleccionado else ft.FontWeight.NORMAL,
+                    color=ft.Colors.WHITE if seleccionado else color_hex,
+                    size=13,
+                )
+                container = ft.Container(
+                    content=txt_widget,
                     bgcolor=color_hex if seleccionado else ft.Colors.TRANSPARENT,
                     border=ft.Border.all(1.5, color_hex),
                     border_radius=8,
@@ -249,11 +270,19 @@ class AsistenciasView(ft.Container):
                     alignment=ft.Alignment.CENTER,
                     on_click=lambda e, st=estado_code, sid=student_id: self._cambiar_estado_alumno(sid, st),
                 )
+                return container, txt_widget, color_hex
 
-            btn_p = make_state_btn(ESTADO_PRESENTE, "P", "#10B981", str(id_al))
-            btn_a = make_state_btn(ESTADO_AUSENTE, "A", "#EF4444", str(id_al))
-            btn_t = make_state_btn(ESTADO_TARDE, "T", "#F59E0B", str(id_al))
-            btn_j = make_state_btn(ESTADO_JUSTIFICADO, "J", "#3B82F6", str(id_al))
+            btn_p, txt_p, col_p = make_state_btn(ESTADO_PRESENTE, "P", "#10B981", str(id_al))
+            btn_a, txt_a, col_a = make_state_btn(ESTADO_AUSENTE, "A", "#EF4444", str(id_al))
+            btn_t, txt_t, col_t = make_state_btn(ESTADO_TARDE, "T", "#F59E0B", str(id_al))
+            btn_j, txt_j, col_j = make_state_btn(ESTADO_JUSTIFICADO, "J", "#3B82F6", str(id_al))
+
+            self.alumnos_botones[str(id_al)] = {
+                ESTADO_PRESENTE: (btn_p, txt_p, col_p),
+                ESTADO_AUSENTE: (btn_a, txt_a, col_a),
+                ESTADO_TARDE: (btn_t, txt_t, col_t),
+                ESTADO_JUSTIFICADO: (btn_j, txt_j, col_j),
+            }
 
             card = ft.Card(
                 elevation=1,
@@ -278,6 +307,17 @@ class AsistenciasView(ft.Container):
 
         return ft.ListView(controls=items, expand=True, spacing=4)
 
+    def _actualizar_botones_alumno_ui(self, id_al: str, estado_seleccionado: str | None):
+        """Actualiza visualmente los 4 botones de un alumno in-place sin reconstruir la lista ni resetear el scroll."""
+        if not hasattr(self, "alumnos_botones") or id_al not in self.alumnos_botones:
+            return
+        botones_dict = self.alumnos_botones[id_al]
+        for est_code, (btn_c, txt_c, color_hex) in botones_dict.items():
+            sel = (estado_seleccionado == est_code)
+            btn_c.bgcolor = color_hex if sel else ft.Colors.TRANSPARENT
+            txt_c.color = ft.Colors.WHITE if sel else color_hex
+            txt_c.weight = ft.FontWeight.BOLD if sel else ft.FontWeight.NORMAL
+
     def _cambiar_estado_alumno(self, id_al: str, estado: str):
         fecha = self.state.asistencia_fecha
         asistencias_actuales = self.state.get_asistencias_dia(fecha)
@@ -294,13 +334,23 @@ class AsistenciasView(ft.Container):
                     del dia_dict[str(id_al)]
                 self.state.has_unsaved_asistencias = True
                 self.state.notify()
-        self._build_ui()
+
+        # Actualizar in-place sin destruir la lista ni reiniciar la posición del scroll
+        self._actualizar_botones_alumno_ui(str(id_al), nuevo_estado or None)
+        self._actualizar_kpis_ui()
+        self._actualizar_boton_guardar()
         self.app_page.update()
 
     def _marcar_todos_presentes(self):
         fecha = self.state.asistencia_fecha
         self.state.set_all_asistencias_dia(fecha, ESTADO_PRESENTE)
-        self._build_ui()
+        if hasattr(self, "alumnos_botones"):
+            for id_al in self.alumnos_botones:
+                self._actualizar_botones_alumno_ui(id_al, ESTADO_PRESENTE)
+            self._actualizar_kpis_ui()
+            self._actualizar_boton_guardar()
+        else:
+            self._build_ui()
         self.app_page.update()
         self._mostrar_snackbar("Todos los alumnos marcados como Presentes.")
 

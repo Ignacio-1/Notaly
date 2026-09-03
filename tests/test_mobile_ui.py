@@ -477,3 +477,60 @@ class TestExportModalIsolation:
         assert Path(output_path).exists()
         assert str(tmp_path) in output_path
         assert mock_page_mobile.active_dialog is None
+
+
+class TestScrollPreservationAndInPlaceUpdates:
+    def test_attendance_preserves_listview_and_scroll_instance(self, isolated_app_state, mock_page_mobile):
+        isolated_app_state.selected_colegio = 'Colegio Nacional'
+        isolated_app_state.selected_curso = '5to A'
+        view = AsistenciasView(isolated_app_state, mock_page_mobile, on_navigate=lambda x: None)
+
+        # Obtener la referencia de la lista antes de modificar
+        lista_inicial = view.content.controls[5].content
+        assert isinstance(lista_inicial, ft.ListView)
+
+        # Modificar asistencia de alumno 1
+        view._cambiar_estado_alumno('1', ESTADO_PRESENTE)
+
+        # La instancia de ListView debe ser exactamente la misma (no destruida ni recreada)
+        lista_despues = view.content.controls[5].content
+        assert lista_despues is lista_inicial
+
+        # Verificar actualización visual de los botones del alumno
+        botones_alumno1 = view.alumnos_botones['1']
+        btn_p, txt_p, col_p = botones_alumno1[ESTADO_PRESENTE]
+        assert btn_p.bgcolor == col_p
+        assert txt_p.color == ft.Colors.WHITE
+
+        # Verificar KPIs actualizados in-place
+        assert view.kpi_presentes_text.value == "1"
+
+    def test_grade_edition_preserves_table_and_scroll_instance(self, isolated_app_state, mock_page_mobile):
+        isolated_app_state.selected_colegio = 'Colegio Nacional'
+        isolated_app_state.selected_curso = '5to A'
+        isolated_app_state.active_trimestre = 0
+        view = NotasView(isolated_app_state, mock_page_mobile, on_navigate=lambda x: None)
+
+        # Obtener referencia al ListView/Scroll contenedor de la tabla
+        listview_inicial = view.content.controls[4].content
+        assert isinstance(listview_inicial, ft.ListView)
+
+        # Celda P1 del alumno 1 (valor inicial en fixture es 8.0)
+        celdas_alumno1 = view.alumnos_celdas['1']
+        assert celdas_alumno1['P0']['text_widget'].value == "8"
+
+        # Simular tap en celda y guardar una nueva nota (ej: 9.5)
+        celdas_alumno1['P0']['container'].on_click(None)
+        dialogo = mock_page_mobile.active_dialog
+        assert isinstance(dialogo, GradeEditorDialog)
+        dialogo.txt_nota.value = "9.5"
+        dialogo._guardar_desde_input()
+
+        # Comprobar que la instancia de ListView y tabla NO fue destruida ni recreada
+        listview_despues = view.content.controls[4].content
+        assert listview_despues is listview_inicial
+
+        # Comprobar que la celda y los cálculos del alumno se actualizaron in-place
+        assert celdas_alumno1['P0']['text_widget'].value == "9.5"
+        assert celdas_alumno1['prom_text'].value != "-"
+

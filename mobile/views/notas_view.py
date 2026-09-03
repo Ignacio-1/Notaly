@@ -95,7 +95,7 @@ class NotasView(ft.Container):
         )
 
         # Barra de acciones (Guardar, + Alumno, Columnas, Exportar, Ordenar)
-        btn_guardar = ft.FilledButton(
+        self.btn_guardar = ft.FilledButton(
             "Guardar",
             icon=ft.Icons.SAVE,
             style=ft.ButtonStyle(
@@ -107,7 +107,7 @@ class NotasView(ft.Container):
 
         actions_bar = ft.Row(
             [
-                btn_guardar,
+                self.btn_guardar,
                 ft.OutlinedButton(
                     "+ Alumno",
                     icon=ft.Icons.PERSON_ADD,
@@ -155,7 +155,15 @@ class NotasView(ft.Container):
             spacing=6,
         )
 
+    def _actualizar_boton_guardar(self):
+        if hasattr(self, "btn_guardar"):
+            self.btn_guardar.style = ft.ButtonStyle(
+                bgcolor=ft.Colors.AMBER_800 if self.state.has_unsaved_changes else ft.Colors.PRIMARY,
+                color=ft.Colors.WHITE,
+            )
+
     def _construir_tabla(self, alumnos: dict, trim_idx: int, nombres_cols: list[str], curso_data: dict) -> ft.Control:
+        self.alumnos_celdas = {}
         if not alumnos:
             return ft.Container(
                 content=ft.Column(
@@ -203,13 +211,13 @@ class NotasView(ft.Container):
                 habilita_recup = prom_crudo_red is not None and prom_crudo_red <= UMBRAL_RECUPERATORIO
 
                 # Celdas interactivas
-                cell_p1 = self._crear_celda_nota(nombre_al, nombres_cols[0], principales[0] if len(principales) > 0 else None, id_al, trim_idx, "P", 0)
-                cell_p2 = self._crear_celda_nota(nombre_al, nombres_cols[1], principales[1] if len(principales) > 1 else None, id_al, trim_idx, "P", 1)
-                cell_p3 = self._crear_celda_nota(nombre_al, nombres_cols[2], principales[2] if len(principales) > 2 else None, id_al, trim_idx, "P", 2)
-                cell_ex = self._crear_celda_nota(nombre_al, nombres_cols[3], extras[0] if len(extras) > 0 else None, id_al, trim_idx, "E", 0)
+                cell_p1, ref_p1 = self._crear_celda_nota(nombre_al, nombres_cols[0], principales[0] if len(principales) > 0 else None, id_al, trim_idx, "P", 0)
+                cell_p2, ref_p2 = self._crear_celda_nota(nombre_al, nombres_cols[1], principales[1] if len(principales) > 1 else None, id_al, trim_idx, "P", 1)
+                cell_p3, ref_p3 = self._crear_celda_nota(nombre_al, nombres_cols[2], principales[2] if len(principales) > 2 else None, id_al, trim_idx, "P", 2)
+                cell_ex, ref_ex = self._crear_celda_nota(nombre_al, nombres_cols[3], extras[0] if len(extras) > 0 else None, id_al, trim_idx, "E", 0)
                 
                 # Celda recuperatorio
-                cell_rec = self._crear_celda_nota(
+                cell_rec, ref_rec = self._crear_celda_nota(
                     nombre_al,
                     "Recuperatorio",
                     recuperatorio,
@@ -224,21 +232,36 @@ class NotasView(ft.Container):
                 bg_prom, fg_prom = self._color_por_nota(prom_crudo_red)
                 bg_fin, fg_fin = self._color_por_nota(nota_final_red)
 
+                prom_text = ft.Text(str(prom_crudo_red) if prom_crudo_red is not None else "-", weight=ft.FontWeight.BOLD, color=fg_prom, size=13)
                 cell_prom_widget = ft.Container(
-                    content=ft.Text(str(prom_crudo_red) if prom_crudo_red is not None else "-", weight=ft.FontWeight.BOLD, color=fg_prom, size=13),
+                    content=prom_text,
                     bgcolor=bg_prom,
                     padding=ft.Padding(left=8, right=8, top=4, bottom=4),
                     border_radius=6,
                     alignment=ft.Alignment.CENTER,
                 )
 
+                fin_text = ft.Text(str(nota_final_red) if nota_final_red is not None else "-", weight=ft.FontWeight.BOLD, color=fg_fin, size=14)
                 cell_fin_widget = ft.Container(
-                    content=ft.Text(str(nota_final_red) if nota_final_red is not None else "-", weight=ft.FontWeight.BOLD, color=fg_fin, size=14),
+                    content=fin_text,
                     bgcolor=bg_fin,
                     padding=ft.Padding(left=8, right=8, top=4, bottom=4),
                     border_radius=6,
                     alignment=ft.Alignment.CENTER,
                 )
+
+                self.alumnos_celdas[str(id_al)] = {
+                    "P0": ref_p1,
+                    "P1": ref_p2,
+                    "P2": ref_p3,
+                    "E0": ref_ex,
+                    "R0": ref_rec,
+                    "prom_container": cell_prom_widget,
+                    "prom_text": prom_text,
+                    "fin_container": cell_fin_widget,
+                    "fin_text": fin_text,
+                    "nombre": nombre_al,
+                }
 
                 # Menú acciones de alumno
                 menu_alumno = ft.PopupMenuButton(
@@ -376,6 +399,82 @@ class NotasView(ft.Container):
             scroll=ft.ScrollMode.ADAPTIVE,
         )
 
+    def _actualizar_fila_alumno_ui(self, id_al: str):
+        """Actualiza in-place las celdas y cálculos del alumno sin recrear la tabla ni resetear el scroll."""
+        id_str = str(id_al)
+        if not hasattr(self, "alumnos_celdas") or id_str not in self.alumnos_celdas:
+            return
+
+        celdas = self.alumnos_celdas[id_str]
+        colegio = self.state.selected_colegio or ""
+        curso = self.state.selected_curso or ""
+        alumnos = self.state.get_alumnos(colegio, curso)
+        al_data = alumnos.get(id_str)
+        if not al_data:
+            return
+
+        trim_idx = self.state.active_trimestre
+        if trim_idx >= 3:
+            return
+
+        nombre_trim = NOMBRES_TRIMESTRES[trim_idx]
+        trim_data = al_data.get("trimestres", {}).get(nombre_trim, {})
+        principales = trim_data.get("principales", [None] * NUM_PRINCIPALES)
+        extras = trim_data.get("extras", [None] * NUM_EXTRAS)
+        recuperatorio = trim_data.get("recuperatorio")
+
+        calcs = procesar_calificaciones_alumno(al_data.get("trimestres", {}))
+        prom_crudo_red = calcs["promedios_crudos_redondeados"][trim_idx]
+        nota_final_red = calcs["notas_finales_redondeadas"][trim_idx]
+        habilita_recup = prom_crudo_red is not None and prom_crudo_red <= UMBRAL_RECUPERATORIO
+
+        # Actualizar celdas de notas
+        notas_map = {
+            "P0": principales[0] if len(principales) > 0 else None,
+            "P1": principales[1] if len(principales) > 1 else None,
+            "P2": principales[2] if len(principales) > 2 else None,
+            "E0": extras[0] if len(extras) > 0 else None,
+        }
+        for key, val in notas_map.items():
+            if key in celdas:
+                ref = celdas[key]
+                ref["valor"] = val
+                val_str = "-" if val is None else (str(int(val)) if isinstance(val, float) and val.is_integer() else str(val))
+                bg, fg = self._color_por_nota(val)
+                ref["text_widget"].value = val_str
+                ref["text_widget"].color = fg
+                ref["container"].bgcolor = bg
+
+        # Actualizar celda de recuperatorio
+        if "R0" in celdas:
+            ref_r = celdas["R0"]
+            ref_r["valor"] = recuperatorio
+            deshabilitado = not habilita_recup and recuperatorio is None
+            ref_r["deshabilitado"] = deshabilitado
+            if deshabilitado:
+                ref_r["text_widget"].value = "-"
+                ref_r["text_widget"].color = ft.Colors.GREY_400
+                ref_r["container"].bgcolor = ft.Colors.TRANSPARENT
+                ref_r["container"].border = None
+            else:
+                val_str = "-" if recuperatorio is None else (str(int(recuperatorio)) if isinstance(recuperatorio, float) and recuperatorio.is_integer() else str(recuperatorio))
+                bg, fg = self._color_por_nota(recuperatorio)
+                ref_r["text_widget"].value = val_str
+                ref_r["text_widget"].color = fg
+                ref_r["container"].bgcolor = bg
+                ref_r["container"].border = ft.Border.all(1, ft.Colors.OUTLINE_VARIANT)
+
+        # Actualizar celdas de promedio y final
+        bg_prom, fg_prom = self._color_por_nota(prom_crudo_red)
+        celdas["prom_text"].value = str(prom_crudo_red) if prom_crudo_red is not None else "-"
+        celdas["prom_text"].color = fg_prom
+        celdas["prom_container"].bgcolor = bg_prom
+
+        bg_fin, fg_fin = self._color_por_nota(nota_final_red)
+        celdas["fin_text"].value = str(nota_final_red) if nota_final_red is not None else "-"
+        celdas["fin_text"].color = fg_fin
+        celdas["fin_container"].bgcolor = bg_fin
+
     def _crear_celda_nota(
         self,
         nombre_alumno: str,
@@ -386,47 +485,58 @@ class NotasView(ft.Container):
         tipo: str,
         index: int,
         deshabilitado: bool = False,
-    ) -> ft.DataCell:
-        """Crea un DataCell táctil para la celda de nota."""
-        val_str = "-" if valor is None else (str(int(valor)) if isinstance(valor, float) and valor.is_integer() else str(valor))
-        bg_color, text_color = self._color_por_nota(valor)
+    ) -> tuple[ft.DataCell, dict]:
+        """Crea un DataCell táctil para la celda de nota y retorna su objeto de referencia."""
+        val_str = "-" if (valor is None or deshabilitado) else (str(int(valor)) if isinstance(valor, float) and valor.is_integer() else str(valor))
+        bg_color, text_color = self._color_por_nota(valor) if not deshabilitado else (ft.Colors.TRANSPARENT, ft.Colors.GREY_400)
 
-        if deshabilitado:
-            widget = ft.Container(
-                content=ft.Text("-", size=13, color=ft.Colors.GREY_400),
-                alignment=ft.Alignment.CENTER,
-                width=42,
-                height=32,
-            )
-            return ft.DataCell(widget)
+        txt_widget = ft.Text(
+            val_str,
+            weight=ft.FontWeight.BOLD if not deshabilitado else ft.FontWeight.NORMAL,
+            size=13,
+            color=text_color,
+        )
+        container = ft.Container(
+            content=txt_widget,
+            bgcolor=bg_color,
+            border=ft.Border.all(1, ft.Colors.OUTLINE_VARIANT) if not deshabilitado else None,
+            border_radius=6,
+            width=42,
+            height=32,
+            alignment=ft.Alignment.CENTER,
+        )
+
+        ref = {
+            "container": container,
+            "text_widget": txt_widget,
+            "valor": valor,
+            "deshabilitado": deshabilitado,
+        }
 
         def on_tap(e):
+            if ref.get("deshabilitado"):
+                return
+
             def guardar_valor(nuevo_val):
                 self.state.set_nota(id_al, trim_idx, tipo, index, nuevo_val)
-                self._build_ui()
+                # Actualizar in-place sin recargar la lista ni reiniciar el scroll
+                self._actualizar_fila_alumno_ui(id_al)
+                self._actualizar_boton_guardar()
                 self.app_page.update()
 
             dlg = GradeEditorDialog(
                 alumno_nombre=nombre_alumno,
                 columna_nombre=nombre_eval,
-                valor_actual=valor,
+                valor_actual=ref.get("valor"),
                 on_save=guardar_valor,
                 page=self.app_page,
             )
             self.app_page.show_dialog(dlg)
             self.app_page.update()
 
-        widget = ft.Container(
-            content=ft.Text(val_str, weight=ft.FontWeight.BOLD, size=13, color=text_color),
-            bgcolor=bg_color,
-            border=ft.Border.all(1, ft.Colors.OUTLINE_VARIANT),
-            border_radius=6,
-            width=42,
-            height=32,
-            alignment=ft.Alignment.CENTER,
-            on_click=on_tap,
-        )
-        return ft.DataCell(widget, on_tap=on_tap)
+        container.on_click = on_tap
+        data_cell = ft.DataCell(container, on_tap=on_tap)
+        return data_cell, ref
 
     def _on_trimestre_change(self, e):
         selected = list(e.control.selected)
