@@ -10,12 +10,45 @@ K_COLEGIOS = "colegios"
 K_CURSOS = "cursos"
 K_ALUMNOS = "alumnos"
 K_NOMBRE = "nombre"
+K_APELLIDO = "apellido"
+K_NOMBRE_PILA = "nombre_pila"
 K_TRIMESTRES = "trimestres"
 K_PRINCIPALES = "principales"
 K_EXTRAS = "extras"
 K_RECUPERATORIO = "recuperatorio"
 K_NOMBRES_COLUMNAS = "nombres_columnas"
 K_ASISTENCIAS = "asistencias"
+
+
+def formatear_nombre_completo(apellido: str, nombre: str = "") -> str:
+    """Combina apellido y nombre en formato estándar 'Apellido, Nombre'."""
+    ap = (apellido or "").strip()
+    nom = (nombre or "").strip()
+    if ap and nom:
+        return f"{ap}, {nom}"
+    return ap or nom
+
+
+def separar_nombre_completo(nombre_completo: str) -> tuple[str, str]:
+    """
+    Separa un nombre completo en (apellido, nombre).
+    Soporta formato 'Apellido, Nombre' o 'Apellido Nombre'.
+    """
+    if not nombre_completo:
+        return "", ""
+    txt = nombre_completo.strip()
+    if "," in txt:
+        partes = txt.split(",", 1)
+        return partes[0].strip(), partes[1].strip()
+    # Si no tiene coma, si son varias palabras, asumimos que la última o primeras forman apellido/nombre
+    partes = txt.split()
+    if len(partes) == 1:
+        return partes[0], ""
+    if len(partes) == 2:
+        return partes[0], partes[1]
+    # Más de 2 palabras sin coma (ej: 'De la Cruz Juan'): primer palabra apellido, resto nombre
+    return partes[0], " ".join(partes[1:])
+
 
 # --- Estados de asistencia ---
 ESTADO_PRESENTE = "P"

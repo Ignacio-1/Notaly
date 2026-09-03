@@ -260,6 +260,52 @@ class TestNavigationAndStateFlow:
         nombres = [al['nombre'] for al in alumnos.values()]
         assert nombres == ['Alvarez Sofia', 'Zarate Lucas']
 
+    def test_student_form_dialog_flow_and_repeat(self, isolated_app_state, mock_page_mobile):
+        from mobile.components.student_dialog import StudentFormDialog
+        isolated_app_state.selected_colegio = 'Colegio Nacional'
+        isolated_app_state.selected_curso = '5to A'
+
+        added = []
+        def on_confirm(ap, nom):
+            added.append((ap, nom))
+            isolated_app_state.add_alumno(ap, nom)
+            return True
+
+        dlg = StudentFormDialog(
+            titulo="Agregar Alumno",
+            on_confirm=on_confirm,
+            modo_continuo=True,
+            page=mock_page_mobile,
+        )
+        mock_page_mobile.show_dialog(dlg)
+
+        # Cargar primer alumno
+        dlg.txt_apellido.value = "Benitez"
+        dlg.txt_nombre.value = "Agustin"
+        dlg._guardar_alumno(continuar=True)
+
+        assert len(added) == 1
+        assert added[0] == ("Benitez", "Agustin")
+        assert dlg.txt_apellido.value == ""
+        assert dlg.txt_nombre.value == ""
+        assert mock_page_mobile.active_dialog is dlg
+
+        # Cargar segundo alumno y salir
+        dlg.txt_apellido.value = "Alonso"
+        dlg.txt_nombre.value = "Marcos"
+        dlg._guardar_alumno(continuar=False)
+
+        assert len(added) == 2
+        assert mock_page_mobile.active_dialog is None
+
+        # Verificar ordenamiento por apellido
+        isolated_app_state.order_alumnos_alphabetically()
+        alumnos = isolated_app_state.get_alumnos()
+        # "Alonso, Marcos" debe preceder a "Benitez, Agustin"
+        nombres_ord = [al['nombre'] for al in alumnos.values()]
+        assert "Alonso, Marcos" in nombres_ord
+        assert nombres_ord.index("Alonso, Marcos") < nombres_ord.index("Benitez, Agustin")
+
     def test_create_curso_dialog_with_initial_students(self, isolated_app_state, mock_page_mobile):
         created = []
         def on_confirm(nombre, cant):

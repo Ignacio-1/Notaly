@@ -296,11 +296,22 @@ class AppState:
         self.has_unsaved_changes = True
         self.notify()
 
-    def add_alumno(self, nombre: str, colegio: str | None = None, curso: str | None = None) -> tuple[bool, str]:
-        """Agrega un nuevo alumno al curso."""
-        nombre = nombre.strip()
-        if not nombre:
-            return False, "El nombre del alumno no puede estar vacío."
+    def add_alumno(self, apellido_o_nombre: str, nombre_pila: str = "", colegio: str | None = None, curso: str | None = None) -> tuple[bool, str]:
+        """Agrega un nuevo alumno al curso admitiendo apellido y nombre por separado o nombre compuesto."""
+        from core.constants import formatear_nombre_completo, separar_nombre_completo, K_APELLIDO, K_NOMBRE_PILA
+        ap_in = apellido_o_nombre.strip()
+        nom_in = nombre_pila.strip()
+        if not nom_in and not ap_in:
+            return False, "El apellido o nombre del alumno no puede estar vacío."
+        
+        if nom_in:
+            ap = ap_in
+            nom = nom_in
+            nombre_completo = formatear_nombre_completo(ap, nom)
+        else:
+            nombre_completo = ap_in
+            ap, nom = separar_nombre_completo(ap_in)
+        
         curso_dict = self.get_curso_data(colegio, curso)
         if not curso_dict:
             return False, "Curso no encontrado."
@@ -314,20 +325,36 @@ class AppState:
                 next_id = max(numeric_ids) + 1
 
         alumnos[str(next_id)] = {
-            K_NOMBRE: nombre,
+            K_NOMBRE: nombre_completo,
+            K_APELLIDO: ap,
+            K_NOMBRE_PILA: nom,
             K_TRIMESTRES: crear_trimestres_vacios(),
         }
         self.save_data()
-        return True, f"Alumno '{nombre}' agregado exitosamente con ID #{next_id}."
+        return True, f"Alumno '{nombre_completo}' agregado exitosamente con ID #{next_id}."
 
-    def rename_alumno(self, id_al: str, nuevo_nombre: str, colegio: str | None = None, curso: str | None = None) -> tuple[bool, str]:
-        """Renombra un alumno."""
-        nuevo_nombre = nuevo_nombre.strip()
-        if not nuevo_nombre:
-            return False, "El nombre no puede estar vacío."
+    def rename_alumno(self, id_al: str, nuevo_apellido_o_nombre: str, nuevo_nombre_pila: str = "", colegio: str | None = None, curso: str | None = None) -> tuple[bool, str]:
+        """Renombra un alumno permitiendo apellido y nombre por separado."""
+        from core.constants import formatear_nombre_completo, separar_nombre_completo, K_APELLIDO, K_NOMBRE_PILA
+        ap_in = nuevo_apellido_o_nombre.strip()
+        nom_in = nuevo_nombre_pila.strip()
+        if not nom_in and not ap_in:
+            return False, "El nombre o apellido no puede estar vacío."
+
+        if nom_in:
+            ap = ap_in
+            nom = nom_in
+            nombre_completo = formatear_nombre_completo(ap, nom)
+        else:
+            nombre_completo = ap_in
+            ap, nom = separar_nombre_completo(ap_in)
+
         curso_dict = self.get_curso_data(colegio, curso)
         if curso_dict and id_al in curso_dict.get(K_ALUMNOS, {}):
-            curso_dict[K_ALUMNOS][id_al][K_NOMBRE] = nuevo_nombre
+            alumno = curso_dict[K_ALUMNOS][id_al]
+            alumno[K_NOMBRE] = nombre_completo
+            alumno[K_APELLIDO] = ap
+            alumno[K_NOMBRE_PILA] = nom
             self.save_data()
             return True, "Nombre de alumno actualizado."
         return False, "Alumno no encontrado."
@@ -365,21 +392,33 @@ class AppState:
         return True, "Alumno eliminado y orden actualizado."
 
     def order_alumnos_alphabetically(self, colegio: str | None = None, curso: str | None = None) -> None:
-        """Ordena los alumnos alfabéticamente por nombre y renumera sus IDs."""
+        """
+        Ordena los alumnos alfabéticamente por APELLIDO y renumera sus IDs consecutivamente.
+        Se puede ejecutar cuantas veces se desee.
+        """
+        from core.constants import separar_nombre_completo, K_APELLIDO, K_NOMBRE_PILA
         curso_dict = self.get_curso_data(colegio, curso)
         if not curso_dict or not curso_dict.get(K_ALUMNOS):
             return
 
         alumnos = curso_dict[K_ALUMNOS]
-        # Ordenar por nombre de alumno (sin distinguir mayúsculas/minúsculas)
-        ids_ordenados_por_nombre = sorted(
-            alumnos.keys(),
-            key=lambda x: alumnos[x].get(K_NOMBRE, "").strip().lower()
-        )
+
+        def criterio_apellido(item_id: str):
+            al = alumnos[item_id]
+            # Si tiene K_APELLIDO explícito, usarlo
+            ap = al.get(K_APELLIDO, "").strip()
+            nom = al.get(K_NOMBRE_PILA, "").strip()
+            if not ap:
+                ap, nom = separar_nombre_completo(al.get(K_NOMBRE, ""))
+            # Normalizar para ordenar sin distinguir mayúsculas ni acentos básicos
+            return (ap.lower(), nom.lower(), int(item_id) if item_id.isdigit() else 9999)
+
+        # Ordenar por Apellido (y en caso de empate por Nombre)
+        ids_ordenados = sorted(alumnos.keys(), key=criterio_apellido)
 
         alumnos_reordenados = {}
         mapa_ids = {}
-        for nuevo_id, viejo_id in enumerate(ids_ordenados_por_nombre, start=1):
+        for nuevo_id, viejo_id in enumerate(ids_ordenados, start=1):
             alumnos_reordenados[str(nuevo_id)] = alumnos[viejo_id]
             mapa_ids[str(viejo_id)] = str(nuevo_id)
 

@@ -24,6 +24,8 @@ from core.constants import (
     ESTADOS_ASISTENCIA,
     INFO_ESTADOS_ASISTENCIA,
     K_ALUMNOS,
+    K_APELLIDO,
+    K_NOMBRE_PILA,
     K_ASISTENCIAS,
     K_COLEGIOS,
     K_CURSOS,
@@ -42,6 +44,8 @@ from core.constants import (
     UMBRAL_RECUPERATORIO,
     crear_trimestre_vacio,
     crear_trimestres_vacios,
+    formatear_nombre_completo,
+    separar_nombre_completo,
 )
 from core.exportador import (
     exportar_a_csv,
@@ -694,7 +698,8 @@ class AppPromedios:
         ctk.CTkButton(export_frame, text="TXT", fg_color="transparent", text_color=self.paleta["texto_secundario"], hover_color=self.paleta["card_btn_hover"], font=self.font_body, width=40, command=lambda: self.exportar_planilla_texto(nombre_curso)).pack(side=tk.LEFT, padx=2, pady=2)
         ctk.CTkButton(export_frame, text="CSV", fg_color="transparent", text_color=self.paleta["texto_secundario"], hover_color=self.paleta["card_btn_hover"], font=self.font_body, width=40, command=lambda: self.exportar_planilla(nombre_curso)).pack(side=tk.LEFT, padx=2, pady=2)
         
-        ctk.CTkButton(right_frame, text="+ Alumno", fg_color=self.paleta["texto_principal"], hover_color="#374151", corner_radius=6, font=self.font_button, width=100, command=lambda: self.agregar_alumno(nombre_curso)).pack(side=tk.LEFT, padx=10)
+        ctk.CTkButton(right_frame, text="A-Z", fg_color=self.paleta["fondo_card"], text_color=self.paleta["texto_principal"], hover_color=self.paleta["card_btn_hover"], corner_radius=6, font=self.font_button, width=50, command=lambda: self.ordenar_alumnos_alfabeticamente(nombre_curso)).pack(side=tk.LEFT, padx=(5, 5))
+        ctk.CTkButton(right_frame, text="+ Alumno", fg_color=self.paleta["texto_principal"], hover_color="#374151", corner_radius=6, font=self.font_button, width=100, command=lambda: self.abrir_ventana_carga_alumnos(nombre_curso)).pack(side=tk.LEFT, padx=10)
         ctk.CTkButton(right_frame, text="GUARDAR Y CALCULAR", fg_color=self.paleta["azul_fg"], hover_color=self.paleta["azul_hover"], font=self.font_button, corner_radius=6, width=150, command=lambda: self.guardar_notas_cuadricula(nombre_curso)).pack(side=tk.LEFT)
 
         # Usamos un CTkScrollableFrame para simplificar enormemente el manejo del scroll
@@ -838,6 +843,7 @@ class AppPromedios:
         ent_n = tk.Entry(self.grid_container, borderwidth=0, bg=bg_color, font=f_bold, fg=self.paleta["texto_principal"], relief="flat")
         ent_n.insert(0, al_data.get(K_NOMBRE, "")); ent_n.grid(row=row, column=2, sticky="nsew", padx=1, pady=1)
         ent_n.bind("<KeyRelease>", self._marcar_cambios_pendientes)
+        ent_n.bind("<Double-Button-1>", lambda e, aid=id_al: self.abrir_ventana_carga_alumnos(nombre_curso, id_alumno_editar=aid))
         self.widgets_nombres_alumnos[id_al] = ent_n
         register_nav(ent_n, row, 2)
 
@@ -965,20 +971,206 @@ class AppPromedios:
                         ent.select_range(0, tk.END)
                     return "break"
 
-    def agregar_alumno(self, nombre_curso):
-        """Agrega un nuevo alumno al curso y recarga la planilla."""
-        # Guardar cambios en la UI para no perderlos
+    def agregar_alumno(self, nombre_curso, apellido: str = "", nombre: str = ""):
+        """Agrega un nuevo alumno al curso y guarda."""
         self.guardar_notas_cuadricula(nombre_curso, show_success_message=False)
-        
         nombre_colegio = self.colegio_seleccionado
         alumnos = self.datos[K_COLEGIOS][nombre_colegio][K_CURSOS][nombre_curso][K_ALUMNOS]
         nuevo_id = str(max([int(k) for k in alumnos.keys()] + [0]) + 1)
+        nombre_completo = formatear_nombre_completo(apellido, nombre)
         alumnos[nuevo_id] = {
-            K_NOMBRE: "",
+            K_NOMBRE: nombre_completo,
+            K_APELLIDO: (apellido or "").strip(),
+            K_NOMBRE_PILA: (nombre or "").strip(),
             K_TRIMESTRES: crear_trimestres_vacios(),
         }
         self._guardar_datos_con_recuperacion()
+        return nuevo_id
+
+    def abrir_ventana_carga_alumnos(self, nombre_curso, id_alumno_editar=None):
+        """
+        Abre una ventana modal optimizada para la carga consecutiva o edición de alumnos
+        separando Apellido y Nombre.
+        Permite usar Enter o Flecha Abajo para avanzar con fluidez entre campos y alumnos.
+        """
+        self.guardar_notas_cuadricula(nombre_curso, show_success_message=False)
+        nombre_colegio = self.colegio_seleccionado
+        alumnos = self.datos[K_COLEGIOS][nombre_colegio][K_CURSOS][nombre_curso][K_ALUMNOS]
+
+        es_edicion = id_alumno_editar is not None and str(id_alumno_editar) in alumnos
+        al_data = alumnos.get(str(id_alumno_editar), {}) if es_edicion else {}
+
+        ap_inicial = al_data.get(K_APELLIDO, "")
+        nom_inicial = al_data.get(K_NOMBRE_PILA, "")
+        if not ap_inicial and al_data.get(K_NOMBRE):
+            ap_inicial, nom_inicial = separar_nombre_completo(al_data[K_NOMBRE])
+
+        modal = ctk.CTkToplevel(self.root)
+        titulo = f"Editar Alumno #{id_alumno_editar}" if es_edicion else f"Cargar Alumnos - {nombre_curso}"
+        modal.title(titulo)
+        modal.geometry("460x360")
+        modal.resizable(False, False)
+        modal.transient(self.root)
+        modal.grab_set()
+
+        # Centrar ventana
+        modal.update_idletasks()
+        rx = self.root.winfo_x() + (self.root.winfo_width() // 2) - 230
+        ry = self.root.winfo_y() + (self.root.winfo_height() // 2) - 180
+        modal.geometry(f"+{max(0, rx)}+{max(0, ry)}")
+
+        main_f = ctk.CTkFrame(modal, fg_color="transparent")
+        main_f.pack(fill=tk.BOTH, expand=True, padx=25, pady=20)
+
+        ctk.CTkLabel(main_f, text=titulo, font=self.font_h2, text_color=self.paleta["texto_principal"]).pack(anchor=tk.W, pady=(0, 4))
+        
+        info_sub = "Modifica los datos del alumno." if es_edicion else "Escribe Apellido y Nombre. Usa Enter o 'Siguiente' para seguir cargando."
+        ctk.CTkLabel(main_f, text=info_sub, font=self.font_caption, text_color=self.paleta["texto_secundario"]).pack(anchor=tk.W, pady=(0, 15))
+
+        # Campos
+        ctk.CTkLabel(main_f, text="Apellido(s):", font=self.font_grid_header, text_color=self.paleta["texto_principal"]).pack(anchor=tk.W, pady=(2, 2))
+        ent_ap = ctk.CTkEntry(main_f, font=self.font_body, height=36, corner_radius=6)
+        ent_ap.insert(0, ap_inicial)
+        ent_ap.pack(fill=tk.X, pady=(0, 10))
+
+        ctk.CTkLabel(main_f, text="Nombre(s):", font=self.font_grid_header, text_color=self.paleta["texto_principal"]).pack(anchor=tk.W, pady=(2, 2))
+        ent_nom = ctk.CTkEntry(main_f, font=self.font_body, height=36, corner_radius=6)
+        ent_nom.insert(0, nom_inicial)
+        ent_nom.pack(fill=tk.X, pady=(0, 12))
+
+        lbl_msg = ctk.CTkLabel(main_f, text="", font=self.font_caption, text_color="#10B981")
+        lbl_msg.pack(anchor=tk.W, pady=(0, 8))
+
+        # Acciones y guardado
+        contador = [0]
+
+        def guardar_y_procesar(continuar=False):
+            ap = ent_ap.get().strip()
+            nom = ent_nom.get().strip()
+            if not ap and not nom:
+                lbl_msg.configure(text="Ingresa al menos el apellido o nombre.", text_color="#EF4444")
+                return
+
+            if es_edicion:
+                al_data[K_NOMBRE] = formatear_nombre_completo(ap, nom)
+                al_data[K_APELLIDO] = ap
+                al_data[K_NOMBRE_PILA] = nom
+                self._guardar_datos_con_recuperacion()
+                modal.destroy()
+                self.mostrar_apartado_curso(nombre_curso)
+            else:
+                self.agregar_alumno(nombre_curso, ap, nom)
+                contador[0] += 1
+                if continuar:
+                    lbl_msg.configure(
+                        text=f"✓ Guardado: {formatear_nombre_completo(ap, nom)} ({contador[0]} agregados).",
+                        text_color="#10B981"
+                    )
+                    ent_ap.delete(0, tk.END)
+                    ent_nom.delete(0, tk.END)
+                    ent_ap.focus_set()
+                else:
+                    modal.destroy()
+                    self.mostrar_apartado_curso(nombre_curso)
+
+        # Teclas de atajo: Enter en Apellido pasa a Nombre, Enter en Nombre guarda y continua
+        ent_ap.bind("<Return>", lambda e: ent_nom.focus_set())
+        ent_ap.bind("<Down>", lambda e: ent_nom.focus_set())
+        ent_nom.bind("<Up>", lambda e: ent_ap.focus_set())
+        if not es_edicion:
+            ent_nom.bind("<Return>", lambda e: guardar_y_procesar(continuar=True))
+            ent_nom.bind("<Down>", lambda e: guardar_y_procesar(continuar=True))
+        else:
+            ent_nom.bind("<Return>", lambda e: guardar_y_procesar(continuar=False))
+
+        btn_box = ctk.CTkFrame(main_f, fg_color="transparent")
+        btn_box.pack(fill=tk.X, side=tk.BOTTOM, pady=(8, 0))
+
+        def cerrar_modal():
+            modal.destroy()
+            self.mostrar_apartado_curso(nombre_curso)
+
+        ctk.CTkButton(
+            btn_box,
+            text="Listo / Cerrar" if not es_edicion else "Cancelar",
+            fg_color=self.paleta["fondo_app"],
+            text_color=self.paleta["texto_principal"],
+            hover_color=self.paleta["card_btn_hover"],
+            font=self.font_button,
+            width=100,
+            command=cerrar_modal,
+        ).pack(side=tk.LEFT)
+
+        if not es_edicion:
+            ctk.CTkButton(
+                btn_box,
+                text="Guardar y Salir",
+                fg_color=self.paleta["texto_principal"],
+                hover_color="#374151",
+                font=self.font_button,
+                command=lambda: guardar_y_procesar(continuar=False),
+            ).pack(side=tk.RIGHT, padx=(8, 0))
+
+            ctk.CTkButton(
+                btn_box,
+                text="Siguiente Alumno ➔",
+                fg_color=self.paleta["azul_fg"],
+                hover_color=self.paleta["azul_hover"],
+                font=self.font_button,
+                command=lambda: guardar_y_procesar(continuar=True),
+            ).pack(side=tk.RIGHT)
+        else:
+            ctk.CTkButton(
+                btn_box,
+                text="Guardar Cambios",
+                fg_color=self.paleta["azul_fg"],
+                hover_color=self.paleta["azul_hover"],
+                font=self.font_button,
+                command=lambda: guardar_y_procesar(continuar=False),
+            ).pack(side=tk.RIGHT)
+
+        ent_ap.focus_set()
+
+    def ordenar_alumnos_alfabeticamente(self, nombre_curso):
+        """Ordena los alumnos del curso alfabéticamente por Apellido y reordena los IDs."""
+        self.guardar_notas_cuadricula(nombre_curso, show_success_message=False)
+        nombre_colegio = self.colegio_seleccionado
+        curso = self.datos[K_COLEGIOS][nombre_colegio][K_CURSOS][nombre_curso]
+        alumnos = curso.get(K_ALUMNOS, {})
+        if not alumnos:
+            return
+
+        def criterio_apellido(item_id: str):
+            al = alumnos[item_id]
+            ap = al.get(K_APELLIDO, "").strip()
+            nom = al.get(K_NOMBRE_PILA, "").strip()
+            if not ap:
+                ap, nom = separar_nombre_completo(al.get(K_NOMBRE, ""))
+            return (ap.lower(), nom.lower(), int(item_id) if item_id.isdigit() else 9999)
+
+        ids_ordenados = sorted(alumnos.keys(), key=criterio_apellido)
+        alumnos_reordenados = {}
+        mapa_ids = {}
+        for nuevo_id, viejo_id in enumerate(ids_ordenados, start=1):
+            alumnos_reordenados[str(nuevo_id)] = alumnos[viejo_id]
+            mapa_ids[str(viejo_id)] = str(nuevo_id)
+
+        curso[K_ALUMNOS] = alumnos_reordenados
+
+        asistencias = curso.get(K_ASISTENCIAS, {})
+        nuevas_asistencias = {}
+        for fecha, registros_dia in asistencias.items():
+            nuevos_registros = {}
+            if isinstance(registros_dia, dict):
+                for viejo_id, estado in registros_dia.items():
+                    if str(viejo_id) in mapa_ids:
+                        nuevos_registros[mapa_ids[str(viejo_id)]] = estado
+            nuevas_asistencias[fecha] = nuevos_registros
+        curso[K_ASISTENCIAS] = nuevas_asistencias
+
+        self._guardar_datos_con_recuperacion()
         self.mostrar_apartado_curso(nombre_curso)
+        messagebox.showinfo("Ordenamiento", "Alumnos ordenados alfabéticamente por apellido (A-Z).")
 
     def eliminar_entidad(self, tipo, id_ent, nombre_curso=None):
         """Elimina una entidad (colegio, curso o alumno) con confirmación del usuario."""

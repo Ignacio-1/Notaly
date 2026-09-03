@@ -72,5 +72,37 @@ def test_validacion_solo_numeros(app_instance, entrada, esperado):
     ("-1", False),
 ])
 def test_validacion_solo_enteros(app_instance, entrada, esperado):
-    """Prueba la validación de cantidades (solo enteros positivos)."""
+    """Verifica que la función solo permita enteros positivos o vacío."""
     assert app_instance.solo_enteros(entrada) == esperado
+
+
+def test_ordenar_alumnos_por_apellido_desktop():
+    """Verifica el ordenamiento alfabético por apellido en la versión desktop."""
+    from core.constants import crear_trimestres_vacios
+    dummy = MagicMock()
+    dummy.guardar_notas_cuadricula = MagicMock()
+    dummy._guardar_datos_con_recuperacion = MagicMock()
+    dummy.mostrar_apartado_curso = MagicMock()
+    dummy.colegio_seleccionado = "Colegio Test"
+    dummy.datos = {
+        K_COLEGIOS: {
+            "Colegio Test": {
+                K_CURSOS: {
+                    "3ro A": {
+                        K_ALUMNOS: {
+                            "1": {K_NOMBRE: "Zarate, Lucas", "apellido": "Zarate", "nombre_pila": "Lucas", "trimestres": crear_trimestres_vacios()},
+                            "2": {K_NOMBRE: "Alvarez, Sofia", "apellido": "Alvarez", "nombre_pila": "Sofia", "trimestres": crear_trimestres_vacios()},
+                            "3": {K_NOMBRE: "Gomez, Martin", "apellido": "Gomez", "nombre_pila": "Martin", "trimestres": crear_trimestres_vacios()},
+                        },
+                        "asistencias": {}
+                    }
+                }
+            }
+        }
+    }
+
+    AppPromedios.ordenar_alumnos_alfabeticamente(dummy, "3ro A")
+    alumnos = dummy.datos[K_COLEGIOS]["Colegio Test"][K_CURSOS]["3ro A"][K_ALUMNOS]
+    assert alumnos["1"][K_NOMBRE] == "Alvarez, Sofia"
+    assert alumnos["2"][K_NOMBRE] == "Gomez, Martin"
+    assert alumnos["3"][K_NOMBRE] == "Zarate, Lucas"

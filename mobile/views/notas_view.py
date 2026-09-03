@@ -11,6 +11,7 @@ from mobile.components.student_dialog import (
     RenameDialog,
     ConfirmDeleteDialog,
     CustomizeColumnsDialog,
+    StudentFormDialog,
 )
 from mobile.components.export_dialog import ExportDialog
 from core.constants import (
@@ -596,38 +597,48 @@ class NotasView(ft.Container):
             self._mostrar_snackbar("Error al guardar calificaciones.", error=True)
 
     def _abrir_modal_agregar_alumno(self):
-        def confirmar(nombre):
-            exito, msg = self.state.add_alumno(nombre)
+        from core.constants import separar_nombre_completo
+
+        def confirmar(apellido: str, nombre: str):
+            exito, msg = self.state.add_alumno(apellido, nombre)
             if exito:
                 self._build_ui()
                 self.app_page.update()
                 self._mostrar_snackbar(msg)
+                return True
             else:
                 self._mostrar_snackbar(msg, error=True)
+                return False
 
-        dlg = CreateEntityDialog(
+        dlg = StudentFormDialog(
             titulo="Agregar Alumno",
-            label_campo="Nombre y Apellido",
-            hint="",
             on_confirm=confirmar,
+            modo_continuo=True,
             page=self.app_page,
         )
         self.app_page.show_dialog(dlg)
         self.app_page.update()
 
     def _abrir_modal_renombrar_alumno(self, id_al: str, nombre_actual: str):
-        def confirmar(nuevo_nombre):
-            exito, msg = self.state.rename_alumno(id_al, nuevo_nombre)
+        from core.constants import separar_nombre_completo
+        ap_act, nom_act = separar_nombre_completo(nombre_actual)
+
+        def confirmar(nuevo_apellido: str, nuevo_nombre: str):
+            exito, msg = self.state.rename_alumno(id_al, nuevo_apellido, nuevo_nombre)
             if exito:
                 self._build_ui()
                 self.app_page.update()
                 self._mostrar_snackbar(msg)
+                return True
             else:
                 self._mostrar_snackbar(msg, error=True)
+                return False
 
-        dlg = RenameDialog(
-            titulo=f"Renombrar Alumno #{id_al}",
-            nombre_actual=nombre_actual,
+        dlg = StudentFormDialog(
+            titulo=f"Editar Alumno #{id_al}",
+            apellido_actual=ap_act,
+            nombre_actual=nom_act,
+            modo_continuo=False,
             on_confirm=confirmar,
             page=self.app_page,
         )
