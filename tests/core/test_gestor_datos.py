@@ -76,3 +76,79 @@ def test_leer_ruta_config_archivo_no_existente(monkeypatch, tmp_path):
 
     # La ruta está en el config, pero el archivo en sí no existe, por lo que debe devolver None
     assert gestor_datos.leer_ruta_config() is None
+
+
+def test_normalizar_texto():
+    """Prueba que normalizar_texto elimine acentos y pase a minúsculas correctamente."""
+    assert gestor_datos.normalizar_texto("Pérez") == "perez"
+    assert gestor_datos.normalizar_texto("MARÍA") == "maria"
+    assert gestor_datos.normalizar_texto("Ángel Úrsula") == "angel ursula"
+    assert gestor_datos.normalizar_texto("") == ""
+    assert gestor_datos.normalizar_texto(None) == ""
+
+
+def test_buscar_entidad_global_alumnos_colegios_cursos():
+    """
+    Prueba que buscar_entidad_global localice colegios, cursos y alumnos
+    respetando insensibilidad a mayúsculas/minúsculas y acentos.
+    """
+    datos = {
+        "colegios": {
+            "Colegio San Martín": {
+                "cursos": {
+                    "3° A": {
+                        "alumnos": {
+                            "1": {"nombre": "Martín Álvarez"},
+                            "2": {"nombre": "Lucía Gómez"},
+                            "3": {"nombre": ""},
+                            "4": {"nombre": "-"},
+                        }
+                    },
+                    "4° B": {
+                        "alumnos": {
+                            "1": {"nombre": "Pedro Sánchez"}
+                        }
+                    }
+                }
+            },
+            "Instituto Belgrano": {
+                "cursos": {
+                    "1° C": {
+                        "alumnos": {
+                            "1": {"nombre": "Sofía Belgrano"}
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    # Búsqueda por colegio sin acento ("martin" debe encontrar "Colegio San Martín")
+    res_col = gestor_datos.buscar_entidad_global("martin", datos)
+    nombres_col = [r["nombre"] for r in res_col if r["tipo"] == "colegio"]
+    assert "Colegio San Martín" in nombres_col
+
+    # Búsqueda por curso ("3° a" debe encontrar "3° A")
+    res_cur = gestor_datos.buscar_entidad_global("3° a", datos)
+    cursos_encontrados = [r["nombre"] for r in res_cur if r["tipo"] == "curso"]
+    assert "3° A" in cursos_encontrados
+
+    # Búsqueda por alumno con acento ("álvarez" o "alvarez")
+    res_alu1 = gestor_datos.buscar_entidad_global("alvarez", datos)
+    assert any(r["tipo"] == "alumno" and r["nombre"] == "Martín Álvarez" for r in res_alu1)
+
+    res_alu2 = gestor_datos.buscar_entidad_global("ÁLVAREZ", datos)
+    assert any(r["tipo"] == "alumno" and r["nombre"] == "Martín Álvarez" for r in res_alu2)
+
+    # Validar que los vacíos y "-" no se retornen
+    assert not any(r["nombre"] in ("", "-") for r in res_alu1)
+
+    # Modo solo_alumnos (Desktop)
+    res_solo_alu = gestor_datos.buscar_entidad_global("belgrano", datos, solo_alumnos=True)
+    assert all(r["tipo"] == "alumno" for r in res_solo_alu)
+    assert any(r["nombre"] == "Sofía Belgrano" for r in res_solo_alu)
+
+    # Límite de resultados
+    res_limite = gestor_datos.buscar_entidad_global("a", datos, limite=2)
+    assert len(res_limite) <= 2
+

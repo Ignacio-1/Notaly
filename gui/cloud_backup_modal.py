@@ -27,6 +27,15 @@ class CloudBackupModal(ctk.CTkToplevel):
         self.transient(parent)
         self.grab_set()
 
+        try:
+            import os, sys
+            base_path = getattr(sys, '_MEIPASS', os.path.abspath("."))
+            icon_path = os.path.join(base_path, "app_icon.ico")
+            if os.path.exists(icon_path):
+                self.after(100, lambda: self.iconbitmap(icon_path))
+        except Exception:
+            pass
+
         # Centrar la ventana respecto al padre
         self.update_idletasks()
         try:
@@ -363,6 +372,15 @@ class CloudBackupModal(ctk.CTkToplevel):
         dlg.resizable(False, False)
         dlg.transient(self)
         dlg.grab_set()
+
+        try:
+            import os, sys
+            base_path = getattr(sys, '_MEIPASS', os.path.abspath("."))
+            icon_path = os.path.join(base_path, "app_icon.ico")
+            if os.path.exists(icon_path):
+                dlg.after(100, lambda: dlg.iconbitmap(icon_path))
+        except Exception:
+            pass
 
         try:
             x = self.winfo_x() + (self.winfo_width() // 2) - (450 // 2)

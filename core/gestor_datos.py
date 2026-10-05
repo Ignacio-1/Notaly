@@ -22,9 +22,10 @@ import logging
 import os
 import shutil
 import sys
+import unicodedata
 from pathlib import Path
 
-from .constants import K_COLEGIOS, K_CURSOS, K_ALUMNOS
+from .constants import K_COLEGIOS, K_CURSOS, K_ALUMNOS, K_NOMBRE
 
 logger = logging.getLogger(__name__)
 
@@ -417,3 +418,111 @@ def fusionar_datos(datos_destino: dict, datos_origen: dict) -> dict:
         stats["colegios_nuevos"], stats["cursos_nuevos"], stats["alumnos_nuevos"]
     )
     return stats
+
+
+def normalizar_texto(texto: str) -> str:
+    """
+    Normaliza una cadena de texto eliminando acentos/diacríticos y
+    convirtiéndola a minúsculas para comparaciones insensibles a mayúsculas y tildes.
+    """
+    if not isinstance(texto, str) or not texto:
+        return ""
+    texto_nfd = unicodedata.normalize("NFD", texto)
+    return "".join(c for c in texto_nfd if unicodedata.category(c) != "Mn").lower().strip()
+
+
+def buscar_entidad_global(
+    query: str,
+    datos: dict,
+    solo_alumnos: bool = False,
+    limite: int = 15,
+) -> list[dict]:
+    """
+    Búsqueda predictiva pura y transversal sobre la estructura de datos.
+    Localiza colegios, cursos y alumnos omitiendo diferencias entre mayúsculas,
+    minúsculas y acentos.
+
+    Args:
+        query: Término de búsqueda.
+        datos: Diccionario principal con clave 'colegios'.
+        solo_alumnos: Si es True, sólo retorna alumnos (comportamiento Desktop).
+                      Si es False, busca colegios, cursos y alumnos (omnibox Móvil).
+        limite: Cantidad máxima de resultados a retornar.
+
+    Returns:
+        Lista de diccionarios con la información de las entidades encontradas.
+    """
+    if not query or not isinstance(query, str) or not isinstance(datos, dict):
+        return []
+
+    q_norm = normalizar_texto(query)
+    if not q_norm:
+        return []
+
+    resultados = []
+    colegios = datos.get(K_COLEGIOS, {})
+
+    if not solo_alumnos:
+        # 1. Búsqueda de Colegios
+        for nombre_colegio in sorted(colegios.keys()):
+            if q_norm in normalizar_texto(nombre_colegio):
+                resultados.append({
+                    "tipo": "colegio",
+                    "nombre": nombre_colegio,
+                    "colegio": nombre_colegio,
+                })
+                if len(resultados) >= limite:
+                    return resultados
+
+        # 2. Búsqueda de Cursos
+        for nombre_colegio, col_data in colegios.items():
+            cursos = col_data.get(K_CURSOS, {})
+            for nombre_curso in sorted(cursos.keys()):
+                if q_norm in normalizar_texto(nombre_curso):
+                    resultados.append({
+                        "tipo": "curso",
+                        "nombre": nombre_curso,
+                        "curso": nombre_curso,
+                        "colegio": nombre_colegio,
+                    })
+                    if len(resultados) >= limite:
+                        return resultados
+
+    # 3. Búsqueda de Alumnos
+    for nombre_colegio, col_data in colegios.items():
+        cursos = col_data.get(K_CURSOS, {})
+        for nombre_curso, cur_data in cursos.items():
+            alumnos = cur_data.get(K_ALUMNOS, {})
+            for id_al, al_data in alumnos.items():
+                nombre_alumno = al_data.get(K_NOMBRE, "").strip()
+
+                # Ignorar registros vacíos o guiones
+                if not nombre_alumno or nombre_alumno == "-":
+                    continue
+
+                nom_norm = normalizar_texto(nombre_alumno)
+
+                # Criterio de coincidencia
+                if solo_alumnos:
+                    # En modo Desktop: coincide si la query está en nombre_alumno, nombre_curso o nombre_colegio
+                    cur_norm = normalizar_texto(nombre_curso)
+                    col_norm = normalizar_texto(nombre_colegio)
+                    coincide = (q_norm in nom_norm or q_norm in cur_norm or q_norm in col_norm)
+                else:
+                    # En modo Móvil / Omnibox: coincide con el nombre del alumno
+                    # o búsqueda combinada (ej. "Juan 3A")
+                    compuesto = f"{nom_norm} {normalizar_texto(nombre_curso)} {normalizar_texto(nombre_colegio)}"
+                    coincide = (q_norm in nom_norm or all(palabra in compuesto for palabra in q_norm.split()))
+
+                if coincide:
+                    resultados.append({
+                        "tipo": "alumno",
+                        "id": str(id_al),
+                        "nombre": nombre_alumno,
+                        "curso": nombre_curso,
+                        "colegio": nombre_colegio,
+                    })
+                    if len(resultados) >= limite:
+                        return resultados
+
+    return resultados

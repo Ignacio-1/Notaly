@@ -1,4 +1,4 @@
-"""Tests para la lógica de la aplicación (validación, reordenación)."""
+"""Tests para la lógica de la aplicación Desktop (validación, reordenación, ordenamiento)."""
 
 import pytest
 from unittest.mock import MagicMock
@@ -101,7 +101,7 @@ def test_ordenar_alumnos_por_apellido_desktop():
         }
     }
 
-    AppPromedios.ordenar_alumnos_alfabeticamente(dummy, "3ro A")
+    AppPromedios.ordenar_alumnos_alfabeticamente(dummy, "3ro A", mostrar_mensaje=False)
     alumnos = dummy.datos[K_COLEGIOS]["Colegio Test"][K_CURSOS]["3ro A"][K_ALUMNOS]
     assert alumnos["1"][K_NOMBRE] == "Alvarez, Sofia"
     assert alumnos["2"][K_NOMBRE] == "Gomez, Martin"

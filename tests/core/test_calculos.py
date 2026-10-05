@@ -36,9 +36,9 @@ def test_promedio_crudo_con_nones():
 
 # Tests para calcular_nota_final_trimestre
 def test_nota_final_sin_recuperatorio():
-    """Si no hay recuperatorio, la nota final es el promedio crudo."""
+    """Si no hay recuperatorio, la nota final es el promedio crudo redondeado."""
     data = {K_PRINCIPALES: [4, 5], K_EXTRAS: [], K_RECUPERATORIO: None}
-    assert calcular_nota_final_trimestre(data) == 4.5
+    assert calcular_nota_final_trimestre(data) == 5
 
 def test_nota_final_con_recuperatorio():
     """Si hay recuperatorio, esa es la nota final, ignorando el resto."""
@@ -91,3 +91,59 @@ def test_procesar_calificaciones_con_trimestre_vacio():
     # Promedio final total
     # (6 + 9) / 2 = 7.5 -> 8
     assert resultados["nota_final_total_redondeada"] == 8
+
+
+# --- Tests de Blindaje según la Constitución de Notaly ---
+def test_promedio_con_notas_parciales_y_recuperacion_habilitada():
+    """
+    Promedio con notas parciales (ej. 4 y 6 -> 5.0 desaprobado -> recuperación habilitada).
+    """
+    data = {K_PRINCIPALES: [4, 6, None], K_EXTRAS: [None], K_RECUPERATORIO: None}
+    prom_crudo = calcular_promedio_crudo_trimestre(data)
+    assert prom_crudo == 5.0
+    assert prom_crudo < 5.50  # Desaprobado
+    assert calcular_nota_final_trimestre(data) == 5
+
+
+def test_promedio_en_el_limite_aprobado_y_recuperacion_bloqueada():
+    """
+    Promedio en el límite (ej. 5 y 6 -> 5.5 -> 6 aprobado -> recuperación bloqueada).
+    """
+    # 1. Sin recuperatorio cargado
+    data_sin_recup = {K_PRINCIPALES: [5, 6, None], K_EXTRAS: [None], K_RECUPERATORIO: None}
+    prom_crudo = calcular_promedio_crudo_trimestre(data_sin_recup)
+    assert prom_crudo == 5.5
+    assert prom_crudo >= 5.50  # Aprobado
+    assert calcular_nota_final_trimestre(data_sin_recup) == 6
+
+    # 2. Con recuperatorio espurio cargado: al estar aprobado (>= 5.50), la recuperación se bloquea/ignora
+    data_con_recup = {K_PRINCIPALES: [5, 6, None], K_EXTRAS: [None], K_RECUPERATORIO: 10}
+    assert calcular_nota_final_trimestre(data_con_recup) == 6
+
+
+def test_reemplazo_nota_final_por_recuperacion_manteniendo_promedio():
+    """
+    Reemplazo de nota final por nota de recuperación manteniendo el valor del promedio crudo original.
+    """
+    datos_trimestres = {
+        TRIM_1: {K_PRINCIPALES: [4, 6, None], K_EXTRAS: [None], K_RECUPERATORIO: 8},
+        TRIM_2: {K_PRINCIPALES: [3, 4, None], K_EXTRAS: [None], K_RECUPERATORIO: None},
+        TRIM_3: {K_PRINCIPALES: [7, 7, 7], K_EXTRAS: [None], K_RECUPERATORIO: None},
+    }
+    res = procesar_calificaciones_alumno(datos_trimestres)
+
+    # T1: Promedio crudo original se mantiene guardado como dato estadístico: 5.0 (redondeado a 5)
+    assert res["promedios_crudos_sin_redondear"][0] == 5.0
+    assert res["promedios_crudos_redondeados"][0] == 5
+    # T1: Nota final es la nota de recuperación: 8
+    assert res["notas_finales_redondeadas"][0] == 8
+
+    # T2: Promedio crudo 3.5 -> 4, sin recuperación -> nota final 4
+    assert res["promedios_crudos_sin_redondear"][1] == 3.5
+    assert res["promedios_crudos_redondeados"][1] == 4
+    assert res["notas_finales_redondeadas"][1] == 4
+
+    # T3: Promedio crudo 7.0 -> 7, aprobado -> nota final 7
+    assert res["promedios_crudos_redondeados"][2] == 7
+    assert res["notas_finales_redondeadas"][2] == 7
+

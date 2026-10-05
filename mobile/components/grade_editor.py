@@ -3,8 +3,10 @@ Diálogo interactivo para ingresar y editar notas en Android/móvil.
 Ofrece un campo numérico optimizado con soporte para calificaciones enteras y decimales (1 a 10).
 """
 
+import math
 import flet as ft
 from typing import Callable
+from mobile.theme import PRIMARY, TEXT_MAIN, TEXT_MUTED, BORDER_COLOR, BG_PAGE
 
 
 class GradeEditorDialog(ft.AlertDialog):
@@ -21,12 +23,13 @@ class GradeEditorDialog(ft.AlertDialog):
         self.on_close_cb = on_close
         self.app_page = page
 
-        # Campo de texto para notas decimales o enteras
+        # Campo de texto para notas (1 a 10)
         initial_val_str = ""
         if valor_actual is not None:
-            if isinstance(valor_actual, float) and valor_actual.is_integer():
-                initial_val_str = str(int(valor_actual))
-            else:
+            try:
+                num = float(str(valor_actual).replace(",", "."))
+                initial_val_str = str(int(math.floor(num + 0.5)))
+            except (ValueError, TypeError):
                 initial_val_str = str(valor_actual)
 
         self.txt_nota = ft.TextField(
@@ -38,7 +41,9 @@ class GradeEditorDialog(ft.AlertDialog):
             text_size=24,
             autofocus=True,
             dense=False,
-            border_color=ft.Colors.PRIMARY,
+            border_radius=12,
+            bgcolor=BG_PAGE,
+            border_color=PRIMARY,
             on_submit=lambda e: self._guardar_desde_input(),
         )
 
@@ -52,8 +57,8 @@ class GradeEditorDialog(ft.AlertDialog):
                 ft.Container(
                     content=ft.Column(
                         [
-                            ft.Text(f"Alumno: {alumno_nombre}", weight=ft.FontWeight.BOLD, size=15),
-                            ft.Text(f"Evaluación: {columna_nombre}", color=ft.Colors.SECONDARY, size=13),
+                            ft.Text(f"Alumno: {alumno_nombre}", weight=ft.FontWeight.BOLD, size=15, color=TEXT_MAIN),
+                            ft.Text(f"Evaluación: {columna_nombre}", color=TEXT_MUTED, size=13),
                         ],
                         spacing=2,
                     ),
@@ -68,15 +73,30 @@ class GradeEditorDialog(ft.AlertDialog):
             ft.TextButton(
                 "Borrar Nota",
                 icon=ft.Icons.DELETE_OUTLINE,
-                style=ft.ButtonStyle(color=ft.Colors.RED_600),
+                style=ft.ButtonStyle(color=ft.Colors.RED_600, shape=ft.RoundedRectangleBorder(radius=8)),
                 on_click=lambda e: self._guardar_valor(None),
             ),
-            ft.OutlinedButton("Cancelar", on_click=lambda e: self._cerrar()),
-            ft.FilledButton("Guardar", on_click=lambda e: self._guardar_desde_input()),
+            ft.OutlinedButton(
+                "Cancelar",
+                style=ft.ButtonStyle(color=TEXT_MUTED, side=ft.BorderSide(1, BORDER_COLOR), shape=ft.RoundedRectangleBorder(radius=8)),
+                on_click=lambda e: self._cerrar(),
+            ),
+            ft.FilledButton(
+                "Guardar",
+                style=ft.ButtonStyle(bgcolor=PRIMARY, color=ft.Colors.WHITE, shape=ft.RoundedRectangleBorder(radius=8)),
+                on_click=lambda e: self._guardar_desde_input(),
+            ),
         ]
 
         super().__init__(
-            title=ft.Text("Cargar Nota", weight=ft.FontWeight.BOLD),
+            title=ft.Row(
+                [
+                    ft.Icon(ft.Icons.SCHOOL, color=PRIMARY, size=24),
+                    ft.Text("Cargar Nota", weight=ft.FontWeight.BOLD, size=16, color=TEXT_MAIN),
+                ],
+                spacing=8,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            ),
             content=content,
             actions=actions,
             actions_alignment=ft.MainAxisAlignment.END,
@@ -93,10 +113,9 @@ class GradeEditorDialog(ft.AlertDialog):
         try:
             num = float(raw)
             if 1.0 <= num <= 10.0:
-                if num.is_integer():
-                    self.on_save(int(num))
-                else:
-                    self.on_save(round(num, 2))
+                entero = int(math.floor(num + 0.5))
+                entero = max(1, min(10, entero))
+                self.on_save(entero)
                 self._cerrar()
             else:
                 self.error_text.value = "La nota debe estar entre 1 y 10."
@@ -110,6 +129,12 @@ class GradeEditorDialog(ft.AlertDialog):
                 self.app_page.update()
 
     def _guardar_valor(self, val: float | int | None):
+        if val is not None:
+            try:
+                num = float(val)
+                val = max(1, min(10, int(math.floor(num + 0.5))))
+            except (ValueError, TypeError):
+                val = None
         self.on_save(val)
         self._cerrar()
 

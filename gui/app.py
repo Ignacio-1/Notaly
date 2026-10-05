@@ -83,9 +83,10 @@ class AppPromedios:
             return os.path.join(base_path, relative_path)
             
         try:
-            icon_path = resource_path("app_icon.ico")
-            self.root.iconbitmap(icon_path)
+            self.icon_path = resource_path("app_icon.ico")
+            self.root.iconbitmap(self.icon_path)
         except Exception as e:
+            self.icon_path = None
             logger.warning(f"No se pudo cargar el icono de la ventana: {e}")
 
         # --- Fuentes (Cross-platform) ---
@@ -178,6 +179,14 @@ class AppPromedios:
         ).pack()
 
         self.mostrar_pantalla_colegios()
+
+    def _aplicar_icono_ventana(self, ventana):
+        """Aplica el icono de la aplicación a una ventana secundaria (Toplevel)."""
+        if getattr(self, "icon_path", None) and os.path.exists(self.icon_path):
+            try:
+                ventana.after(100, lambda: ventana.iconbitmap(self.icon_path))
+            except Exception:
+                pass
 
     def _on_resize(self, event):
         # Este evento se dispara con cualquier cambio de configuración, solo nos importa el tamaño de la ventana principal
@@ -586,15 +595,7 @@ class AppPromedios:
         alto = 350 if tipo == "curso" else 250
         ventana.geometry(f"450x{alto}")
         ventana.configure(fg_color="white")
-        
-        try:
-            import os, sys
-            base_path = getattr(sys, '_MEIPASS', os.path.abspath("."))
-            icon_path = os.path.join(base_path, "app_icon.ico")
-            ventana.after(200, lambda: ventana.iconbitmap(icon_path))
-        except Exception:
-            pass
-            
+        self._aplicar_icono_ventana(ventana)
         ventana.grab_set()
 
         ctk.CTkLabel(ventana, text=f"Nuevo {tipo.capitalize()}", font=self.font_card_title, text_color=self.paleta["azul_fg"]).pack(pady=20)
@@ -840,10 +841,27 @@ class AppPromedios:
         f_norm = ctk.CTkFont(family=self.font_grid_body[0], size=self.font_grid_body[1])
         f_bold = ctk.CTkFont(family=self.font_grid_body_bold[0], size=self.font_grid_body_bold[1], weight="bold")
 
-        ent_n = tk.Entry(self.grid_container, borderwidth=0, bg=bg_color, font=f_bold, fg=self.paleta["texto_principal"], relief="flat")
-        ent_n.insert(0, al_data.get(K_NOMBRE, "")); ent_n.grid(row=row, column=2, sticky="nsew", padx=1, pady=1)
-        ent_n.bind("<KeyRelease>", self._marcar_cambios_pendientes)
-        ent_n.bind("<Double-Button-1>", lambda e, aid=id_al: self.abrir_ventana_carga_alumnos(nombre_curso, id_alumno_editar=aid))
+        nombre_mostrar = al_data.get(K_NOMBRE, "")
+        ent_n = tk.Entry(
+            self.grid_container,
+            borderwidth=0,
+            bg=bg_color,
+            font=f_bold,
+            fg=self.paleta["texto_principal"] if nombre_mostrar else self.paleta["texto_secundario"],
+            relief="flat",
+            cursor="hand2",
+        )
+        ent_n.insert(0, nombre_mostrar if nombre_mostrar else "Sin asignar (clic para cargar)")
+        ent_n.configure(state="readonly")
+        ent_n.grid(row=row, column=2, sticky="nsew", padx=1, pady=1)
+        
+        def _abrir_edicion_alumno(event=None, aid=id_al):
+            self.abrir_ventana_carga_alumnos(nombre_curso, id_alumno_editar=aid)
+            return "break"
+
+        ent_n.bind("<Button-1>", _abrir_edicion_alumno)
+        ent_n.bind("<Double-Button-1>", _abrir_edicion_alumno)
+        ent_n.bind("<Return>", _abrir_edicion_alumno)
         self.widgets_nombres_alumnos[id_al] = ent_n
         register_nav(ent_n, row, 2)
 
@@ -1012,6 +1030,7 @@ class AppPromedios:
         modal.resizable(False, False)
         modal.transient(self.root)
         modal.grab_set()
+        self._aplicar_icono_ventana(modal)
 
         # Centrar ventana
         modal.update_idletasks()
@@ -1022,10 +1041,10 @@ class AppPromedios:
         main_f = ctk.CTkFrame(modal, fg_color="transparent")
         main_f.pack(fill=tk.BOTH, expand=True, padx=25, pady=20)
 
-        ctk.CTkLabel(main_f, text=titulo, font=self.font_h2, text_color=self.paleta["texto_principal"]).pack(anchor=tk.W, pady=(0, 4))
+        ctk.CTkLabel(main_f, text=titulo, font=self.font_card_title, text_color=self.paleta["texto_principal"]).pack(anchor=tk.W, pady=(0, 4))
         
         info_sub = "Modifica los datos del alumno." if es_edicion else "Escribe Apellido y Nombre. Usa Enter o 'Siguiente' para seguir cargando."
-        ctk.CTkLabel(main_f, text=info_sub, font=self.font_caption, text_color=self.paleta["texto_secundario"]).pack(anchor=tk.W, pady=(0, 15))
+        ctk.CTkLabel(main_f, text=info_sub, font=self.font_grid_subheader, text_color=self.paleta["texto_secundario"]).pack(anchor=tk.W, pady=(0, 15))
 
         # Campos
         ctk.CTkLabel(main_f, text="Apellido(s):", font=self.font_grid_header, text_color=self.paleta["texto_principal"]).pack(anchor=tk.W, pady=(2, 2))
@@ -1038,7 +1057,7 @@ class AppPromedios:
         ent_nom.insert(0, nom_inicial)
         ent_nom.pack(fill=tk.X, pady=(0, 12))
 
-        lbl_msg = ctk.CTkLabel(main_f, text="", font=self.font_caption, text_color="#10B981")
+        lbl_msg = ctk.CTkLabel(main_f, text="", font=self.font_grid_subheader, text_color="#10B981")
         lbl_msg.pack(anchor=tk.W, pady=(0, 8))
 
         # Acciones y guardado
@@ -1131,7 +1150,7 @@ class AppPromedios:
 
         ent_ap.focus_set()
 
-    def ordenar_alumnos_alfabeticamente(self, nombre_curso):
+    def ordenar_alumnos_alfabeticamente(self, nombre_curso, mostrar_mensaje: bool = True):
         """Ordena los alumnos del curso alfabéticamente por Apellido y reordena los IDs."""
         self.guardar_notas_cuadricula(nombre_curso, show_success_message=False)
         nombre_colegio = self.colegio_seleccionado
@@ -1170,7 +1189,8 @@ class AppPromedios:
 
         self._guardar_datos_con_recuperacion()
         self.mostrar_apartado_curso(nombre_curso)
-        messagebox.showinfo("Ordenamiento", "Alumnos ordenados alfabéticamente por apellido (A-Z).")
+        if mostrar_mensaje:
+            messagebox.showinfo("Ordenamiento", "Alumnos ordenados alfabéticamente por apellido (A-Z).")
 
     def eliminar_entidad(self, tipo, id_ent, nombre_curso=None):
         """Elimina una entidad (colegio, curso o alumno) con confirmación del usuario."""
@@ -1217,21 +1237,22 @@ class AppPromedios:
             curso_data[K_NOMBRES_COLUMNAS][t_nom] = [w.get() for w in self.widgets_nombres_cols[t_nom]]
 
         def parsear_nota(entry_widget):
-            """Extrae y parsea el valor numérico de un widget Entry."""
+            """Extrae y parsea el valor numérico de un widget Entry como entero (1 a 10)."""
             texto = entry_widget.get().replace(',', '.').strip()
             if not texto:
                 return None
             try:
                 val = float(texto)
-                # Si el valor no tiene parte decimal (ej. 8.0), lo convertimos a entero (8)
-                if val.is_integer():
-                    return int(val)
-                return val
+                # Unificación de notas como enteros (1 al 10): redondear al entero correspondiente
+                entero = int(round(val))
+                return max(1, min(10, entero))
             except ValueError:
                 return None
 
         for id_al, al_data in curso_data[K_ALUMNOS].items():
-            al_data[K_NOMBRE] = self.widgets_nombres_alumnos[id_al].get()
+            nombre_widget = self.widgets_nombres_alumnos[id_al].get().strip()
+            if nombre_widget and nombre_widget != "Sin asignar (clic para cargar)":
+                al_data[K_NOMBRE] = nombre_widget
             widgets_alumno = self.widgets_entradas[id_al]
             for t_idx, t_nom in enumerate(NOMBRES_TRIMESTRES):
                 al_data[K_TRIMESTRES][t_nom][K_PRINCIPALES] = [
@@ -1285,6 +1306,7 @@ class AppPromedios:
         dialog.transient(self.root)
         dialog.grab_set()
         dialog.resizable(False, False)
+        self._aplicar_icono_ventana(dialog)
 
         seleccion: dict[str, str | None] = {"ruta": None}
 
@@ -2260,39 +2282,12 @@ class AppPromedios:
         if not texto_ingresado:
             return
 
-        texto_lower = texto_ingresado.lower()
-        resultados_reales = []
-        
-        # Búsqueda en los datos reales (construyendo estructura plana al vuelo)
-        colegios = self.datos.get(K_COLEGIOS, {})
-        for nombre_colegio, colegio_data in colegios.items():
-            cursos = colegio_data.get(K_CURSOS, {})
-            for nombre_curso, curso_data in cursos.items():
-                alumnos = curso_data.get(K_ALUMNOS, {})
-                for id_al, al_data in alumnos.items():
-                    nombre_alumno = al_data.get(K_NOMBRE, "").strip()
-                    
-                    # CONTROL DE CAMPOS VACÍOS: Ignorar alumnos sin nombre válido
-                    if not nombre_alumno or nombre_alumno == "-":
-                        continue
-                    
-                    # ALGORITMO PREDICTIVO: Coincidencia en minúsculas
-                    if (texto_lower in nombre_alumno.lower() or 
-                        texto_lower in nombre_curso.lower() or 
-                        texto_lower in nombre_colegio.lower()):
-                        
-                        resultados_reales.append({
-                            "id": id_al,
-                            "nombre": nombre_alumno,
-                            "curso": nombre_curso,
-                            "colegio": nombre_colegio
-                        })
-                        
-                        # Limitar resultados para optimización visual (Anti-Lag)
-                        if len(resultados_reales) >= 15:
-                            break
-                if len(resultados_reales) >= 15: break
-            if len(resultados_reales) >= 15: break
+        resultados_reales = gestor_datos.buscar_entidad_global(
+            query=texto_ingresado,
+            datos=self.datos,
+            solo_alumnos=True,
+            limite=15
+        )
         
         if not resultados_reales:
             lbl = ctk.CTkLabel(dropdown_frame, text="No se encontraron alumnos.", text_color="#9CA3AF", font=(self.font_body[0], 12))

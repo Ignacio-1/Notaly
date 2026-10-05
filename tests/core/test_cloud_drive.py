@@ -559,4 +559,3 @@ def test_iniciar_auth_desktop_invoca_custom_browser_opener(isolated_drive_manage
         assert "accounts.google.com" in auth_url
         assert custom_opener.called
         assert custom_opener.call_args[0][0] == auth_url
-

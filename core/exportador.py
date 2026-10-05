@@ -9,6 +9,7 @@ import csv
 import math
 from fpdf import FPDF  # type: ignore
 
+from typing import Any
 from .calculos import procesar_calificaciones_alumno
 from .constants import (
     K_ALUMNOS,
@@ -20,6 +21,29 @@ from .constants import (
     K_TRIMESTRES,
     NOMBRES_TRIMESTRES,
 )
+
+
+def formatear_nota_entera(val: Any, default: str = "-") -> str:
+    """
+    Formatea cualquier calificación como número entero del 1 al 10 (sin decimales, ni .0 ni comas).
+    Si un valor proviene de un promedio o dato con coma, se redondea al entero correspondiente (round() / floor(x + 0.5)).
+    Si el valor es None o vacío o '-', devuelve `default` ('-' para PDF/interfaz, '' para CSV).
+    """
+    if val is None or val == "" or val == "-":
+        return default
+    try:
+        if isinstance(val, str):
+            val_clean = val.replace(",", ".").strip()
+            if not val_clean or val_clean == "-":
+                return default
+            num = float(val_clean)
+        else:
+            num = float(val)
+        entero = math.floor(num + 0.5)
+        entero = max(1, min(10, entero))
+        return str(entero)
+    except (ValueError, TypeError):
+        return str(val)
 
 
 def exportar_a_texto(curso_data: dict, file_path: str, nombre_curso: str) -> tuple[bool, str | None]:
@@ -62,23 +86,23 @@ def exportar_a_texto(curso_data: dict, file_path: str, nombre_curso: str) -> tup
                     for j, nota in enumerate(principales):
                         if nota is not None:
                             nombre_nota = nombres_cols_curso[nombre_trimestre][j]
-                            f.write(f"    - {nombre_nota}: {nota}\n")
+                            f.write(f"    - {nombre_nota}: {formatear_nota_entera(nota)}\n")
                     
                     # Notas extras
                     extras = trimestre_data.get(K_EXTRAS, [])
                     if extras and extras[0] is not None:
                         nombre_extra = nombres_cols_curso[nombre_trimestre][-1]
-                        f.write(f"    - {nombre_extra}: {extras[0]}\n")
+                        f.write(f"    - {nombre_extra}: {formatear_nota_entera(extras[0])}\n")
 
                     # Recuperatorio
                     recup = trimestre_data.get(K_RECUPERATORIO)
                     if recup is not None:
-                        f.write(f"    - Recuperatorio: {recup}\n")
+                        f.write(f"    - Recuperatorio: {formatear_nota_entera(recup)}\n")
 
                     # Promedio del trimestre
                     prom_crudo = resultados["promedios_crudos_redondeados"][indice]
                     if prom_crudo is not None:
-                        f.write(f"    => Promedio Trimestral: {prom_crudo}\n")
+                        f.write(f"    => Promedio Trimestral: {formatear_nota_entera(prom_crudo)}\n")
                     f.write("\n")
 
                 # Promedios finales
@@ -86,11 +110,11 @@ def exportar_a_texto(curso_data: dict, file_path: str, nombre_curso: str) -> tup
                 for indice, nombre_trimestre in enumerate(NOMBRES_TRIMESTRES):
                     nota_final = resultados["notas_finales_redondeadas"][indice]
                     if nota_final is not None:
-                        f.write(f"    - Final {nombre_trimestre.split(' ')[0]}: {nota_final}\n")
+                        f.write(f"    - Final {nombre_trimestre.split(' ')[0]}: {formatear_nota_entera(nota_final)}\n")
                 
                 nota_total = resultados['nota_final_total_redondeada']
                 if nota_total is not None:
-                    f.write(f"    => NOTA FINAL TOTAL: {nota_total}\n")
+                    f.write(f"    => NOTA FINAL TOTAL: {formatear_nota_entera(nota_total)}\n")
                 
                 f.write("\n" + "=" * 60 + "\n\n")
 
@@ -145,11 +169,11 @@ def exportar_a_csv(curso_data: dict, file_path: str) -> tuple[bool, str | None]:
                     trimestre_data = datos_alumno[K_TRIMESTRES][nombre_trimestre]
 
                     notas_principales = [
-                        str(n) if n is not None else ""
+                        formatear_nota_entera(n, default="")
                         for n in trimestre_data.get(K_PRINCIPALES, [])
                     ]
                     notas_extras = [
-                        str(n) if n is not None else ""
+                        formatear_nota_entera(n, default="")
                         for n in trimestre_data.get(K_EXTRAS, [])
                     ]
 
@@ -157,23 +181,19 @@ def exportar_a_csv(curso_data: dict, file_path: str) -> tuple[bool, str | None]:
                     row.extend(notas_extras)
 
                     valor_recuperatorio = trimestre_data.get(K_RECUPERATORIO)
-                    row.append(str(valor_recuperatorio) if valor_recuperatorio is not None else "")
+                    row.append(formatear_nota_entera(valor_recuperatorio, default=""))
 
                     promedio_crudo_trimestre = resultados["promedios_crudos_redondeados"][indice]
-                    row.append(
-                        str(promedio_crudo_trimestre)
-                        if promedio_crudo_trimestre is not None
-                        else ""
-                    )
+                    row.append(formatear_nota_entera(promedio_crudo_trimestre, default=""))
 
                 # Promedios finales
                 row.extend([
-                    str(p) if p is not None else ""
+                    formatear_nota_entera(p, default="")
                     for p in resultados["notas_finales_redondeadas"]
                 ])
 
                 nota_total = resultados['nota_final_total_redondeada']
-                row.append(str(nota_total) if nota_total is not None else "")
+                row.append(formatear_nota_entera(nota_total, default=""))
                 writer.writerow(row)
 
         return True, None
@@ -277,33 +297,33 @@ def exportar_a_pdf(curso_data: dict, file_path: str, nombre_curso: str, nombre_c
                 principales = trimestre_data.get(K_PRINCIPALES, [None, None, None])
                 for i in range(3):
                     val = principales[i] if i < len(principales) else None
-                    pdf.cell(col_widths['t_p'], row_height, str(val) if val is not None else '-', border=1, align='C')
+                    pdf.cell(col_widths['t_p'], row_height, formatear_nota_entera(val), border=1, align='C')
                 
                 # Extras (1)
                 extras = trimestre_data.get(K_EXTRAS, [None])
                 val_ex = extras[0] if extras else None
-                pdf.cell(col_widths['t_p'], row_height, str(val_ex) if val_ex is not None else '-', border=1, align='C')
+                pdf.cell(col_widths['t_p'], row_height, formatear_nota_entera(val_ex), border=1, align='C')
                 
                 # Promedio Crudo
                 prom_crudo = resultados["promedios_crudos_redondeados"][indice]
                 pdf.set_text_color(220, 50, 50) if prom_crudo is not None and prom_crudo < 6 else pdf.set_text_color(0, 0, 0)
-                pdf.cell(col_widths['t_pr'], row_height, str(prom_crudo) if prom_crudo is not None else '-', border=1, align='C')
+                pdf.cell(col_widths['t_pr'], row_height, formatear_nota_entera(prom_crudo), border=1, align='C')
                 pdf.set_text_color(0, 0, 0)
                 
                 # Recuperatorio
                 recup = trimestre_data.get(K_RECUPERATORIO)
-                pdf.cell(col_widths['t_re'], row_height, str(recup) if recup is not None else '-', border=1, align='C')
+                pdf.cell(col_widths['t_re'], row_height, formatear_nota_entera(recup), border=1, align='C')
 
             # Promedios finales (T1, T2, T3, TOTAL)
             for indice in range(3):
                 nota_final = resultados["notas_finales_redondeadas"][indice]
                 pdf.set_text_color(220, 50, 50) if nota_final is not None and nota_final < 6 else pdf.set_text_color(0, 0, 0)
-                pdf.cell(col_widths['f_p'], row_height, str(nota_final) if nota_final is not None else '-', border=1, align='C')
+                pdf.cell(col_widths['f_p'], row_height, formatear_nota_entera(nota_final), border=1, align='C')
                 
             nota_total = resultados['nota_final_total_redondeada']
             pdf.set_text_color(220, 50, 50) if nota_total is not None and nota_total < 6 else pdf.set_text_color(0, 0, 0)
             pdf.set_font('helvetica', 'B', font_size)  # type: ignore
-            pdf.cell(col_widths['f_t'], row_height, str(nota_total) if nota_total is not None else '-', border=1, align='C')
+            pdf.cell(col_widths['f_t'], row_height, formatear_nota_entera(nota_total), border=1, align='C')
             pdf.set_font('helvetica', '', font_size)  # type: ignore
             pdf.set_text_color(0, 0, 0)
             

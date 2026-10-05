@@ -8,6 +8,17 @@ from datetime import datetime, date, timedelta
 import calendar
 from typing import Callable
 import flet as ft
+from mobile.theme import (
+    PRIMARY,
+    PRIMARY_LIGHT,
+    TEXT_MAIN,
+    TEXT_MUTED,
+    BORDER_COLOR,
+    BG_PAGE,
+    ATTENDANCE_P_BG,
+    ATTENDANCE_P_TEXT,
+    ATTENDANCE_P_SOLID,
+)
 
 MESES = [
     "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
@@ -50,6 +61,9 @@ class DatePickerDialog(ft.AlertDialog):
             keyboard_type=ft.KeyboardType.DATETIME,
             dense=True,
             expand=True,
+            border_radius=10,
+            bgcolor=BG_PAGE,
+            border_color=BORDER_COLOR,
             on_submit=lambda e: self._confirmar_manual(),
         )
         self.lbl_error = ft.Text("", color=ft.Colors.ERROR, size=12, visible=False)
@@ -62,12 +76,13 @@ class DatePickerDialog(ft.AlertDialog):
                 [
                     self._build_header_controls(),
                     self.calendar_body,
-                    ft.Divider(height=1),
+                    ft.Divider(height=1, color=BORDER_COLOR),
                     ft.Row(
                         [
                             self.txt_manual,
                             ft.IconButton(
                                 icon=ft.Icons.CHECK,
+                                icon_color=PRIMARY,
                                 tooltip="Aplicar fecha escrita",
                                 on_click=lambda e: self._confirmar_manual(),
                             ),
@@ -87,14 +102,18 @@ class DatePickerDialog(ft.AlertDialog):
         super().__init__(
             title=ft.Row(
                 [
-                    ft.Icon(ft.Icons.EVENT, color=ft.Colors.PRIMARY),
-                    ft.Text("Seleccionar Fecha", weight=ft.FontWeight.BOLD, size=18),
+                    ft.Icon(ft.Icons.EVENT, color=PRIMARY),
+                    ft.Text("Seleccionar Fecha", weight=ft.FontWeight.BOLD, size=18, color=TEXT_MAIN),
                 ],
                 spacing=8,
             ),
             content=content,
             actions=[
-                ft.TextButton("Cancelar", on_click=lambda e: self._cerrar()),
+                ft.TextButton(
+                    "Cancelar",
+                    style=ft.ButtonStyle(color=TEXT_MUTED, shape=ft.RoundedRectangleBorder(radius=8)),
+                    on_click=lambda e: self._cerrar(),
+                ),
             ],
             actions_alignment=ft.MainAxisAlignment.END,
             modal=True,
@@ -167,9 +186,9 @@ class DatePickerDialog(ft.AlertDialog):
                     has_attendance = fecha_dia_iso in self.fechas_con_asistencia
 
                     # Estilos visuales
-                    bgcolor = ft.Colors.PRIMARY if is_selected else (ft.Colors.GREEN_100 if has_attendance else ft.Colors.TRANSPARENT)
-                    text_color = ft.Colors.WHITE if is_selected else (ft.Colors.GREEN_900 if has_attendance else (ft.Colors.PRIMARY if is_today else ft.Colors.BLACK_87))
-                    border = ft.Border.all(1.5, ft.Colors.PRIMARY) if is_today and not is_selected else None
+                    bgcolor = PRIMARY if is_selected else (ATTENDANCE_P_BG if has_attendance else ft.Colors.TRANSPARENT)
+                    text_color = ft.Colors.WHITE if is_selected else (ATTENDANCE_P_TEXT if has_attendance else (PRIMARY if is_today else TEXT_MAIN))
+                    border = ft.Border.all(1.5, PRIMARY) if is_today and not is_selected else None
 
                     day_btn = ft.Container(
                         content=ft.Column(

@@ -1,19 +1,30 @@
 """
 Vista de Cursos: Listado, búsqueda y gestión de cursos pertenecientes al colegio seleccionado.
+Rediseñada con el sistema de diseño Slate 50 / Indigo 600, tarjetas limpias y acceso directo a asistencias y notas.
 """
 
 import flet as ft
 from mobile.state import AppState
 from mobile.components.student_dialog import CreateCursoDialog, RenameDialog, ConfirmDeleteDialog
+from mobile.components.ui_header import build_app_header
+from mobile.theme import (
+    BG_PAGE,
+    SURFACE_WHITE,
+    BORDER_COLOR,
+    PRIMARY,
+    PRIMARY_LIGHT,
+    TEXT_MAIN,
+    TEXT_MUTED,
+)
 
 
 class CursosView(ft.Container):
     def __init__(self, state: AppState, page: ft.Page, on_navigate: callable):
-        super().__init__(expand=True)
+        super().__init__(expand=True, bgcolor=BG_PAGE)
         self.state = state
         self.app_page = page
         self.on_navigate = on_navigate
-        self.padding = ft.Padding(left=16, right=16, top=8, bottom=16)
+        self.padding = 0
 
         self._build_ui()
 
@@ -21,47 +32,27 @@ class CursosView(ft.Container):
         colegio = self.state.selected_colegio or "Colegio"
         cursos = self.state.get_cursos(colegio)
 
-        # Barra superior con botón volver y título de colegio
-        header = ft.Container(
-            content=ft.Row(
-                [
-                    ft.IconButton(
-                        icon=ft.Icons.ARROW_BACK,
-                        tooltip="Volver a Colegios",
-                        on_click=lambda e: self.on_navigate("colegios"),
+        header_section = ft.Row(
+            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+            controls=[
+                ft.Column(
+                    spacing=2,
+                    controls=[
+                        ft.Text("Mis cursos", size=16, weight=ft.FontWeight.BOLD, color=TEXT_MAIN),
+                        ft.Text(f"{len(cursos)} activos · Ciclo lectivo", size=12, color=TEXT_MUTED),
+                    ],
+                ),
+                ft.FilledButton(
+                    "+ Curso",
+                    style=ft.ButtonStyle(
+                        bgcolor=PRIMARY,
+                        color=ft.Colors.WHITE,
+                        shape=ft.RoundedRectangleBorder(radius=10),
                     ),
-                    ft.Column(
-                        [
-                            ft.Text(colegio, size=18, weight=ft.FontWeight.BOLD, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS),
-                            ft.Text("Selecciona o crea un curso", size=12, color=ft.Colors.SECONDARY),
-                        ],
-                        spacing=1,
-                        expand=True,
-                    ),
-                ],
-                vertical_alignment=ft.CrossAxisAlignment.CENTER,
-            ),
-            padding=ft.Padding(bottom=6, left=0, right=0, top=0),
-        )
-
-        # Barra de búsqueda
-        search_field = ft.TextField(
-            hint_text="Buscar curso...",
-            prefix_icon=ft.Icons.SEARCH,
-            value=self.state.search_query_cursos,
-            on_change=self._on_search_change,
-            dense=True,
-            border_radius=25,
-            filled=True,
-            expand=True,
-        )
-
-        btn_add = ft.FloatingActionButton(
-            content=ft.Row([ft.Icon(ft.Icons.ADD, color=ft.Colors.ON_PRIMARY), ft.Text("Nuevo Curso", color=ft.Colors.ON_PRIMARY, weight=ft.FontWeight.BOLD)], tight=True),
-            on_click=self._abrir_modal_crear,
-            bgcolor=ft.Colors.PRIMARY,
-            right=16,
-            bottom=16,
+                    height=36,
+                    on_click=self._abrir_modal_crear,
+                ),
+            ],
         )
 
         cards = []
@@ -70,25 +61,34 @@ class CursosView(ft.Container):
                 ft.Container(
                     content=ft.Column(
                         [
-                            ft.Icon(ft.Icons.CLASS_OUTLINED, size=70, color=ft.Colors.GREY_400),
-                            ft.Text(
-                                "No se encontraron cursos" if self.state.search_query_cursos else "No hay cursos registrados",
-                                size=18,
-                                weight=ft.FontWeight.BOLD,
-                                color=ft.Colors.GREY_700,
+                            ft.Container(
+                                width=64,
+                                height=64,
+                                bgcolor=PRIMARY_LIGHT,
+                                border_radius=16,
+                                alignment=ft.Alignment.CENTER,
+                                content=ft.Icon(ft.Icons.CLASS_OUTLINED, size=32, color=PRIMARY),
                             ),
                             ft.Text(
-                                "Toca el botón '+' para agregar el primer curso a este colegio." if not self.state.search_query_cursos else "Intenta con otra búsqueda.",
-                                size=14,
-                                color=ft.Colors.GREY_500,
+                                "No se encontraron cursos" if self.state.search_query_cursos else "No hay cursos registrados",
+                                size=17,
+                                weight=ft.FontWeight.BOLD,
+                                color=TEXT_MAIN,
+                            ),
+                            ft.Text(
+                                "Toca '+ Curso' para agregar el primer curso a este colegio."
+                                if not self.state.search_query_cursos
+                                else "Intenta con otra búsqueda.",
+                                size=13,
+                                color=TEXT_MUTED,
                                 text_align=ft.TextAlign.CENTER,
                             ),
                         ],
                         horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                        spacing=8,
+                        spacing=10,
                     ),
                     alignment=ft.Alignment.CENTER,
-                    padding=ft.Padding(top=50, bottom=30, left=20, right=20),
+                    padding=ft.Padding(top=60, bottom=30, left=20, right=20),
                 )
             )
         else:
@@ -96,84 +96,104 @@ class CursosView(ft.Container):
                 curso_data = self.state.data.get("colegios", {}).get(colegio, {}).get("cursos", {}).get(nombre, {})
                 alumnos = curso_data.get("alumnos", {})
                 num_alumnos = len(alumnos)
-                subtitulo = f"{num_alumnos} alumno{'s' if num_alumnos != 1 else ''}"
 
-                card = ft.Card(
-                    elevation=2,
-                    margin=ft.Margin(bottom=8, left=0, right=0, top=0),
-                    shape=ft.RoundedRectangleBorder(radius=12),
-                    content=ft.Container(
-                        padding=ft.Padding(left=16, right=8, top=12, bottom=12),
-                        on_click=lambda e, cur=nombre: self._abrir_curso(cur, "notas"),
-                        content=ft.Row(
-                            [
-                                ft.Container(
-                                    content=ft.Icon(ft.Icons.CLASS_, color=ft.Colors.SECONDARY, size=30),
-                                    bgcolor=ft.Colors.SECONDARY_CONTAINER,
-                                    border_radius=10,
-                                    padding=10,
-                                ),
-                                ft.Column(
-                                    [
-                                        ft.Text(nombre, weight=ft.FontWeight.BOLD, size=16, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS),
-                                        ft.Text(subtitulo, size=13, color=ft.Colors.SECONDARY),
-                                    ],
-                                    spacing=2,
-                                    expand=True,
-                                ),
-                                ft.IconButton(
-                                    icon=ft.Icons.CHECKLIST,
-                                    tooltip="Ir a Asistencias",
-                                    icon_color=ft.Colors.PRIMARY,
-                                    on_click=lambda e, cur=nombre: self._abrir_curso(cur, "asistencias"),
-                                ),
-                                ft.PopupMenuButton(
-                                    icon=ft.Icons.MORE_VERT,
-                                    items=[
-                                        ft.PopupMenuItem(
-                                            icon=ft.Icons.TABLE_CHART,
-                                            content=ft.Text("Planilla de Notas"),
-                                            on_click=lambda e, cur=nombre: self._abrir_curso(cur, "notas"),
-                                        ),
-                                        ft.PopupMenuItem(
-                                            icon=ft.Icons.CHECKLIST,
-                                            content=ft.Text("Asistencias"),
-                                            on_click=lambda e, cur=nombre: self._abrir_curso(cur, "asistencias"),
-                                        ),
-                                        ft.PopupMenuItem(
-                                            icon=ft.Icons.EDIT_OUTLINED,
-                                            content=ft.Text("Renombrar"),
-                                            on_click=lambda e, cur=nombre: self._abrir_modal_renombrar(cur),
-                                        ),
-                                        ft.PopupMenuItem(
-                                            icon=ft.Icons.DELETE_OUTLINE,
-                                            content=ft.Text("Eliminar"),
-                                            on_click=lambda e, cur=nombre: self._abrir_modal_eliminar(cur),
-                                        ),
-                                    ],
-                                ),
-                            ],
-                            vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                        ),
+                card = ft.Container(
+                    bgcolor=SURFACE_WHITE,
+                    border=ft.Border.all(1, BORDER_COLOR),
+                    border_radius=16,
+                    padding=16,
+                    ink=True,
+                    on_click=lambda e, cur=nombre: self._abrir_curso(cur, "notas"),
+                    content=ft.Column(
+                        spacing=10,
+                        controls=[
+                            ft.Row(
+                                spacing=12,
+                                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                                controls=[
+                                    ft.Container(
+                                        width=44,
+                                        height=44,
+                                        bgcolor=PRIMARY_LIGHT,
+                                        border_radius=12,
+                                        alignment=ft.Alignment.CENTER,
+                                        content=ft.Icon(ft.Icons.BOOK, color=PRIMARY, size=22),
+                                    ),
+                                    ft.Column(
+                                        expand=True,
+                                        spacing=2,
+                                        controls=[
+                                            ft.Text(nombre, weight=ft.FontWeight.BOLD, size=15, color=TEXT_MAIN, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS),
+                                            ft.Text("Planilla y gestión integral", size=12, color=TEXT_MUTED),
+                                        ],
+                                    ),
+                                    ft.IconButton(
+                                        icon=ft.Icons.CHECKLIST,
+                                        tooltip="Ir a Asistencias",
+                                        icon_color=PRIMARY,
+                                        icon_size=20,
+                                        on_click=lambda e, cur=nombre: self._abrir_curso(cur, "asistencias"),
+                                    ),
+                                    ft.PopupMenuButton(
+                                        icon=ft.Icons.MORE_VERT,
+                                        icon_color="#94A3B8",
+                                        items=[
+                                            ft.PopupMenuItem(
+                                                icon=ft.Icons.TABLE_CHART,
+                                                content=ft.Text("Planilla de Notas"),
+                                                on_click=lambda e, cur=nombre: self._abrir_curso(cur, "notas"),
+                                            ),
+                                            ft.PopupMenuItem(
+                                                icon=ft.Icons.CHECKLIST,
+                                                content=ft.Text("Asistencias"),
+                                                on_click=lambda e, cur=nombre: self._abrir_curso(cur, "asistencias"),
+                                            ),
+                                            ft.PopupMenuItem(
+                                                icon=ft.Icons.EDIT_OUTLINED,
+                                                content=ft.Text("Renombrar"),
+                                                on_click=lambda e, cur=nombre: self._abrir_modal_renombrar(cur),
+                                            ),
+                                            ft.PopupMenuItem(
+                                                icon=ft.Icons.DELETE_OUTLINE,
+                                                content=ft.Text("Eliminar"),
+                                                on_click=lambda e, cur=nombre: self._abrir_modal_eliminar(cur),
+                                            ),
+                                        ],
+                                    ),
+                                ],
+                            ),
+                            ft.Divider(height=1, color="#F1F5F9"),
+                            ft.Row(
+                                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                                controls=[
+                                    ft.Text(f"{num_alumnos} estudiantes", size=11, color=TEXT_MUTED),
+                                    ft.Text("Ciclo Lectivo Activo", size=11, color=TEXT_MUTED),
+                                ],
+                            ),
+                        ],
                     ),
                 )
                 cards.append(card)
 
-        self.content = ft.Stack(
-            controls=[
-                ft.Column(
-                    controls=[
-                        header,
-                        ft.Row([search_field], alignment=ft.MainAxisAlignment.CENTER),
-                        ft.Divider(height=10, color=ft.Colors.TRANSPARENT),
-                        ft.ListView(controls=cards, expand=True, spacing=6),
-                    ],
-                    expand=True,
-                    spacing=6,
-                ),
-                btn_add,
-            ],
+        body = ft.Container(
             expand=True,
+            padding=ft.Padding(left=16, right=16, top=12, bottom=12),
+            content=ft.ListView(
+                spacing=12,
+                controls=[
+                    header_section,
+                    *cards,
+                ],
+            ),
+        )
+
+        self.content = ft.Column(
+            expand=True,
+            spacing=0,
+            controls=[
+                build_app_header("Institución", colegio, on_back=lambda: self.on_navigate("colegios")),
+                body,
+            ],
         )
 
     def _on_search_change(self, e):
@@ -186,7 +206,7 @@ class CursosView(ft.Container):
         self.state.current_screen = pestana
         self.on_navigate(pestana)
 
-    def _abrir_modal_crear(self, e):
+    def _abrir_modal_crear(self, e=None):
         def confirmar_creacion(nuevo_nombre, cant_alumnos):
             exito, msg = self.state.add_curso(self.state.selected_colegio, nuevo_nombre, cant_alumnos)
             if exito:
@@ -248,4 +268,3 @@ class CursosView(ft.Container):
         self.app_page.overlay.append(sb)
         sb.open = True
         self.app_page.update()
-

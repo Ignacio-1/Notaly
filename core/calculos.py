@@ -33,16 +33,32 @@ def calcular_promedio_crudo_trimestre(t_data: dict) -> float | None:
     return sum(notas_validas) / len(notas_validas)
 
 
-def calcular_nota_final_trimestre(t_data: dict) -> float | None:
+def calcular_nota_final_trimestre(t_data: dict) -> float | int | None:
     """
-    Calcula la nota FINAL de un trimestre. Prioriza la nota de recuperatorio si existe.
+    Calcula la nota FINAL de un trimestre según la regla de corte:
+    - Si promedio crudo >= 5.50 -> Aprobado: Nota final = promedio redondeado al entero más próximo (recuperatorio bloqueado/ignorado).
+    - Si promedio crudo < 5.50 y NO hay recuperación -> Desaprobado: Nota final = promedio redondeado.
+    - Si promedio crudo < 5.50 y SÍ hay recuperación cargada (1 a 10) -> Nota final = nota de recuperación (el promedio original se mantiene guardado como dato estadístico).
+    - Si no hay notas cargadas y hay recuperatorio cargado -> devuelve la nota de recuperación.
     """
+    promedio_crudo = calcular_promedio_crudo_trimestre(t_data)
     nota_recuperatorio = t_data.get(K_RECUPERATORIO)
-    if nota_recuperatorio is not None and isinstance(nota_recuperatorio, (int, float)):
-        return float(nota_recuperatorio)
+    recup_valido = nota_recuperatorio is not None and isinstance(nota_recuperatorio, (int, float))
 
-    # Si no hay recuperatorio, la nota final es el promedio de las notas.
-    return calcular_promedio_crudo_trimestre(t_data)
+    if promedio_crudo is None:
+        if recup_valido:
+            return int(round(nota_recuperatorio))
+        return None
+
+    # Regla de corte: < 5.50 es desaprobado; >= 5.50 es aprobado
+    if promedio_crudo >= 5.50:
+        return redondeo_especial(promedio_crudo)
+
+    # Promedio < 5.50 (desaprobado)
+    if recup_valido:
+        return int(round(nota_recuperatorio))
+
+    return redondeo_especial(promedio_crudo)
 
 
 def procesar_calificaciones_alumno(trimestres_data: dict) -> dict:

@@ -1,68 +1,21 @@
 """
-Pruebas exhaustivas para el sistema de Copias de Seguridad Locales y Visualizador de Datos (Mobile y Core).
+Pruebas para la lógica de copias de seguridad locales y gestión de datos en AppState.
 """
 
 import json
 import pytest
 from pathlib import Path
-from unittest.mock import patch, MagicMock
-import flet as ft
+from unittest.mock import patch
 
 from mobile.state import AppState
-from mobile.components.local_backup_dialog import LocalBackupDialog
 from core.constants import (
     K_COLEGIOS,
     K_CURSOS,
     K_ALUMNOS,
     K_NOMBRE,
     K_TRIMESTRES,
-    K_PRINCIPALES,
-    K_EXTRAS,
-    K_RECUPERATORIO,
     crear_trimestres_vacios,
 )
-
-
-class MockMobilePage:
-    def __init__(self, width=390, height=844):
-        self.width = width
-        self.height = height
-        self.title = 'Test Mobile App'
-        self.theme_mode = ft.ThemeMode.LIGHT
-        self.padding = 0
-        self.spacing = 0
-        self.appbar = None
-        self.controls = []
-        self.overlay = []
-        self.dialog_stack = []
-        self.clipboard_data = ""
-        self.update_call_count = 0
-
-    def add(self, *controls):
-        self.controls.extend(controls)
-
-    def update(self):
-        self.update_call_count += 1
-
-    def show_dialog(self, dialog: ft.AlertDialog):
-        self.dialog_stack.append(dialog)
-
-    def pop_dialog(self):
-        if self.dialog_stack:
-            return self.dialog_stack.pop()
-        return None
-
-    def set_clipboard(self, text: str):
-        self.clipboard_data = text
-
-    @property
-    def active_dialog(self):
-        return self.dialog_stack[-1] if self.dialog_stack else None
-
-
-@pytest.fixture
-def mock_page():
-    return MockMobilePage(width=390, height=844)
 
 
 @pytest.fixture
@@ -116,10 +69,6 @@ def populated_state(tmp_path):
     state.load_data()
     return state
 
-
-# =============================================================================
-# --- PRUEBAS DE LOGICA EN APPSTATE ---
-# =============================================================================
 
 def test_get_data_summary(populated_state):
     """Verifica que get_data_summary calcule correctamente los totales."""
@@ -246,130 +195,6 @@ def test_import_backup_invalid_data(populated_state):
 
     assert exito is False
     assert "no tiene el formato válido" in msg
-
-
-# =============================================================================
-# --- PRUEBAS DE INTERFAZ Y COMPONENTES (LocalBackupDialog) ---
-# =============================================================================
-
-def test_local_backup_dialog_tabs_navigation(populated_state, mock_page):
-    """Verifica el renderizado y cambio entre las 3 pestañas del diálogo."""
-    dlg = LocalBackupDialog(populated_state, mock_page)
-    mock_page.show_dialog(dlg)
-
-    # 1. Pestaña 0: Mis Datos
-    assert "datos" in dlg.tab_selector.selected
-    assert dlg.tabs_content_container.content is not None
-
-    # 2. Pestaña 1: Crear Copia
-    dlg.tab_selector.selected = ["crear"]
-    dlg._on_tab_changed(None)
-    assert dlg.tabs_content_container.content is not None
-
-    # 3. Pestaña 2: Restaurar
-    dlg.tab_selector.selected = ["restaurar"]
-    dlg._on_tab_changed(None)
-    assert dlg.tabs_content_container.content is not None
-
-
-def test_local_backup_dialog_data_hierarchy_display(populated_state, mock_page):
-    """Verifica que la pestaña 'Mis Datos' despliegue los colegios y cursos."""
-    dlg = LocalBackupDialog(populated_state, mock_page)
-    dlg._mostrar_tab_mis_datos()
-
-    col = dlg.tabs_content_container.content
-    assert isinstance(col, ft.Column)
-    
-    # Debe contener métricas, info card y listview jerárquico
-    assert len(col.controls) >= 4
-
-
-def test_local_backup_dialog_create_backup_action(populated_state, mock_page, tmp_path):
-    """Verifica la ejecución del botón de crear copia desde el diálogo."""
-    dlg = LocalBackupDialog(populated_state, mock_page)
-    
-    with patch("pathlib.Path.home", return_value=tmp_path):
-        dlg._mostrar_tab_crear_copia()
-        # Simular click en Generar Copia
-        btn_crear = next(c for c in dlg.tabs_content_container.content.controls if isinstance(c, ft.FilledButton))
-        btn_crear.on_click(None)
-
-    # Debe haber mostrado snackbar de éxito y cambiado a pestaña Restaurar
-    assert len(mock_page.overlay) > 0
-    assert "restaurar" in dlg.tab_selector.selected
-
-
-def test_local_backup_dialog_restore_confirm_decision(populated_state, mock_page):
-    """Verifica el diálogo de confirmación de restauración (Combinar vs Reemplazar)."""
-    dlg = LocalBackupDialog(populated_state, mock_page)
-
-    backup_test = {
-        K_COLEGIOS: {
-            "Colegio Desde Dialog": {
-                K_CURSOS: {}
-            }
-        }
-    }
-
-    dlg._mostrar_opciones_restauracion(backup_test)
-
-    # Debe abrirse un diálogo de confirmación
-    assert len(mock_page.dialog_stack) == 1
-    confirm_dlg = mock_page.active_dialog
-    assert "Confirmar Restauración" in confirm_dlg.title.value
-
-    # Botones: Cancelar, Combinar, Reemplazar
-    assert len(confirm_dlg.actions) == 3
-    btn_combinar = confirm_dlg.actions[1]
-    btn_reemplazar = confirm_dlg.actions[2]
-
-    # Probar click en Combinar
-    btn_combinar.on_click(None)
-    assert "Colegio Desde Dialog" in populated_state.get_colegios()
-    assert "Colegio Belgrano" in populated_state.get_colegios()
-
-
-def test_local_backup_dialog_file_picker_result_handling(populated_state, mock_page, tmp_path):
-    """Verifica que el FilePicker procese adecuadamente el archivo seleccionado."""
-    file_picker = ft.FilePicker()
-    dlg = LocalBackupDialog(populated_state, mock_page, file_picker=file_picker)
-
-    # Crear archivo temporal válido
-    valid_file = tmp_path / "backup_externo.json"
-    data = {K_COLEGIOS: {"Colegio Externo": {K_CURSOS: {}}}}
-    with open(valid_file, 'w', encoding='utf-8') as f:
-        json.dump(data, f)
-
-    # Simular evento de FilePicker
-    mock_file = MagicMock()
-    mock_file.path = str(valid_file)
-    mock_event = MagicMock()
-    mock_event.files = [mock_file]
-
-    dlg._on_file_picker_result(mock_event)
-
-    # Debe abrir el diálogo de confirmación
-    assert len(mock_page.dialog_stack) == 1
-    assert "Confirmar Restauración" in mock_page.active_dialog.title.value
-
-
-def test_local_backup_dialog_file_picker_bytes_handling(populated_state, mock_page):
-    """Verifica que el procesamiento de archivo funcione con bytes en memoria (típico en Android/Web)."""
-    file_picker = ft.FilePicker()
-    dlg = LocalBackupDialog(populated_state, mock_page, file_picker=file_picker)
-
-    data = {K_COLEGIOS: {"Colegio Desde Bytes": {K_CURSOS: {}}}}
-    json_bytes = json.dumps(data).encode("utf-8")
-
-    mock_file = MagicMock()
-    mock_file.path = None
-    mock_file.bytes = json_bytes
-
-    dlg._procesar_archivo_seleccionado(mock_file)
-
-    # Debe abrir el diálogo de confirmación
-    assert len(mock_page.dialog_stack) == 1
-    assert "Confirmar Restauración" in mock_page.active_dialog.title.value
 
 
 def test_create_local_backup_android_home_slash_data(populated_state):

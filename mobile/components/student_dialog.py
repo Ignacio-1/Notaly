@@ -4,6 +4,19 @@ Modales de diálogo para la gestión de entidades: Alumnos, Cursos, Colegios y C
 
 import flet as ft
 from typing import Callable
+from mobile.theme import PRIMARY, TEXT_MAIN, TEXT_MUTED, BORDER_COLOR, BG_PAGE, SURFACE_WHITE
+
+
+def logo_dialog_title(texto: str, color_texto=None, icon_color=None) -> ft.Row:
+    """Crea una cabecera con el logo de la aplicación para ventanas de diálogo."""
+    return ft.Row(
+        [
+            ft.Icon(ft.Icons.SCHOOL, color=icon_color or PRIMARY, size=24),
+            ft.Text(texto, weight=ft.FontWeight.BOLD, size=16, color=color_texto or TEXT_MAIN),
+        ],
+        spacing=8,
+        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+    )
 
 
 class StudentFormDialog(ft.AlertDialog):
@@ -35,7 +48,10 @@ class StudentFormDialog(ft.AlertDialog):
             autofocus=True,
             capitalization=ft.TextCapitalization.WORDS,
             dense=True,
-            on_submit=lambda e: self.txt_nombre.focus(),
+            border_radius=10,
+            bgcolor=BG_PAGE,
+            border_color=BORDER_COLOR,
+            on_submit=lambda e: self._focus_control(self.txt_nombre),
         )
 
         self.txt_nombre = ft.TextField(
@@ -44,13 +60,16 @@ class StudentFormDialog(ft.AlertDialog):
             value=nombre_actual,
             capitalization=ft.TextCapitalization.WORDS,
             dense=True,
+            border_radius=10,
+            bgcolor=BG_PAGE,
+            border_color=BORDER_COLOR,
             on_submit=lambda e: self._guardar_alumno(continuar=self.modo_continuo),
         )
 
         self.lbl_error = ft.Text("", color=ft.Colors.ERROR, size=12, visible=False)
         self.lbl_info = ft.Text(
             "Tip: Presiona Enter o 'Siguiente' para seguir cargando alumnos sin cerrar esta ventana." if modo_continuo else "",
-            color=ft.Colors.SECONDARY,
+            color=TEXT_MUTED,
             size=11,
             italic=True,
         )
@@ -68,19 +87,33 @@ class StudentFormDialog(ft.AlertDialog):
         )
 
         actions = [
-            ft.TextButton("Listo / Cerrar", on_click=lambda e: self._cerrar()),
+            ft.TextButton(
+                "Listo / Cerrar",
+                style=ft.ButtonStyle(color=TEXT_MUTED, shape=ft.RoundedRectangleBorder(radius=8)),
+                on_click=lambda e: self._cerrar(),
+            ),
         ]
 
         if modo_continuo:
             actions.append(
                 ft.OutlinedButton(
                     "Guardar y salir",
+                    style=ft.ButtonStyle(
+                        color=PRIMARY,
+                        side=ft.BorderSide(1, PRIMARY),
+                        shape=ft.RoundedRectangleBorder(radius=8),
+                    ),
                     on_click=lambda e: self._guardar_alumno(continuar=False),
                 )
             )
             actions.append(
                 ft.FilledButton(
                     "Siguiente Alumno ➔",
+                    style=ft.ButtonStyle(
+                        bgcolor=PRIMARY,
+                        color=ft.Colors.WHITE,
+                        shape=ft.RoundedRectangleBorder(radius=8),
+                    ),
                     on_click=lambda e: self._guardar_alumno(continuar=True),
                 )
             )
@@ -88,17 +121,40 @@ class StudentFormDialog(ft.AlertDialog):
             actions.append(
                 ft.FilledButton(
                     "Guardar",
+                    style=ft.ButtonStyle(
+                        bgcolor=PRIMARY,
+                        color=ft.Colors.WHITE,
+                        shape=ft.RoundedRectangleBorder(radius=8),
+                    ),
                     on_click=lambda e: self._guardar_alumno(continuar=False),
                 )
             )
 
         super().__init__(
-            title=ft.Text(titulo, weight=ft.FontWeight.BOLD),
+            title=logo_dialog_title(titulo),
             content=content,
             actions=actions,
             actions_alignment=ft.MainAxisAlignment.END,
             modal=True,
         )
+
+    def _focus_control(self, control):
+        """Aplica foco a un control de forma compatible y asíncrona segura."""
+        if not control:
+            return
+        if self.app_page and hasattr(self.app_page, "run_task") and hasattr(control, "focus"):
+            import inspect
+            if inspect.iscoroutinefunction(control.focus):
+                self.app_page.run_task(control.focus)
+                return
+        if hasattr(control, "focus"):
+            import inspect
+            try:
+                res = control.focus()
+                if inspect.iscoroutine(res):
+                    res.close()
+            except Exception:
+                pass
 
     def _guardar_alumno(self, continuar: bool = False):
         ap = self.txt_apellido.value.strip()
@@ -122,7 +178,7 @@ class StudentFormDialog(ft.AlertDialog):
                 self.lbl_error.visible = False
                 self.lbl_info.value = f"✓ Alumno guardado ({self.contador_cargados} cargados). Listo para el siguiente."
                 self.lbl_info.color = ft.Colors.GREEN_700
-                self.txt_apellido.focus()
+                self._focus_control(self.txt_apellido)
                 if self.app_page:
                     self.app_page.update()
             else:
@@ -163,15 +219,30 @@ class CreateEntityDialog(ft.AlertDialog):
             hint_text=hint,
             autofocus=True,
             capitalization=ft.TextCapitalization.WORDS,
+            border_radius=10,
+            bgcolor=BG_PAGE,
+            border_color=BORDER_COLOR,
         )
         self.lbl_error = ft.Text("", color=ft.Colors.ERROR, size=12, visible=False)
 
         super().__init__(
-            title=ft.Text(titulo, weight=ft.FontWeight.BOLD),
+            title=logo_dialog_title(titulo),
             content=ft.Column([self.txt_nombre, self.lbl_error], tight=True, width=320),
             actions=[
-                ft.TextButton("Cancelar", on_click=lambda e: self._cerrar()),
-                ft.FilledButton("Crear", on_click=lambda e: self._confirmar()),
+                ft.TextButton(
+                    "Cancelar",
+                    style=ft.ButtonStyle(color=TEXT_MUTED, shape=ft.RoundedRectangleBorder(radius=8)),
+                    on_click=lambda e: self._cerrar(),
+                ),
+                ft.FilledButton(
+                    "Crear",
+                    style=ft.ButtonStyle(
+                        bgcolor=PRIMARY,
+                        color=ft.Colors.WHITE,
+                        shape=ft.RoundedRectangleBorder(radius=8),
+                    ),
+                    on_click=lambda e: self._confirmar(),
+                ),
             ],
             actions_alignment=ft.MainAxisAlignment.END,
             modal=True,
@@ -215,17 +286,24 @@ class CreateCursoDialog(ft.AlertDialog):
             hint_text=hint,
             autofocus=True,
             capitalization=ft.TextCapitalization.WORDS,
+            border_radius=10,
+            bgcolor=BG_PAGE,
+            border_color=BORDER_COLOR,
         )
         self.txt_cantidad = ft.TextField(
             label="Cantidad inicial de alumnos",
             hint_text="",
             value="",
             keyboard_type=ft.KeyboardType.NUMBER,
+            input_filter=ft.NumbersOnlyInputFilter(),
+            border_radius=10,
+            bgcolor=BG_PAGE,
+            border_color=BORDER_COLOR,
         )
         self.lbl_error = ft.Text("", color=ft.Colors.ERROR, size=12, visible=False)
 
         super().__init__(
-            title=ft.Text(titulo, weight=ft.FontWeight.BOLD),
+            title=logo_dialog_title(titulo),
             content=ft.Column(
                 [
                     self.txt_nombre,
@@ -237,8 +315,20 @@ class CreateCursoDialog(ft.AlertDialog):
                 spacing=12,
             ),
             actions=[
-                ft.TextButton("Cancelar", on_click=lambda e: self._cerrar()),
-                ft.FilledButton("Crear Curso", on_click=lambda e: self._confirmar()),
+                ft.TextButton(
+                    "Cancelar",
+                    style=ft.ButtonStyle(color=TEXT_MUTED, shape=ft.RoundedRectangleBorder(radius=8)),
+                    on_click=lambda e: self._cerrar(),
+                ),
+                ft.FilledButton(
+                    "Crear Curso",
+                    style=ft.ButtonStyle(
+                        bgcolor=PRIMARY,
+                        color=ft.Colors.WHITE,
+                        shape=ft.RoundedRectangleBorder(radius=8),
+                    ),
+                    on_click=lambda e: self._confirmar(),
+                ),
             ],
             actions_alignment=ft.MainAxisAlignment.END,
             modal=True,
@@ -262,7 +352,20 @@ class CreateCursoDialog(ft.AlertDialog):
                 if self.app_page:
                     self.app_page.update()
                 return
-            cant = int(cant_str)
+            try:
+                cant = int(cant_str)
+                if cant <= 0:
+                    self.lbl_error.value = "La cantidad debe ser un número entero positivo mayor a 0."
+                    self.lbl_error.visible = True
+                    if self.app_page:
+                        self.app_page.update()
+                    return
+            except ValueError:
+                self.lbl_error.value = "La cantidad debe ser un número entero positivo."
+                self.lbl_error.visible = True
+                if self.app_page:
+                    self.app_page.update()
+                return
 
         self.on_confirm(nom, cant)
         self._cerrar()
@@ -294,15 +397,30 @@ class RenameDialog(ft.AlertDialog):
             value=nombre_actual,
             autofocus=True,
             capitalization=ft.TextCapitalization.WORDS,
+            border_radius=10,
+            bgcolor=BG_PAGE,
+            border_color=BORDER_COLOR,
         )
         self.lbl_error = ft.Text("", color=ft.Colors.ERROR, size=12, visible=False)
 
         super().__init__(
-            title=ft.Text(titulo, weight=ft.FontWeight.BOLD),
+            title=logo_dialog_title(titulo),
             content=ft.Column([self.txt_nombre, self.lbl_error], tight=True, width=320),
             actions=[
-                ft.TextButton("Cancelar", on_click=lambda e: self._cerrar()),
-                ft.FilledButton("Renombrar", on_click=lambda e: self._confirmar()),
+                ft.TextButton(
+                    "Cancelar",
+                    style=ft.ButtonStyle(color=TEXT_MUTED, shape=ft.RoundedRectangleBorder(radius=8)),
+                    on_click=lambda e: self._cerrar(),
+                ),
+                ft.FilledButton(
+                    "Renombrar",
+                    style=ft.ButtonStyle(
+                        bgcolor=PRIMARY,
+                        color=ft.Colors.WHITE,
+                        shape=ft.RoundedRectangleBorder(radius=8),
+                    ),
+                    on_click=lambda e: self._confirmar(),
+                ),
             ],
             actions_alignment=ft.MainAxisAlignment.END,
             modal=True,
@@ -343,13 +461,21 @@ class ConfirmDeleteDialog(ft.AlertDialog):
         self.app_page = page
 
         super().__init__(
-            title=ft.Text(titulo, weight=ft.FontWeight.BOLD, color=ft.Colors.ERROR),
-            content=ft.Text(mensaje, size=14),
+            title=logo_dialog_title(titulo, color_texto=ft.Colors.RED_600, icon_color=ft.Colors.RED_600),
+            content=ft.Text(mensaje, size=14, color=TEXT_MAIN),
             actions=[
-                ft.TextButton("Cancelar", on_click=lambda e: self._cerrar()),
+                ft.TextButton(
+                    "Cancelar",
+                    style=ft.ButtonStyle(color=TEXT_MUTED, shape=ft.RoundedRectangleBorder(radius=8)),
+                    on_click=lambda e: self._cerrar(),
+                ),
                 ft.FilledButton(
                     "Eliminar",
-                    style=ft.ButtonStyle(bgcolor=ft.Colors.ERROR, color=ft.Colors.WHITE),
+                    style=ft.ButtonStyle(
+                        bgcolor=ft.Colors.RED_600,
+                        color=ft.Colors.WHITE,
+                        shape=ft.RoundedRectangleBorder(radius=8),
+                    ),
                     on_click=lambda e: self._confirmar(),
                 ),
             ],
@@ -383,15 +509,22 @@ class CustomizeColumnsDialog(ft.AlertDialog):
         self.on_save = on_save
         self.app_page = page
         self.inputs = [
-            ft.TextField(label=f"Columna {i+1}", value=nombres_actuales[i] if i < len(nombres_actuales) else f"P{i+1}", dense=True)
+            ft.TextField(
+                label=f"Columna {i+1}",
+                value=nombres_actuales[i] if i < len(nombres_actuales) else f"P{i+1}",
+                dense=True,
+                border_radius=10,
+                bgcolor=BG_PAGE,
+                border_color=BORDER_COLOR,
+            )
             for i in range(4)
         ]
 
         super().__init__(
-            title=ft.Text("Personalizar Columnas de Notas", weight=ft.FontWeight.BOLD),
+            title=logo_dialog_title("Personalizar Columnas de Notas"),
             content=ft.Column(
                 [
-                    ft.Text("Define los encabezados para las notas principales y extra:", size=13, color=ft.Colors.GREY_700),
+                    ft.Text("Define los encabezados para las notas principales y extra:", size=13, color=TEXT_MUTED),
                     *self.inputs,
                 ],
                 tight=True,
@@ -399,8 +532,20 @@ class CustomizeColumnsDialog(ft.AlertDialog):
                 spacing=10,
             ),
             actions=[
-                ft.TextButton("Cancelar", on_click=lambda e: self._cerrar()),
-                ft.FilledButton("Guardar", on_click=lambda e: self._guardar()),
+                ft.TextButton(
+                    "Cancelar",
+                    style=ft.ButtonStyle(color=TEXT_MUTED, shape=ft.RoundedRectangleBorder(radius=8)),
+                    on_click=lambda e: self._cerrar(),
+                ),
+                ft.FilledButton(
+                    "Guardar",
+                    style=ft.ButtonStyle(
+                        bgcolor=PRIMARY,
+                        color=ft.Colors.WHITE,
+                        shape=ft.RoundedRectangleBorder(radius=8),
+                    ),
+                    on_click=lambda e: self._guardar(),
+                ),
             ],
             actions_alignment=ft.MainAxisAlignment.END,
             modal=True,

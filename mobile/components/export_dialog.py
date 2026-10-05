@@ -18,6 +18,9 @@ from core.exportador import (
 )
 
 
+from mobile.theme import PRIMARY, TEXT_MAIN, TEXT_MUTED, BORDER_COLOR
+
+
 class ExportDialog(ft.AlertDialog):
     """Diálogo modal para seleccionar formato y exportar planillas."""
 
@@ -52,21 +55,37 @@ class ExportDialog(ft.AlertDialog):
         titulo_str = "Exportar Planilla de Notas" if tipo_exportacion == "notas" else "Exportar Asistencias"
 
         super().__init__(
-            title=ft.Text(titulo_str, weight=ft.FontWeight.BOLD),
+            title=ft.Row(
+                [
+                    ft.Icon(ft.Icons.SCHOOL, color=PRIMARY, size=24),
+                    ft.Text(titulo_str, weight=ft.FontWeight.BOLD, size=16, color=TEXT_MAIN),
+                ],
+                spacing=8,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            ),
             content=ft.Column(
                 [
-                    ft.Text(f"Colegio: {colegio_nombre}", size=13, weight=ft.FontWeight.W_500),
-                    ft.Text(f"Curso: {curso_nombre}", size=13, color=ft.Colors.SECONDARY),
-                    ft.Divider(height=16),
-                    ft.Text("Selecciona el formato de exportación:", size=13, weight=ft.FontWeight.BOLD),
+                    ft.Text(f"Colegio: {colegio_nombre}", size=13, weight=ft.FontWeight.W_500, color=TEXT_MAIN),
+                    ft.Text(f"Curso: {curso_nombre}", size=13, color=TEXT_MUTED),
+                    ft.Divider(height=16, color=BORDER_COLOR),
+                    ft.Text("Selecciona el formato de exportación:", size=13, weight=ft.FontWeight.BOLD, color=TEXT_MAIN),
                     self.formato_selector,
                 ],
                 tight=True,
                 width=340,
             ),
             actions=[
-                ft.TextButton("Cancelar", on_click=lambda e: self._cerrar()),
-                ft.FilledButton("Generar y Exportar", icon=ft.Icons.DOWNLOAD, on_click=lambda e: self._exportar()),
+                ft.TextButton(
+                    "Cancelar",
+                    style=ft.ButtonStyle(color=TEXT_MUTED, shape=ft.RoundedRectangleBorder(radius=8)),
+                    on_click=lambda e: self._cerrar(),
+                ),
+                ft.FilledButton(
+                    "Generar y Exportar",
+                    icon=ft.Icons.DOWNLOAD,
+                    style=ft.ButtonStyle(bgcolor=PRIMARY, color=ft.Colors.WHITE, shape=ft.RoundedRectangleBorder(radius=8)),
+                    on_click=lambda e: self._exportar(),
+                ),
             ],
             actions_alignment=ft.MainAxisAlignment.END,
             modal=True,

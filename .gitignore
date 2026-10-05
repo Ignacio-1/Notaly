@@ -32,3 +32,29 @@ data.json
 
 *.jks
 *.keystore
+
+
+# Infraestructura interna de agentes y contexto de IA
+.agents/
+.antigravity/
+memory.md
+plan.md
+docs/constitution.md
+mcp.json
+
+# Salidas de compilación y binarios móviles
+dist/
+build/
+*.apk
+*.aab
+
+# Cache de Python y pruebas
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Entornos virtuales y variables de entorno
+.venv/
+venv/
+.env
+.env.*

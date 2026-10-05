@@ -5,10 +5,14 @@ Centraliza la lógica de persistencia, navegación y manipulación de datos.
 
 import os
 import json
+import math
 from datetime import datetime, date, timedelta
 import logging
 from pathlib import Path
 from typing import Callable, Any
+
+import threading
+import time
 
 from core import gestor_datos
 from core.constants import (
@@ -54,6 +58,7 @@ class AppState:
         self.current_screen = "colegios"  # "colegios", "cursos", "notas", "asistencias"
         self.selected_colegio: str | None = None
         self.selected_curso: str | None = None
+        self.selected_alumno_id: str | None = None
         self.active_trimestre: int = 0  # 0: 1° Trim, 1: 2° Trim, 2: 3° Trim, 3: Resumen Anual
         self.asistencia_fecha: str = datetime.now().strftime("%Y-%m-%d")
 
@@ -65,8 +70,73 @@ class AppState:
         self.has_unsaved_changes: bool = False
         self.has_unsaved_asistencias: bool = False
 
+        # Sistema de Auto-Guardado Reactivo Asíncrono con Debounce
+        self.save_status: str = "saved"  # "saved", "saving", "idle"
+        self.on_save_status_change: Callable[[str], None] | None = None
+        self._debounce_timer: threading.Timer | None = None
+        self._save_lock: threading.Lock = threading.Lock()
+        self._pending_save_event: threading.Event = threading.Event()
+
         # Cargar datos iniciales
         self.load_data()
+
+    def set_save_status(self, status: str):
+        """Actualiza el estado de persistencia y notifica a los oyentes de la UI."""
+        self.save_status = status
+        if self.on_save_status_change:
+            try:
+                self.on_save_status_change(status)
+            except Exception as e:
+                logger.error("Error al notificar on_save_status_change: %s", e)
+
+    def trigger_auto_save(self, delay: float = 0.3):
+        """
+        Programa un guardado asíncrono con debounce (retraso en segundos).
+        Cancela cualquier temporizador previo si entran nuevos cambios.
+        """
+        self.has_unsaved_changes = True
+        self.has_unsaved_asistencias = True
+        self.set_save_status("saving")
+
+        with self._save_lock:
+            if self._debounce_timer is not None:
+                self._debounce_timer.cancel()
+                self._debounce_timer = None
+
+            def _background_save_worker():
+                self._execute_save_to_disk()
+
+            self._debounce_timer = threading.Timer(delay, _background_save_worker)
+            self._debounce_timer.daemon = True
+            self._debounce_timer.start()
+
+    def flush_auto_save(self) -> bool:
+        """
+        Fuerza la persistencia inmediata de cualquier cambio pendiente en memoria.
+        Cancela temporizadores activos de debounce y ejecuta la escritura sincrónica.
+        """
+        with self._save_lock:
+            if self._debounce_timer is not None:
+                self._debounce_timer.cancel()
+                self._debounce_timer = None
+
+        if self.has_unsaved_changes or self.has_unsaved_asistencias:
+            return self._execute_save_to_disk()
+        return True
+
+    def _execute_save_to_disk(self) -> bool:
+        """Persiste de forma atómica en disco y actualiza el estado visual."""
+        try:
+            gestor_datos.guardar_datos(self.data_path, self.data)
+            self.has_unsaved_changes = False
+            self.has_unsaved_asistencias = False
+            self.set_save_status("saved")
+            self.notify()
+            return True
+        except Exception as e:
+            logger.error("Error al persistir datos automáticamente: %s", e)
+            self.set_save_status("saved")
+            return False
 
     def notify(self):
         """Notifica a la interfaz que el estado ha cambiado para refrescar la UI."""
@@ -75,25 +145,101 @@ class AppState:
 
     def load_data(self, path: str | None = None):
         """Carga los datos desde el archivo especificado o por defecto."""
+        with self._save_lock:
+            if self._debounce_timer is not None:
+                self._debounce_timer.cancel()
+                self._debounce_timer = None
         if path:
             self.data_path = path
             gestor_datos.escribir_ruta_config(path)
         self.data = gestor_datos.cargar_datos(self.data_path)
         self.has_unsaved_changes = False
         self.has_unsaved_asistencias = False
+        self.set_save_status("saved")
         self.notify()
 
     def save_data(self) -> bool:
-        """Guarda los datos en disco de forma segura."""
-        try:
-            gestor_datos.guardar_datos(self.data_path, self.data)
-            self.has_unsaved_changes = False
-            self.has_unsaved_asistencias = False
-            self.notify()
-            return True
-        except Exception as e:
-            logger.error("Error al guardar datos: %s", e)
-            return False
+        """Guarda los datos en disco de forma segura e inmediata."""
+        with self._save_lock:
+            if self._debounce_timer is not None:
+                self._debounce_timer.cancel()
+                self._debounce_timer = None
+        return self._execute_save_to_disk()
+
+    @property
+    def colegio_activo(self) -> str | None:
+        """Alias para el colegio seleccionado actual."""
+        return self.selected_colegio
+
+    @colegio_activo.setter
+    def colegio_activo(self, valor: str | None):
+        self.selected_colegio = valor
+
+    @property
+    def curso_activo(self) -> str | None:
+        """Alias para el curso seleccionado actual."""
+        return self.selected_curso
+
+    @curso_activo.setter
+    def curso_activo(self, valor: str | None):
+        self.selected_curso = valor
+
+    def buscar_global(self, query: str, limite: int = 15) -> list[dict]:
+        """
+        Ejecuta la búsqueda predictiva transversal sobre toda la estructura de datos.
+        Localiza colegios, cursos y alumnos.
+        """
+        return gestor_datos.buscar_entidad_global(
+            query=query,
+            datos=self.data,
+            solo_alumnos=False,
+            limite=limite,
+        )
+
+    def seleccionar_resultado_busqueda(
+        self,
+        resultado: dict,
+        on_navigate: Callable[[str], None] | None = None,
+    ):
+        """
+        Maneja la selección de una entidad desde el buscador global.
+        Actualiza el estado de selección (colegio_activo, curso_activo, alumno)
+        y ejecuta la navegación correspondiente.
+        """
+        tipo = resultado.get("tipo")
+        colegio = resultado.get("colegio")
+        curso = resultado.get("curso")
+        alumno_id = resultado.get("id")
+
+        if tipo == "colegio":
+            self.selected_colegio = colegio
+            self.search_query_cursos = ""
+            self.selected_alumno_id = None
+            self.current_screen = "cursos"
+            if on_navigate:
+                on_navigate("cursos")
+            else:
+                self.notify()
+
+        elif tipo == "curso":
+            self.selected_colegio = colegio
+            self.selected_curso = curso
+            self.selected_alumno_id = None
+            self.current_screen = "notas"
+            if on_navigate:
+                on_navigate("notas")
+            else:
+                self.notify()
+
+        elif tipo == "alumno":
+            self.selected_colegio = colegio
+            self.selected_curso = curso
+            self.selected_alumno_id = str(alumno_id) if alumno_id is not None else None
+            self.current_screen = "notas"
+            if on_navigate:
+                on_navigate("notas")
+            else:
+                self.notify()
 
     # =========================================================================
     # --- GESTIÓN DE COLEGIOS ---
@@ -166,6 +312,17 @@ class AppState:
         nombre_curso = nombre_curso.strip()
         if not nombre_curso:
             return False, "El nombre del curso no puede estar vacío."
+
+        if not isinstance(cantidad_alumnos, int) or isinstance(cantidad_alumnos, bool):
+            try:
+                if isinstance(cantidad_alumnos, float) and not cantidad_alumnos.is_integer():
+                    return False, "La cantidad de alumnos debe ser un número entero."
+                cantidad_alumnos = int(cantidad_alumnos)
+            except Exception:
+                return False, "La cantidad de alumnos debe ser un número entero."
+        if cantidad_alumnos < 0:
+            return False, "La cantidad de alumnos no puede ser negativa."
+
         colegio_data = self.data.setdefault(K_COLEGIOS, {}).setdefault(nombre_colegio, {K_CURSOS: {}})
         cursos_dict = colegio_data.setdefault(K_CURSOS, {})
 
@@ -333,7 +490,7 @@ class AppState:
         self.save_data()
         return True, f"Alumno '{nombre_completo}' agregado exitosamente con ID #{next_id}."
 
-    def rename_alumno(self, id_al: str, nuevo_apellido_o_nombre: str, nuevo_nombre_pila: str = "", colegio: str | None = None, curso: str | None = None) -> tuple[bool, str]:
+    def rename_alumno(self, id_al: str, nuevo_apellido_o_nombre: str, nuevo_nombre_pila: str = "", colegio: str | None = None, curso: str | None = None, auto_save: bool = False) -> tuple[bool, str]:
         """Renombra un alumno permitiendo apellido y nombre por separado."""
         from core.constants import formatear_nombre_completo, separar_nombre_completo, K_APELLIDO, K_NOMBRE_PILA
         ap_in = nuevo_apellido_o_nombre.strip()
@@ -355,7 +512,10 @@ class AppState:
             alumno[K_NOMBRE] = nombre_completo
             alumno[K_APELLIDO] = ap
             alumno[K_NOMBRE_PILA] = nom
-            self.save_data()
+            if auto_save:
+                self.trigger_auto_save(delay=0.6)
+            else:
+                self.save_data()
             return True, "Nombre de alumno actualizado."
         return False, "Alumno no encontrado."
 
@@ -448,10 +608,27 @@ class AppState:
         colegio: str | None = None,
         curso: str | None = None,
     ) -> None:
-        """Actualiza una nota específica de un alumno."""
+        """Actualiza una nota específica de un alumno, asegurando que se guarde como entero del 1 al 10."""
         curso_dict = self.get_curso_data(colegio, curso)
         if not curso_dict or id_al not in curso_dict.get(K_ALUMNOS, {}):
             return
+
+        # Unificación de notas como enteros (1 al 10)
+        valor_guardado = None
+        if valor is not None:
+            try:
+                if isinstance(valor, str):
+                    val_str = valor.replace(",", ".").strip()
+                    if not val_str or val_str == "-":
+                        valor_guardado = None
+                    else:
+                        num = float(val_str)
+                        valor_guardado = max(1, min(10, math.floor(num + 0.5)))
+                else:
+                    num = float(valor)
+                    valor_guardado = max(1, min(10, math.floor(num + 0.5)))
+            except (ValueError, TypeError):
+                valor_guardado = None
 
         trimestre_nombre = NOMBRES_TRIMESTRES[trimestre_idx]
         t_data = curso_dict[K_ALUMNOS][id_al][K_TRIMESTRES].setdefault(
@@ -463,14 +640,15 @@ class AppState:
         )
 
         if tipo == "P" and 0 <= index < NUM_PRINCIPALES:
-            t_data[K_PRINCIPALES][index] = valor
+            t_data[K_PRINCIPALES][index] = valor_guardado
         elif tipo == "E" and 0 <= index < NUM_EXTRAS:
-            t_data[K_EXTRAS][index] = valor
+            t_data[K_EXTRAS][index] = valor_guardado
         elif tipo == "R":
-            t_data[K_RECUPERATORIO] = valor
+            t_data[K_RECUPERATORIO] = valor_guardado
 
         self.has_unsaved_changes = True
         self.notify()
+        self.trigger_auto_save(delay=0.3)
 
     # =========================================================================
     # --- GESTIÓN DE ASISTENCIAS ---
@@ -511,6 +689,7 @@ class AppState:
         dia_dict[id_al] = estado
         self.has_unsaved_asistencias = True
         self.notify()
+        self.trigger_auto_save(delay=0.3)
 
     def set_all_asistencias_dia(
         self,
@@ -530,6 +709,7 @@ class AppState:
         asistencias[fecha] = {id_al: estado for id_al in alumnos.keys()}
         self.has_unsaved_asistencias = True
         self.notify()
+        self.trigger_auto_save(delay=0.3)
 
     def get_resumen_asistencia_dia(self, fecha: str, colegio: str | None = None, curso: str | None = None) -> dict:
         """Retorna estadísticas calculadas para una fecha dada."""
@@ -548,17 +728,11 @@ class AppState:
         curso_dict = self.get_curso_data(colegio, curso)
         if not curso_dict:
             return {
-                "total_clases": 0,
-                "presentes": 0,
-                "ausentes": 0,
-                "tardes": 0,
-                "justificados": 0,
-                "total_registros": 0,
-                "porcentaje_asistencia": 0.0,
+                "total_fechas": 0,
+                "fechas": [],
+                "por_alumno": {},
             }
-        alumnos = curso_dict.get(K_ALUMNOS, {})
-        asistencias = curso_dict.get(K_ASISTENCIAS, {})
-        return resumen_asistencia_curso(asistencias, alumnos)
+        return resumen_asistencia_curso(curso_dict)
 
     # =========================================================================
     # --- GESTIÓN DE COPIAS DE SEGURIDAD Y RESUMEN DE DATOS ---
