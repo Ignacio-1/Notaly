@@ -4,6 +4,8 @@ Permite exportar Planilla de Notas o Asistencias a formatos PDF, CSV y TXT.
 """
 
 import os
+import sys
+import tempfile
 from pathlib import Path
 from datetime import datetime
 import flet as ft
@@ -16,7 +18,6 @@ from core.exportador import (
     exportar_asistencias_a_csv,
     exportar_asistencias_a_texto,
 )
-
 
 from mobile.theme import PRIMARY, TEXT_MAIN, TEXT_MUTED, BORDER_COLOR
 
@@ -92,62 +93,53 @@ class ExportDialog(ft.AlertDialog):
         )
 
     def _obtener_carpeta_exportacion(self) -> Path:
-        """Determina la carpeta de descargas o documentos del usuario."""
-        # Si existe carpeta Descargas / Downloads
+        """
+        Determina un directorio con permisos reales de escritura.
+        En Android prioriza la carpeta publica Download y tiene fallback al almacenamiento privado.
+        En PC utiliza la carpeta Downloads o Documents del usuario.
+        """
+        es_android = (
+            "ANDROID_ROOT" in os.environ
+            or "ANDROID_DATA" in os.environ
+            or hasattr(sys, "getandroidapilevel")
+        )
+
+        if es_android:
+            # 1. Probar carpetas públicas de descargas con verificación de escritura real
+            rutas_candidatas = [
+                Path("/storage/emulated/0/Download"),
+                Path("/sdcard/Download"),
+            ]
+            for candidata in rutas_candidatas:
+                if candidata.exists() and os.access(candidata, os.W_OK):
+                    try:
+                        archivo_prueba = candidata / ".test_write"
+                        archivo_prueba.touch()
+                        archivo_prueba.unlink()
+                        return candidata
+                    except Exception:
+                        pass
+
+            # 2. Fallback seguro: directorio privado/temporal de la app (permiso garantizado)
+            directorio_privado = Path(tempfile.gettempdir())
+            directorio_privado.mkdir(parents=True, exist_ok=True)
+            return directorio_privado
+
+        # Entorno PC / Escritorio
         downloads = Path.home() / "Downloads"
-        if downloads.exists():
+        if downloads.exists() and os.access(downloads, os.W_OK):
             return downloads
         descargas = Path.home() / "Descargas"
-        if descargas.exists():
+        if descargas.exists() and os.access(descargas, os.W_OK):
             return descargas
-        # Fallback a Documentos o Home
         docs = Path.home() / "Documents"
-        if docs.exists():
+        if docs.exists() and os.access(docs, os.W_OK):
             return docs
+
         return Path.home()
 
     def _exportar(self):
         formato = self.formato_selector.value
         carpeta_destino = self._obtener_carpeta_exportacion()
 
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        sanitized_col = "".join(c for c in self.colegio_nombre if c.isalnum() or c in (' ', '_', '-')).strip()
-        sanitized_cur = "".join(c for c in self.curso_nombre if c.isalnum() or c in (' ', '_', '-')).strip()
-
-        if self.tipo_exportacion == "notas":
-            base_name = f"Notas_{sanitized_col}_{sanitized_cur}_{timestamp}"
-        else:
-            base_name = f"Asistencias_{sanitized_col}_{sanitized_cur}_{timestamp}"
-
-        file_path = str(carpeta_destino / f"{base_name}.{formato}")
-
-        exito = False
-        error_msg = None
-
-        if self.tipo_exportacion == "notas":
-            if formato == "pdf":
-                exito, error_msg = exportar_a_pdf(self.curso_data, file_path, self.colegio_nombre, self.curso_nombre)
-            elif formato == "csv":
-                exito, error_msg = exportar_a_csv(self.curso_data, file_path)
-            elif formato == "txt":
-                exito, error_msg = exportar_a_texto(self.curso_data, file_path, self.curso_nombre)
-        else:
-            # Asistencias
-            if formato == "pdf":
-                exito, error_msg = exportar_asistencias_a_pdf(self.curso_data, file_path, self.curso_nombre, self.colegio_nombre)
-            elif formato == "csv":
-                exito, error_msg = exportar_asistencias_a_csv(self.curso_data, file_path)
-            elif formato == "txt":
-                exito, error_msg = exportar_asistencias_a_texto(self.curso_data, file_path, self.curso_nombre, self.colegio_nombre)
-
-        self._cerrar()
-        self.on_success(exito, file_path if exito else (error_msg or "Error al exportar."))
-
-    def _cerrar(self):
-        self.open = False
-        if self.app_page:
-            try:
-                self.app_page.pop_dialog()
-                self.app_page.update()
-            except Exception:
-                pass
+        timestamp =
