@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 # Ajusta el nombre de paquete si difiere del configurado en tu proyecto
-DEFAULT_PACKAGE = "com.notaly.app"
+DEFAULT_PACKAGE = "com.notaly.app.notaly"
 TIMEOUT_SECS = 8
 
 
