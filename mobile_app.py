@@ -8,8 +8,8 @@ from pathlib import Path
 # Garantizar resolucion de modulos core y mobile desde la raiz
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from flet_runtime.app import app
+import flet as ft
 from mobile.main import main
 
 if __name__ == "__main__":
-    app(target=main, assets_dir="assets")
+    ft.app(target=main, assets_dir="assets")
