@@ -53,6 +53,20 @@ jobs:
         with:
           channel: stable
 
+      - name: Configurar interceptor de Flutter para parchear JNI 1.1.0
+        run: |
+          FLUTTER_BIN=$(which flutter)
+          echo "Ruta de Flutter: $FLUTTER_BIN"
+          sudo mv "$FLUTTER_BIN" "${FLUTTER_BIN}.real"
+          sudo tee "$FLUTTER_BIN" > /dev/null << 'EOF'
+          #!/usr/bin/env bash
+          # Parchear automaticamente cualquier pubspec.yaml generado por Flet antes de ejecutar Flutter
+          find . /home/runner/work /tmp -maxdepth 6 -name "pubspec.yaml" -exec sed -i -E 's/jni:[[:space:]]*[^[:space:]]+/jni: ^1.1.0/g' {} + 2>/dev/null || true
+          exec "${0}.real" "$@"
+          EOF
+          sudo chmod +x "$FLUTTER_BIN"
+          echo "Interceptor de Flutter instalado correctamente."
+
       - name: Configurar Python 3.12
         uses: actions/setup-python@v5
         with:
@@ -66,14 +80,38 @@ jobs:
       - name: Instalar dependencias Python
         run: |
           python -m pip install --upgrade pip
-          pip install flet[all] fpdf2
+          pip install flet[all] fpdf2 requests Pillow
+
+      - name: Parchear plantillas internas de Flet en Python
+        run: |
+          python - << 'EOF'
+          import os, sys, re
+          for p in sys.path:
+              if not os.path.exists(p):
+                  continue
+              for root, _, files in os.walk(p):
+                  for f in files:
+                      if f.endswith((".py", ".yaml", ".yml")):
+                          fp = os.path.join(root, f)
+                          try:
+                              with open(fp, "r", encoding="utf-8", errors="ignore") as file:
+                                  c = file.read()
+                              if "jni" in c and "1.0.0" in c:
+                                  c2 = re.sub(r"jni:[ \t]*[^\r\n]+", "jni: ^1.1.0", c)
+                                  c2 = re.sub(r"[\"']jni[\"'][ \t]*:[ \t]*[\"']1\.0\.0[\"']", "\"jni\": \"^1.1.0\"", c2)
+                                  with open(fp, "w", encoding="utf-8") as file:
+                                      file.write(c2)
+                                  print(f"Plantilla parcheada: {fp}")
+                          except Exception:
+                              pass
+          EOF
 
       - name: Aceptar licencias de Android
         run: |
           yes | flutter doctor --android-licenses || true
           yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
 
-      - name: Compilar APK con Flet (Android 64-bit ARM64)
+      - name: Compilar APK con Flet (ARM64 + x86_64 Emulador)
         run: |
           flet build apk . \
             --module-name mobile_app \
@@ -98,13 +136,14 @@ jobs:
             APKSIGNER=$(find $ANDROID_HOME/build-tools -name apksigner | sort -V | tail -n 1)
             echo "Usando apksigner ubicado en: $APKSIGNER"
             for apk in build/apk/*.apk; do
-              if [ -f "$apk" ]; then
+              if [ -f "$apk" ] && [[ "$apk" != *"-signed.apk" ]]; then
                 echo "Firmando $apk..."
                 $APKSIGNER sign --ks release.keystore \
                   --ks-pass "pass:$KEYSTORE_PASSWORD" \
                   --ks-key-alias "$KEY_ALIAS" \
                   --key-pass "pass:$KEY_PASSWORD" \
                   --out "${apk%.apk}-signed.apk" "$apk"
+                rm -f "$apk"
               fi
             done
             rm -f release.keystore
@@ -117,7 +156,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Notaly-Android-APK
-          path: |
-            build/apk/*-signed.apk
-            build/apk/*.apk
+          path: build/apk/*.apk
           retention-days: 30
