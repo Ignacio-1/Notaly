@@ -60,12 +60,21 @@ jobs:
           echo -e "\n504667f4c0de7973335447fc6c3b7e40efee42e8" > "$ANDROID_HOME/licenses/android-sdk-preview-license"
           echo -e "\n1d8aae7e54b3ecb4c15a80bda3a9edbc11a0e30b" > "$ANDROID_HOME/licenses/android-google-chrome-intel-build-tools-license"
 
-      - name: Compilar APK con Flet
+      - name: Compilar APK con Flet (arm64-v8a)
         run: |
           flet build apk . \
             --module-name mobile_app \
-            --arch arm64-v8a \
-            --arch x86_64 \
+            --yes \
+            --project notaly \
+            --product "Notaly" \
+            --org com.notaly.app \
+            --build-version 2.0.0 \
+            --verbose
+
+      - name: Compilar APK con Flet (x86_64)
+        run: |
+          flet build apk . \
+            --module-name mobile_app \
             --yes \
             --project notaly \
             --product "Notaly" \
