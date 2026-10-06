@@ -8,42 +8,30 @@ on:
 jobs:
   build-apk:
     runs-on: ubuntu-latest
+    timeout-minutes: 120
 
     steps:
       - name: Clonar repositorio
         uses: actions/checkout@v4
-
-      - name: Liberar espacio en disco
-        run: |
-          sudo systemctl stop docker || true
-          sudo rm -rf /var/lib/docker
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /usr/local/share/boost
-          sudo rm -rf /opt/ghc
-          sudo rm -rf /usr/local/.ghcup
-          sudo rm -rf /usr/share/swift
-          sudo rm -rf /opt/julia
-          sudo rm -rf /usr/local/lib/android/sdk/system-images
-          sudo apt-get clean
-          sudo apt-get autoclean
-          sudo apt-get autoremove -y
-          sudo rm -rf /var/log/*
 
       - name: Configurar Java 17
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
+          cache: gradle
 
       - name: Configurar Flutter SDK
         uses: subosito/flutter-action@v2
         with:
           channel: stable
+          cache: true
 
-      - name: Configurar Python 3.12
+      - name: Configurar Python 3.11
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: '3.11'
+          cache: 'pip'
 
       - name: Instalar dependencias del sistema
         run: |
@@ -52,50 +40,22 @@ jobs:
 
       - name: Instalar dependencias Python
         run: |
-          python -m pip install --upgrade pip
-          pip install flet[all] fpdf2 requests Pillow
+          python -m pip install --upgrade pip setuptools wheel
+          pip install "flet[all]==0.23.1" fpdf2 requests Pillow
 
       - name: Aceptar licencias de Android
         run: |
-          yes | flutter doctor --android-licenses || true
+          flutter doctor --android-licenses || true
           yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
 
-      - name: Compilar APK con Flet (Pre-cache + Parcheo Determinista)
+      - name: Limpiar build previo
         run: |
-          # 1. Limpieza de artefactos previos
           rm -rf build/
-          
-          # 2. Pre-descargar los paquetes conflictivos a pub-cache antes del build
-          echo "Descargando jni_flutter en pub-cache..."
-          flutter pub cache add jni_flutter -v "1.0.4+1" || true
-          flutter pub cache add jni -v "1.0.0" || true
+          flutter clean
+          flutter pub get
 
-          # 3. Desbloquear permisos de solo lectura (Dart pub protege con 0444) y neutralizar asercion
-          PUB_CACHE="${HOME}/.pub-cache"
-          if [ -d "$PUB_CACHE" ]; then
-            chmod -R u+w "$PUB_CACHE" 2>/dev/null || true
-            find "$PUB_CACHE" -type f -name "version_check.dart" -exec sed -i 's/actualMinorVersion >= minor/true/g' {} + 2>/dev/null || true
-            find "$PUB_CACHE" -type f -name "version_check.dart" -exec sed -i 's/actualMajorVersion == major && actualMinorVersion >= minor/true/g' {} + 2>/dev/null || true
-            find "$PUB_CACHE" -type f -name "*.dart" -exec sed -i 's/JniVersionCheck(1, 1)/JniVersionCheck(1, 0)/g' {} + 2>/dev/null || true
-            echo "Parches aplicados exitosamente en pub-cache."
-          fi
-
-          # 4. Instalar Wrapper sobre Flutter por si Gradle descarga alguna version adicional
-          FLUTTER_BIN=$(which flutter)
-          sudo mv "$FLUTTER_BIN" "${FLUTTER_BIN}.real"
-          sudo tee "$FLUTTER_BIN" > /dev/null << 'EOF'
-          #!/usr/bin/env bash
-          PUB_CACHE="${HOME}/.pub-cache"
-          if [ -d "$PUB_CACHE" ]; then
-            chmod -R u+w "$PUB_CACHE" 2>/dev/null || true
-            find "$PUB_CACHE" -type f -name "version_check.dart" -exec sed -i 's/actualMinorVersion >= minor/true/g' {} + 2>/dev/null || true
-            find "$PUB_CACHE" -type f -name "*.dart" -exec sed -i 's/JniVersionCheck(1, 1)/JniVersionCheck(1, 0)/g' {} + 2>/dev/null || true
-          fi
-          exec "${0}.real" "$@"
-          EOF
-          sudo chmod +x "$FLUTTER_BIN"
-
-          # 5. Compilar con verbose para diagnostico industrial completo
+      - name: Compilar APK con Flet
+        run: |
           flet build apk . \
             --module-name mobile_app \
             --arch arm64-v8a \
@@ -107,31 +67,46 @@ jobs:
             --build-version 2.0.0 \
             --verbose
 
-      - name: Firmar APK con apksigner (si los secrets estan configurados)
+      - name: Verificar APK generado
+        run: |
+          ls -lah build/apk || { echo "No se generó build/apk"; exit 1; }
+          find build/apk -name "*.apk" -type f
+
+      - name: Firmar APK con apksigner (si hay secrets)
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
-          if [ -n "$KEYSTORE_BASE64" ]; then
-            echo "Secrets detectados. Decodificando Keystore y firmando APK..."
-            echo "$KEYSTORE_BASE64" | base64 -d > release.keystore
-            APKSIGNER=$(find $ANDROID_HOME/build-tools -name apksigner | sort -V | tail -n 1)
-            for apk in build/apk/*.apk; do
-              if [ -f "$apk" ] && [[ "$apk" != *"-signed.apk" ]]; then
-                $APKSIGNER sign --ks release.keystore \
-                  --ks-pass "pass:$KEYSTORE_PASSWORD" \
-                  --ks-key-alias "$KEY_ALIAS" \
-                  --key-pass "pass:$KEY_PASSWORD" \
-                  --out "${apk%.apk}-signed.apk" "$apk"
-                rm -f "$apk"
-              fi
-            done
-            rm -f release.keystore
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "No hay keystore configurado; no se firma."
+            exit 0
           fi
 
-      - name: Subir APK como artefacto de descarga
+          echo "$KEYSTORE_BASE64" | base64 -d > release.keystore
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -n 1)
+
+          if [ -z "$APKSIGNER" ]; then
+            echo "No se encontró apksigner"
+            exit 1
+          fi
+
+          for apk in build/apk/*.apk; do
+            if [ -f "$apk" ] && [[ "$apk" != *"-signed.apk" ]]; then
+              "$APKSIGNER" sign \
+                --ks release.keystore \
+                --ks-pass "pass:$KEYSTORE_PASSWORD" \
+                --ks-key-alias "$KEY_ALIAS" \
+                --key-pass "pass:$KEY_PASSWORD" \
+                --out "${apk%.apk}-signed.apk" "$apk"
+              rm -f "$apk"
+            fi
+          done
+
+          rm -f release.keystore
+
+      - name: Subir APK como artefacto
         uses: actions/upload-artifact@v4
         with:
           name: Notaly-Android-APK
