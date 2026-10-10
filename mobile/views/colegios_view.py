@@ -126,10 +126,22 @@ class ColegiosView(ft.Container):
                                     ft.Text(subtitulo, size=12, color=TEXT_MUTED),
                                 ],
                             ),
+                            ft.IconButton(
+                                icon=ft.Icons.INSIGHTS,
+                                tooltip="Estadísticas",
+                                icon_color=PRIMARY,
+                                icon_size=20,
+                                on_click=lambda e, col=nombre: self._abrir_estadisticas_colegio(col),
+                            ),
                             ft.PopupMenuButton(
                                 icon=ft.Icons.MORE_VERT,
                                 icon_color="#94A3B8",
                                 items=[
+                                    ft.PopupMenuItem(
+                                        icon=ft.Icons.INSIGHTS,
+                                        content=ft.Text("Estadísticas"),
+                                        on_click=lambda e, col=nombre: self._abrir_estadisticas_colegio(col),
+                                    ),
                                     ft.PopupMenuItem(
                                         icon=ft.Icons.FOLDER_OPEN,
                                         content=ft.Text("Abrir Cursos"),
@@ -172,6 +184,12 @@ class ColegiosView(ft.Container):
                 body,
             ],
         )
+
+    def _abrir_estadisticas_colegio(self, col: str):
+        self.state.selected_colegio = col
+        self.state.origen_pantalla = "colegios"
+        self.state.estadisticas_nivel = "colegio"
+        self.on_navigate("estadisticas")
 
     def _on_search_change(self, e):
         self.state.search_query_colegios = e.control.value

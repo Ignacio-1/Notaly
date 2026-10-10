@@ -356,3 +356,36 @@ def test_flush_auto_save_persists_immediately(temp_state):
     assert alumno_disco[K_TRIMESTRES]["Primer trimestre"][K_PRINCIPALES][0] == 10
 
 
+def test_estadisticas_delegation(temp_state):
+    """Verifica que AppState exponga métodos get_estadisticas_colegio y get_estadisticas_curso correctamente."""
+    temp_state.add_colegio("Colegio Stats")
+    temp_state.add_curso("Colegio Stats", "1° A")
+    temp_state.selected_colegio = "Colegio Stats"
+    temp_state.selected_curso = "1° A"
+    temp_state.add_alumno("Pérez, Juan")
+    temp_state.set_nota("1", 0, "P", 0, 8)
+
+    # Estado inicial de navegación analítica
+    assert temp_state.origen_pantalla == "colegios"
+    assert temp_state.estadisticas_nivel == "colegio"
+    assert temp_state.estadisticas_periodo == 0
+
+    # Estadísticas curso
+    stats_cur = temp_state.get_estadisticas_curso()
+    assert stats_cur["total_alumnos"] == 1
+    assert stats_cur["aprobados_cant"] == 1
+    assert stats_cur["promedio_curso"] == 8.0
+
+    # Estadísticas colegio
+    stats_col = temp_state.get_estadisticas_colegio()
+    assert stats_col["total_alumnos"] == 1
+    assert stats_col["total_cursos"] == 1
+    assert stats_col["aprobados_cant"] == 1
+    assert "1° A" in stats_col["por_curso"]
+
+    # Colegio inexistente
+    stats_vacio = temp_state.get_estadisticas_colegio("Inexistente")
+    assert stats_vacio["total_alumnos"] == 0
+
+
+

@@ -102,6 +102,13 @@ class AsistenciasView(ft.Container):
             title=curso,
             on_back=self._accion_volver,
             status_indicator=self.save_indicator,
+            trailing=ft.IconButton(
+                icon=ft.Icons.INSIGHTS,
+                tooltip="Estadísticas del Curso",
+                icon_color=PRIMARY,
+                icon_size=20,
+                on_click=lambda _: self._abrir_estadisticas_curso(),
+            ),
         )
 
         # 2. Selector de módulo (Notas / Asistencia)
@@ -635,6 +642,13 @@ class AsistenciasView(ft.Container):
     def _accion_volver(self):
         self.state.flush_auto_save()
         self.on_navigate("cursos")
+
+    def _abrir_estadisticas_curso(self):
+        self.state.flush_auto_save()
+        self.state.origen_pantalla = "asistencias"
+        self.state.estadisticas_nivel = "curso"
+        self.on_navigate("estadisticas")
+
 
     def _preguntar_guardar_antes_de_salir(self, destino: str):
         def cerrar_dialogo():

@@ -41,6 +41,8 @@ from core.calculos import (
     procesar_calificaciones_alumno,
     resumen_asistencia_dia,
     resumen_asistencia_curso,
+    obtener_estadisticas_curso,
+    obtener_estadisticas_colegio,
 )
 
 logger = logging.getLogger(__name__)
@@ -55,7 +57,10 @@ class AppState:
         self.data: dict = {K_COLEGIOS: {}}
 
         # Estado de navegación
-        self.current_screen = "colegios"  # "colegios", "cursos", "notas", "asistencias"
+        self.current_screen = "colegios"  # "colegios", "cursos", "notas", "asistencias", "estadisticas"
+        self.origen_pantalla: str = "colegios"
+        self.estadisticas_nivel: str = "colegio"  # "colegio" o "curso"
+        self.estadisticas_periodo: int = 0  # 0: 1° Trim, 1: 2° Trim, 2: 3° Trim, 3: Resumen Anual
         self.selected_colegio: str | None = None
         self.selected_curso: str | None = None
         self.selected_alumno_id: str | None = None
@@ -1005,4 +1010,40 @@ class AppState:
                 f"• Alumnos nuevos agregados: {stats['alumnos_nuevos']}"
             )
             return True, msg, stats
+
+    # =========================================================================
+    # --- ESTADÍSTICAS Y GRÁFICOS ACADÉMICOS (SPEC-005) ---
+    # =========================================================================
+
+    def get_estadisticas_colegio(
+        self, colegio: str | None = None, periodo_idx: int | None = None
+    ) -> dict:
+        """
+        Retorna las estadísticas globales e inter-cursos de un colegio para un período dado.
+        Delega en la función pura core.calculos.obtener_estadisticas_colegio.
+        """
+        col = colegio or self.selected_colegio
+        if not col or col not in self.data.get(K_COLEGIOS, {}):
+            return obtener_estadisticas_colegio({}, 0)
+
+        p_idx = self.estadisticas_periodo if periodo_idx is None else periodo_idx
+        colegio_data = self.data[K_COLEGIOS][col]
+        return obtener_estadisticas_colegio(colegio_data, p_idx)
+
+    def get_estadisticas_curso(
+        self,
+        colegio: str | None = None,
+        curso: str | None = None,
+        periodo_idx: int | None = None,
+    ) -> dict:
+        """
+        Retorna las estadísticas y desglose de alumnos de un curso para un período dado.
+        Delega en la función pura core.calculos.obtener_estadisticas_curso.
+        """
+        col = colegio or self.selected_colegio
+        cur = curso or self.selected_curso
+        curso_data = self.get_curso_data(col, cur)
+        p_idx = self.estadisticas_periodo if periodo_idx is None else periodo_idx
+        return obtener_estadisticas_curso(curso_data, p_idx)
+
 

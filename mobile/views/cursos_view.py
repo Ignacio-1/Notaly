@@ -42,15 +42,31 @@ class CursosView(ft.Container):
                         ft.Text(f"{len(cursos)} activos · Ciclo lectivo", size=12, color=TEXT_MUTED),
                     ],
                 ),
-                ft.FilledButton(
-                    "+ Curso",
-                    style=ft.ButtonStyle(
-                        bgcolor=PRIMARY,
-                        color=ft.Colors.WHITE,
-                        shape=ft.RoundedRectangleBorder(radius=10),
-                    ),
-                    height=36,
-                    on_click=self._abrir_modal_crear,
+                ft.Row(
+                    spacing=8,
+                    controls=[
+                        ft.IconButton(
+                            icon=ft.Icons.INSIGHTS,
+                            icon_color=PRIMARY,
+                            icon_size=20,
+                            tooltip="Estadísticas del Colegio",
+                            style=ft.ButtonStyle(
+                                bgcolor=PRIMARY_LIGHT,
+                                shape=ft.RoundedRectangleBorder(radius=10),
+                            ),
+                            on_click=lambda _: self._abrir_estadisticas_colegio(),
+                        ),
+                        ft.FilledButton(
+                            "+ Curso",
+                            style=ft.ButtonStyle(
+                                bgcolor=PRIMARY,
+                                color=ft.Colors.WHITE,
+                                shape=ft.RoundedRectangleBorder(radius=10),
+                            ),
+                            height=36,
+                            on_click=self._abrir_modal_crear,
+                        ),
+                    ],
                 ),
             ],
         )
@@ -128,6 +144,13 @@ class CursosView(ft.Container):
                                         ],
                                     ),
                                     ft.IconButton(
+                                        icon=ft.Icons.INSIGHTS,
+                                        tooltip="Estadísticas del Curso",
+                                        icon_color=PRIMARY,
+                                        icon_size=20,
+                                        on_click=lambda e, cur=nombre: self._abrir_estadisticas_curso(cur),
+                                    ),
+                                    ft.IconButton(
                                         icon=ft.Icons.CHECKLIST,
                                         tooltip="Ir a Asistencias",
                                         icon_color=PRIMARY,
@@ -138,6 +161,11 @@ class CursosView(ft.Container):
                                         icon=ft.Icons.MORE_VERT,
                                         icon_color="#94A3B8",
                                         items=[
+                                            ft.PopupMenuItem(
+                                                icon=ft.Icons.INSIGHTS,
+                                                content=ft.Text("Estadísticas"),
+                                                on_click=lambda e, cur=nombre: self._abrir_estadisticas_curso(cur),
+                                            ),
                                             ft.PopupMenuItem(
                                                 icon=ft.Icons.TABLE_CHART,
                                                 content=ft.Text("Planilla de Notas"),
@@ -268,3 +296,15 @@ class CursosView(ft.Container):
         self.app_page.overlay.append(sb)
         sb.open = True
         self.app_page.update()
+
+    def _abrir_estadisticas_colegio(self):
+        self.state.origen_pantalla = "cursos"
+        self.state.estadisticas_nivel = "colegio"
+        self.on_navigate("estadisticas")
+
+    def _abrir_estadisticas_curso(self, cur: str):
+        self.state.origen_pantalla = "cursos"
+        self.state.selected_curso = cur
+        self.state.estadisticas_nivel = "curso"
+        self.on_navigate("estadisticas")
+

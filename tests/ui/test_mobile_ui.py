@@ -12,6 +12,7 @@ from mobile.views.colegios_view import ColegiosView
 from mobile.views.cursos_view import CursosView
 from mobile.views.notas_view import NotasView
 from mobile.views.asistencias_view import AsistenciasView
+from mobile.views.estadisticas_view import EstadisticasView
 from mobile.components.student_dialog import (
     CreateEntityDialog,
     CreateCursoDialog,
@@ -975,3 +976,76 @@ def test_corte_calificacion_anual_aprobado_desaprobado_5_50(isolated_app_state, 
     assert anual_5['t3_text'].value == "--"
     assert anual_5['promedio_anual_text'].value == "--"
     assert anual_5['estado_text'].value == "--"
+
+
+# --- Tests para EstadisticasView (SPEC-005: T8) ---
+
+def test_estadisticas_view_render_colegio(isolated_app_state, mock_page_mobile):
+    """Verifica renderizado institucional a nivel colegio con KPIs, dona y comparativa de cursos."""
+    isolated_app_state.selected_colegio = 'Colegio Nacional'
+    isolated_app_state.estadisticas_nivel = 'colegio'
+
+    nav_history = []
+    view = EstadisticasView(isolated_app_state, mock_page_mobile, on_navigate=lambda dest: nav_history.append(dest))
+
+    assert view.header_container.content is not None
+    assert view.kpi_container.content is not None
+    assert view.donut_container.content is not None
+    assert view.dynamic_content_container.content is not None
+    assert len(view.list_view.controls) == 5
+
+
+def test_estadisticas_view_render_curso(isolated_app_state, mock_page_mobile):
+    """Verifica renderizado grupal a nivel curso con KPIs, dona y desglose nominal de alumnos."""
+    isolated_app_state.selected_colegio = 'Colegio Nacional'
+    isolated_app_state.selected_curso = '5to A'
+    isolated_app_state.estadisticas_nivel = 'curso'
+
+    nav_history = []
+    view = EstadisticasView(isolated_app_state, mock_page_mobile, on_navigate=lambda dest: nav_history.append(dest))
+
+    assert view.header_container.content is not None
+    assert view.dynamic_content_container.content is not None
+    # Verifica que el desglose contenga la sección de alumnos
+    alumnos_stats = isolated_app_state.get_estadisticas_curso()
+    assert alumnos_stats['total_alumnos'] >= 2
+
+
+def test_estadisticas_view_conmutar_periodo_in_place(isolated_app_state, mock_page_mobile):
+    """Verifica que la conmutación de período actualice los contenedores in-place sin reasignar list_view.controls."""
+    isolated_app_state.selected_colegio = 'Colegio Nacional'
+    isolated_app_state.selected_curso = '5to A'
+    isolated_app_state.estadisticas_nivel = 'curso'
+    isolated_app_state.estadisticas_periodo = 0
+
+    view = EstadisticasView(isolated_app_state, mock_page_mobile, on_navigate=lambda x: None)
+
+    controls_ref_antes = view.list_view.controls
+    view._conmutar_periodo(1)
+
+    assert isolated_app_state.estadisticas_periodo == 1
+    # Preservación in-place: misma lista de controles en ListView
+    assert view.list_view.controls is controls_ref_antes
+
+
+def test_estadisticas_view_navegacion_retorno(isolated_app_state, mock_page_mobile):
+    """Verifica retorno determinístico a origen_pantalla."""
+    isolated_app_state.selected_colegio = 'Colegio Nacional'
+    isolated_app_state.origen_pantalla = 'notas'
+
+    nav_dest = []
+    view = EstadisticasView(isolated_app_state, mock_page_mobile, on_navigate=lambda dest: nav_dest.append(dest))
+
+    view._al_volver()
+    assert nav_dest == ['notas']
+
+
+def test_estadisticas_view_vacio(isolated_app_state, mock_page_mobile):
+    """Verifica estado vacío si no existen colegios."""
+    isolated_app_state.data = {K_COLEGIOS: {}}
+    isolated_app_state.selected_colegio = None
+
+    nav_dest = []
+    view = EstadisticasView(isolated_app_state, mock_page_mobile, on_navigate=lambda dest: nav_dest.append(dest))
+
+    assert view.content is not None

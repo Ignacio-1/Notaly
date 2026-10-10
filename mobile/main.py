@@ -15,6 +15,7 @@ from mobile.views.colegios_view import ColegiosView
 from mobile.views.cursos_view import CursosView
 from mobile.views.notas_view import NotasView
 from mobile.views.asistencias_view import AsistenciasView
+from mobile.views.estadisticas_view import EstadisticasView
 
 # Configurar logging
 logging.basicConfig(
@@ -64,7 +65,14 @@ def main(page: ft.Page):
             main_container.content = NotasView(state, page, on_navigate=navigate)
         elif view_name == "asistencias":
             main_container.content = AsistenciasView(state, page, on_navigate=navigate)
+        elif view_name == "estadisticas":
+            main_container.content = EstadisticasView(state, page, on_navigate=navigate)
         page.update()
+
+    def abrir_estadisticas_global():
+        state.origen_pantalla = state.current_screen
+        state.estadisticas_nivel = "colegio"
+        navigate("estadisticas")
 
     def abrir_modal_copias():
         dlg = LocalBackupDialog(state, page, file_picker=file_picker)
@@ -133,6 +141,11 @@ def main(page: ft.Page):
                 icon=ft.Icons.MORE_VERT,
                 icon_color=TEXT_MUTED,
                 items=[
+                    ft.PopupMenuItem(
+                        icon=ft.Icons.INSIGHTS,
+                        content=ft.Text("Estadísticas"),
+                        on_click=lambda e: abrir_estadisticas_global(),
+                    ),
                     ft.PopupMenuItem(
                         icon=ft.Icons.STORAGE_ROUNDED,
                         content=ft.Text("Copias de Seguridad y Datos"),
