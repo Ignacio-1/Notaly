@@ -388,4 +388,102 @@ def test_estadisticas_delegation(temp_state):
     assert stats_vacio["total_alumnos"] == 0
 
 
+def test_add_colegio_con_direccion_y_horarios(temp_state):
+    """Verifica la creación de colegios con y sin campos opcionales."""
+    # 1. Colegio con dirección y horarios
+    ok, msg = temp_state.add_colegio("Colegio Completo", "Av. San Martín 123", "Lun y Mié 08:00 - 12:30")
+    assert ok is True
+    data = temp_state.get_colegio_data("Colegio Completo")
+    assert data["nombre"] == "Colegio Completo"
+    assert data["direccion"] == "Av. San Martín 123"
+    assert data["horarios"] == "Lun y Mié 08:00 - 12:30"
+
+    # 2. Colegio sin campos opcionales (defaults vacíos)
+    ok2, _ = temp_state.add_colegio("Colegio Simple")
+    assert ok2 is True
+    data2 = temp_state.get_colegio_data("Colegio Simple")
+    assert data2["nombre"] == "Colegio Simple"
+    assert data2["direccion"] == ""
+    assert data2["horarios"] == ""
+
+    # 3. Espacios en blanco se limpian con strip()
+    ok3, _ = temp_state.add_colegio("Colegio Con Espacios", "   ", "  \n  ")
+    assert ok3 is True
+    data3 = temp_state.get_colegio_data("Colegio Con Espacios")
+    assert data3["direccion"] == ""
+    assert data3["horarios"] == ""
+
+
+def test_update_colegio_nombre_direccion_horarios(temp_state):
+    """Verifica actualización atómica de nombre, dirección y horarios."""
+    temp_state.add_colegio("Colegio Original", "Direccion 1", "Horario 1")
+    temp_state.selected_colegio = "Colegio Original"
+
+    # Actualizar manteniendo el mismo nombre pero cambiando dirección y horarios
+    ok, msg = temp_state.update_colegio(
+        "Colegio Original",
+        "Colegio Original",
+        direccion="Nueva Direccion 2",
+        horarios="Nuevo Horario 2",
+    )
+    assert ok is True
+    data = temp_state.get_colegio_data("Colegio Original")
+    assert data["direccion"] == "Nueva Direccion 2"
+    assert data["horarios"] == "Nuevo Horario 2"
+    assert temp_state.selected_colegio == "Colegio Original"
+
+    # Actualizar renombrando y cambiando datos
+    ok2, _ = temp_state.update_colegio(
+        "Colegio Original",
+        "Colegio Renombrado",
+        direccion="Direccion Final",
+        horarios="Horario Final",
+    )
+    assert ok2 is True
+    assert "Colegio Original" not in temp_state.get_colegios()
+    assert "Colegio Renombrado" in temp_state.get_colegios()
+    assert temp_state.selected_colegio == "Colegio Renombrado"
+    data2 = temp_state.get_colegio_data("Colegio Renombrado")
+    assert data2["direccion"] == "Direccion Final"
+    assert data2["horarios"] == "Horario Final"
+
+
+def test_update_colegio_validaciones_y_colisiones(temp_state):
+    """Verifica validaciones de existencia, nombre vacío y colisiones."""
+    temp_state.add_colegio("Colegio A")
+    temp_state.add_colegio("Colegio B")
+
+    # Colegio inexistente
+    ok, msg = temp_state.update_colegio("NoExiste", "Nuevo")
+    assert ok is False
+    assert "no existe" in msg.lower()
+
+    # Nuevo nombre vacío
+    ok, msg = temp_state.update_colegio("Colegio A", "   ")
+    assert ok is False
+    assert "vacío" in msg.lower()
+
+    # Colisión con otro colegio existente
+    ok, msg = temp_state.update_colegio("Colegio A", "Colegio B")
+    assert ok is False
+    assert "ya existe" in msg.lower()
+
+    # Colisión insensible a mayúsculas
+    ok, msg = temp_state.update_colegio("Colegio A", "colegio b")
+    assert ok is False
+    assert "ya existe" in msg.lower()
+
+
+def test_get_colegio_data_compatibilidad_retroactiva(temp_state):
+    """Verifica que get_colegio_data retorne cadenas vacías ante JSONs viejos sin las claves."""
+    # Simular colegio viejo inyectado sin las claves
+    from core.constants import K_COLEGIOS, K_CURSOS
+    temp_state.data[K_COLEGIOS]["Colegio Vintage"] = {K_CURSOS: {}}
+
+    data = temp_state.get_colegio_data("Colegio Vintage")
+    assert data["nombre"] == "Colegio Vintage"
+    assert data["direccion"] == ""
+    assert data["horarios"] == ""
+
+
 

@@ -20,6 +20,8 @@ from core.constants import (
     K_CURSOS,
     K_ALUMNOS,
     K_NOMBRE,
+    K_DIRECCION,
+    K_HORARIOS,
     K_TRIMESTRES,
     K_PRINCIPALES,
     K_EXTRAS,
@@ -258,17 +260,72 @@ class AppState:
             colegios = [c for c in colegios if query in c.lower()]
         return sorted(colegios)
 
-    def add_colegio(self, nombre: str) -> tuple[bool, str]:
-        """Crea un nuevo colegio."""
+    def add_colegio(self, nombre: str, direccion: str = "", horarios: str = "") -> tuple[bool, str]:
+        """Crea un nuevo colegio con dirección y horarios opcionales."""
         nombre = nombre.strip()
         if not nombre:
             return False, "El nombre del colegio no puede estar vacío."
         if nombre in self.data.setdefault(K_COLEGIOS, {}):
             return False, f"El colegio '{nombre}' ya existe."
 
-        self.data[K_COLEGIOS][nombre] = {K_CURSOS: {}}
+        self.data[K_COLEGIOS][nombre] = {
+            K_CURSOS: {},
+            K_DIRECCION: (direccion or "").strip(),
+            K_HORARIOS: (horarios or "").strip(),
+        }
         self.save_data()
         return True, "Colegio creado exitosamente."
+
+    def update_colegio(
+        self,
+        nombre_actual: str,
+        nuevo_nombre: str,
+        direccion: str = "",
+        horarios: str = "",
+    ) -> tuple[bool, str]:
+        """Actualiza el nombre, dirección y horarios de un colegio existente de forma atómica."""
+        nombre_actual = (nombre_actual or "").strip()
+        nuevo_nombre = (nuevo_nombre or "").strip()
+        direccion = (direccion or "").strip()
+        horarios = (horarios or "").strip()
+
+        if not nombre_actual or nombre_actual not in self.data.get(K_COLEGIOS, {}):
+            return False, "El colegio especificado no existe."
+        if not nuevo_nombre:
+            return False, "El nombre no puede estar vacío."
+
+        # Validar colisión de nombre si cambia (insensible a mayúsculas/minúsculas)
+        if nuevo_nombre.lower() != nombre_actual.lower():
+            nombres_existentes = {k.lower(): k for k in self.data[K_COLEGIOS].keys()}
+            if nuevo_nombre.lower() in nombres_existentes:
+                return False, f"Ya existe un colegio con el nombre '{nuevo_nombre}'."
+
+        col_dict = self.data[K_COLEGIOS][nombre_actual]
+        col_dict[K_DIRECCION] = direccion
+        col_dict[K_HORARIOS] = horarios
+
+        # Si cambió el nombre (incluso por diferencias de mayúsculas/minúsculas o palabras distintas)
+        if nuevo_nombre != nombre_actual:
+            self.data[K_COLEGIOS][nuevo_nombre] = self.data[K_COLEGIOS].pop(nombre_actual)
+            if self.selected_colegio == nombre_actual:
+                self.selected_colegio = nuevo_nombre
+
+        self.save_data()
+        self.notify()
+        return True, "Colegio actualizado exitosamente."
+
+    def get_colegio_data(self, nombre: str | None = None) -> dict:
+        """Retorna un diccionario con los datos del colegio especificado (o el seleccionado)."""
+        col = nombre or self.selected_colegio
+        if not col or col not in self.data.get(K_COLEGIOS, {}):
+            return {}
+        col_dict = self.data[K_COLEGIOS][col]
+        return {
+            K_NOMBRE: col,
+            K_DIRECCION: col_dict.get(K_DIRECCION, ""),
+            K_HORARIOS: col_dict.get(K_HORARIOS, ""),
+            K_CURSOS: col_dict.get(K_CURSOS, {}),
+        }
 
     def rename_colegio(self, nombre_viejo: str, nombre_nuevo: str) -> tuple[bool, str]:
         """Renombra un colegio existente."""

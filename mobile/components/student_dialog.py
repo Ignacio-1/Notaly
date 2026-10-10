@@ -269,6 +269,155 @@ class CreateEntityDialog(ft.AlertDialog):
                 pass
 
 
+class ColegioFormDialog(ft.AlertDialog):
+    """
+    Diálogo modal para crear o editar un Colegio con campos de Nombre, Dirección y Horarios.
+    """
+
+    def __init__(
+        self,
+        titulo: str,
+        on_confirm: Callable[[str, str, str], bool | None],  # Recibe (nombre, direccion, horarios)
+        nombre_actual: str = "",
+        direccion_actual: str = "",
+        horarios_actual: str = "",
+        modo_edicion: bool = False,
+        page: ft.Page | None = None,
+    ):
+        self.on_confirm = on_confirm
+        self.app_page = page
+        self.modo_edicion = modo_edicion
+
+        self.txt_nombre = ft.TextField(
+            label="Nombre del Colegio *",
+            value=nombre_actual,
+            hint_text="Ej: Escuela Técnica N° 2",
+            autofocus=True,
+            capitalization=ft.TextCapitalization.WORDS,
+            dense=True,
+            border_radius=10,
+            bgcolor=BG_PAGE,
+            border_color=BORDER_COLOR,
+            on_submit=lambda e: self._focus_control(self.txt_direccion),
+        )
+
+        self.txt_direccion = ft.TextField(
+            label="Dirección (opcional)",
+            value=direccion_actual,
+            hint_text="Ej: Av. San Martín 1234",
+            prefix_icon=ft.Icons.LOCATION_ON_OUTLINED,
+            capitalization=ft.TextCapitalization.WORDS,
+            dense=True,
+            border_radius=10,
+            bgcolor=BG_PAGE,
+            border_color=BORDER_COLOR,
+            on_submit=lambda e: self._focus_control(self.txt_horarios),
+        )
+
+        self.txt_horarios = ft.TextField(
+            label="Días y Horarios (opcional)",
+            value=horarios_actual,
+            hint_text="Ej: Lun y Mié 08:00 - 12:30",
+            prefix_icon=ft.Icons.ACCESS_TIME_ROUNDED,
+            dense=True,
+            border_radius=10,
+            bgcolor=BG_PAGE,
+            border_color=BORDER_COLOR,
+            on_submit=lambda e: self._confirmar(),
+        )
+
+        self.lbl_error = ft.Text("", color=ft.Colors.ERROR, size=12, visible=False)
+
+        texto_boton = "Guardar Cambios" if modo_edicion else "Crear Colegio"
+
+        super().__init__(
+            title=logo_dialog_title(titulo),
+            content=ft.Column(
+                [
+                    self.txt_nombre,
+                    self.txt_direccion,
+                    self.txt_horarios,
+                    self.lbl_error,
+                ],
+                tight=True,
+                width=340,
+                spacing=10,
+            ),
+            actions=[
+                ft.TextButton(
+                    "Cancelar",
+                    style=ft.ButtonStyle(color=TEXT_MUTED, shape=ft.RoundedRectangleBorder(radius=8)),
+                    on_click=lambda e: self._cerrar(),
+                ),
+                ft.FilledButton(
+                    texto_boton,
+                    style=ft.ButtonStyle(
+                        bgcolor=PRIMARY,
+                        color=ft.Colors.WHITE,
+                        shape=ft.RoundedRectangleBorder(radius=8),
+                    ),
+                    on_click=lambda e: self._confirmar(),
+                ),
+            ],
+            actions_alignment=ft.MainAxisAlignment.END,
+            modal=True,
+        )
+
+    def _focus_control(self, control):
+        if not control:
+            return
+        if self.app_page and hasattr(self.app_page, "run_task") and hasattr(control, "focus"):
+            import inspect
+            if inspect.iscoroutinefunction(control.focus):
+                self.app_page.run_task(control.focus)
+                return
+        if hasattr(control, "focus"):
+            import inspect
+            try:
+                res = control.focus()
+                if inspect.iscoroutine(res):
+                    res.close()
+            except Exception:
+                pass
+
+    def _confirmar(self):
+        nom = self.txt_nombre.value.strip()
+        dir_val = (self.txt_direccion.value or "").strip()
+        hor_val = (self.txt_horarios.value or "").strip()
+
+        if not nom:
+            self.lbl_error.value = "El nombre del colegio no puede estar vacío."
+            self.lbl_error.visible = True
+            if self.app_page:
+                try:
+                    self.app_page.update()
+                except Exception:
+                    pass
+            return
+
+        res = self.on_confirm(nom, dir_val, hor_val)
+        if res is not False:
+            self._cerrar()
+        else:
+            if not self.lbl_error.value:
+                self.lbl_error.value = "No se pudo procesar la solicitud."
+            self.lbl_error.visible = True
+            if self.app_page:
+                try:
+                    self.app_page.update()
+                except Exception:
+                    pass
+
+    def _cerrar(self):
+        self.open = False
+        if self.app_page:
+            try:
+                self.app_page.pop_dialog()
+                self.app_page.update()
+            except Exception:
+                pass
+
+
 class CreateCursoDialog(ft.AlertDialog):
     """Diálogo para crear un Curso con nombre y cantidad inicial de alumnos."""
 

@@ -25,7 +25,14 @@ import sys
 import unicodedata
 from pathlib import Path
 
-from .constants import K_COLEGIOS, K_CURSOS, K_ALUMNOS, K_NOMBRE
+from .constants import (
+    K_COLEGIOS,
+    K_CURSOS,
+    K_ALUMNOS,
+    K_NOMBRE,
+    K_DIRECCION,
+    K_HORARIOS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -375,6 +382,15 @@ def fusionar_datos(datos_destino: dict, datos_origen: dict) -> dict:
                 stats["cursos_nuevos"] += 1
                 stats["alumnos_nuevos"] += len(curso_data.get(K_ALUMNOS, {}))
         else:
+            # Colegio ya existe: incorporar metadatos si destino carece de ellos o están vacíos
+            dir_origen = (colegio_data.get(K_DIRECCION) or "").strip()
+            if dir_origen and not (colegios_destino[nombre_colegio].get(K_DIRECCION) or "").strip():
+                colegios_destino[nombre_colegio][K_DIRECCION] = colegio_data.get(K_DIRECCION)
+
+            hor_origen = (colegio_data.get(K_HORARIOS) or "").strip()
+            if hor_origen and not (colegios_destino[nombre_colegio].get(K_HORARIOS) or "").strip():
+                colegios_destino[nombre_colegio][K_HORARIOS] = colegio_data.get(K_HORARIOS)
+
             # Colegio ya existe: fusionar cursos
             cursos_destino = colegios_destino[nombre_colegio].setdefault(K_CURSOS, {})
             cursos_origen = colegio_data.get(K_CURSOS, {})

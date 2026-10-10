@@ -18,6 +18,8 @@ K_EXTRAS = "extras"
 K_RECUPERATORIO = "recuperatorio"
 K_NOMBRES_COLUMNAS = "nombres_columnas"
 K_ASISTENCIAS = "asistencias"
+K_DIRECCION = "direccion"
+K_HORARIOS = "horarios"
 
 
 def formatear_nombre_completo(apellido: str, nombre: str = "") -> str:

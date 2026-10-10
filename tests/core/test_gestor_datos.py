@@ -5,7 +5,7 @@ from unittest.mock import mock_open, patch
 
 # Importamos las funciones que queremos probar
 from core import gestor_datos
-from core.constants import K_COLEGIOS
+from core.constants import K_COLEGIOS, K_CURSOS, K_DIRECCION, K_HORARIOS
 
 @pytest.fixture(autouse=True)
 def no_tkinter_windows(monkeypatch):
@@ -151,4 +151,91 @@ def test_buscar_entidad_global_alumnos_colegios_cursos():
     # Límite de resultados
     res_limite = gestor_datos.buscar_entidad_global("a", datos, limite=2)
     assert len(res_limite) <= 2
+
+
+def test_constantes_direccion_y_horarios():
+    """Verifica la existencia y valor de las constantes de dirección y horarios."""
+    assert K_DIRECCION == "direccion"
+    assert K_HORARIOS == "horarios"
+
+
+def test_fusionar_datos_preserva_y_asigna_direccion_y_horarios():
+    """
+    Prueba que fusionar_datos incorpore direccion y horarios si el destino no los tiene
+    o están vacíos, y preserve sin sobreescribir los datos preexistentes con valor.
+    """
+    datos_destino = {
+        K_COLEGIOS: {
+            "Colegio Sin Metadatos": {
+                K_CURSOS: {}
+            },
+            "Colegio Con Metadatos Vacios": {
+                K_DIRECCION: "",
+                K_HORARIOS: "   ",
+                K_CURSOS: {}
+            },
+            "Colegio Existente Completo": {
+                K_DIRECCION: "Av. Rivadavia 123",
+                K_HORARIOS: "Lun a Vie 8:00 - 12:00",
+                K_CURSOS: {}
+            },
+            "Colegio Solo Con Direccion": {
+                K_DIRECCION: "Calle Falsa 123",
+                K_CURSOS: {}
+            }
+        }
+    }
+
+    datos_origen = {
+        K_COLEGIOS: {
+            "Colegio Sin Metadatos": {
+                K_DIRECCION: "Av. San Martín 456",
+                K_HORARIOS: "Lun y Mié 14:00 - 18:00",
+                K_CURSOS: {}
+            },
+            "Colegio Con Metadatos Vacios": {
+                K_DIRECCION: "Belgrano 789",
+                K_HORARIOS: "Mar y Jue 08:00 - 12:00",
+                K_CURSOS: {}
+            },
+            "Colegio Existente Completo": {
+                K_DIRECCION: "Nueva Direccion Ignorada",
+                K_HORARIOS: "Nuevo Horario Ignorado",
+                K_CURSOS: {}
+            },
+            "Colegio Solo Con Direccion": {
+                K_DIRECCION: "Direccion Que No Debe Pisar",
+                K_HORARIOS: "Viernes 09:00 - 13:00",
+                K_CURSOS: {}
+            },
+            "Colegio Nuevo Total": {
+                K_DIRECCION: "Mitre 100",
+                K_HORARIOS: "Sábados 8:00 - 12:00",
+                K_CURSOS: {}
+            }
+        }
+    }
+
+    stats = gestor_datos.fusionar_datos(datos_destino, datos_origen)
+
+    # 1. Colegio que no tenía campos los incorpora
+    assert datos_destino[K_COLEGIOS]["Colegio Sin Metadatos"][K_DIRECCION] == "Av. San Martín 456"
+    assert datos_destino[K_COLEGIOS]["Colegio Sin Metadatos"][K_HORARIOS] == "Lun y Mié 14:00 - 18:00"
+
+    # 2. Colegio con cadenas vacías/espacios incorpora valores nuevos
+    assert datos_destino[K_COLEGIOS]["Colegio Con Metadatos Vacios"][K_DIRECCION] == "Belgrano 789"
+    assert datos_destino[K_COLEGIOS]["Colegio Con Metadatos Vacios"][K_HORARIOS] == "Mar y Jue 08:00 - 12:00"
+
+    # 3. Colegio con datos existentes NO es sobreescrito
+    assert datos_destino[K_COLEGIOS]["Colegio Existente Completo"][K_DIRECCION] == "Av. Rivadavia 123"
+    assert datos_destino[K_COLEGIOS]["Colegio Existente Completo"][K_HORARIOS] == "Lun a Vie 8:00 - 12:00"
+
+    # 4. Colegio con solo dirección preserva su dirección y adquiere los horarios
+    assert datos_destino[K_COLEGIOS]["Colegio Solo Con Direccion"][K_DIRECCION] == "Calle Falsa 123"
+    assert datos_destino[K_COLEGIOS]["Colegio Solo Con Direccion"][K_HORARIOS] == "Viernes 09:00 - 13:00"
+
+    # 5. Colegio totalmente nuevo se incorpora intacto
+    assert stats["colegios_nuevos"] == 1
+    assert datos_destino[K_COLEGIOS]["Colegio Nuevo Total"][K_DIRECCION] == "Mitre 100"
+    assert datos_destino[K_COLEGIOS]["Colegio Nuevo Total"][K_HORARIOS] == "Sábados 8:00 - 12:00"
 

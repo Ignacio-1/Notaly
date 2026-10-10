@@ -4,8 +4,14 @@ Rediseñada con el sistema de diseño Slate/Indigo (tarjetas blancas, bordes lim
 """
 
 import flet as ft
+from core.constants import K_DIRECCION, K_HORARIOS
 from mobile.state import AppState
-from mobile.components.student_dialog import CreateEntityDialog, RenameDialog, ConfirmDeleteDialog
+from mobile.components.student_dialog import (
+    CreateEntityDialog,
+    ColegioFormDialog,
+    RenameDialog,
+    ConfirmDeleteDialog,
+)
 from mobile.components.ui_header import build_app_header
 from mobile.theme import (
     BG_PAGE,
@@ -26,6 +32,21 @@ class ColegiosView(ft.Container):
         self.app_page = page
         self.on_navigate = on_navigate
         self.padding = 0
+
+        self.list_view = ft.ListView(spacing=12, controls=[])
+        body = ft.Container(
+            expand=True,
+            padding=ft.Padding(left=16, right=16, top=12, bottom=12),
+            content=self.list_view,
+        )
+        self.content = ft.Column(
+            expand=True,
+            spacing=0,
+            controls=[
+                build_app_header("Gestión Docente", "Notaly"),
+                body,
+            ],
+        )
 
         self._build_ui()
 
@@ -99,6 +120,37 @@ class ColegiosView(ft.Container):
                 bg_badge, text_badge = get_avatar_palette(idx)
                 short_initials = extract_initials(nombre)
 
+                col_data = self.state.data.get("colegios", {}).get(nombre, {})
+                direccion = col_data.get(K_DIRECCION, "").strip()
+                horarios = col_data.get(K_HORARIOS, "").strip()
+
+                column_controls = [
+                    ft.Text(nombre, weight=ft.FontWeight.BOLD, size=15, color=TEXT_MAIN, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS),
+                    ft.Text(subtitulo, size=12, color=TEXT_MUTED),
+                ]
+                if direccion:
+                    column_controls.append(
+                        ft.Row(
+                            spacing=4,
+                            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                            controls=[
+                                ft.Icon(ft.Icons.LOCATION_ON_OUTLINED, size=13, color="#94A3B8"),
+                                ft.Text(direccion, size=11, color=TEXT_MUTED, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS, expand=True),
+                            ],
+                        )
+                    )
+                if horarios:
+                    column_controls.append(
+                        ft.Row(
+                            spacing=4,
+                            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                            controls=[
+                                ft.Icon(ft.Icons.ACCESS_TIME_ROUNDED, size=13, color="#94A3B8"),
+                                ft.Text(horarios, size=11, color=TEXT_MUTED, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS, expand=True),
+                            ],
+                        )
+                    )
+
                 card = ft.Container(
                     bgcolor=SURFACE_WHITE,
                     border=ft.Border.all(1, BORDER_COLOR),
@@ -121,10 +173,7 @@ class ColegiosView(ft.Container):
                             ft.Column(
                                 expand=True,
                                 spacing=2,
-                                controls=[
-                                    ft.Text(nombre, weight=ft.FontWeight.BOLD, size=15, color=TEXT_MAIN, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS),
-                                    ft.Text(subtitulo, size=12, color=TEXT_MUTED),
-                                ],
+                                controls=column_controls,
                             ),
                             ft.IconButton(
                                 icon=ft.Icons.INSIGHTS,
@@ -149,8 +198,8 @@ class ColegiosView(ft.Container):
                                     ),
                                     ft.PopupMenuItem(
                                         icon=ft.Icons.EDIT_OUTLINED,
-                                        content=ft.Text("Renombrar"),
-                                        on_click=lambda e, col=nombre: self._abrir_modal_renombrar(col),
+                                        content=ft.Text("Editar colegio"),
+                                        on_click=lambda e, col=nombre: self._abrir_modal_editar(col),
                                     ),
                                     ft.PopupMenuItem(
                                         icon=ft.Icons.DELETE_OUTLINE,
@@ -164,26 +213,10 @@ class ColegiosView(ft.Container):
                 )
                 cards.append(card)
 
-        body = ft.Container(
-            expand=True,
-            padding=ft.Padding(left=16, right=16, top=12, bottom=12),
-            content=ft.ListView(
-                spacing=12,
-                controls=[
-                    header_section,
-                    *cards,
-                ],
-            ),
-        )
-
-        self.content = ft.Column(
-            expand=True,
-            spacing=0,
-            controls=[
-                build_app_header("Gestión Docente", "Notaly"),
-                body,
-            ],
-        )
+        self.list_view.controls = [
+            header_section,
+            *cards,
+        ]
 
     def _abrir_estadisticas_colegio(self, col: str):
         self.state.selected_colegio = col
@@ -202,19 +235,52 @@ class ColegiosView(ft.Container):
         self.on_navigate("cursos")
 
     def _abrir_modal_crear(self, e=None):
-        def confirmar_creacion(nuevo_nombre):
-            exito, msg = self.state.add_colegio(nuevo_nombre)
+        def confirmar_creacion(nuevo_nombre, direccion, horarios):
+            exito, msg = self.state.add_colegio(nuevo_nombre, direccion, horarios)
             if exito:
                 self._build_ui()
                 self.app_page.update()
+                return True
             else:
                 self._mostrar_snackbar(msg, error=True)
+                return False
 
-        dlg = CreateEntityDialog(
+        dlg = ColegioFormDialog(
             titulo="Nuevo Colegio",
-            label_campo="Nombre del Colegio",
-            hint="",
             on_confirm=confirmar_creacion,
+            modo_edicion=False,
+            page=self.app_page,
+        )
+        self.app_page.show_dialog(dlg)
+        self.app_page.update()
+
+    def _abrir_modal_editar(self, nombre_actual: str):
+        data = self.state.get_colegio_data(nombre_actual)
+        dir_actual = data.get(K_DIRECCION, "")
+        hor_actual = data.get(K_HORARIOS, "")
+
+        def confirmar_edicion(nuevo_nombre, nueva_dir, nuevos_hor):
+            exito, msg = self.state.update_colegio(
+                nombre_actual=nombre_actual,
+                nuevo_nombre=nuevo_nombre,
+                direccion=nueva_dir,
+                horarios=nuevos_hor,
+            )
+            if exito:
+                self._build_ui()
+                self.app_page.update()
+                return True
+            else:
+                self._mostrar_snackbar(msg, error=True)
+                return False
+
+        dlg = ColegioFormDialog(
+            titulo="Editar colegio",
+            nombre_actual=nombre_actual,
+            direccion_actual=dir_actual,
+            horarios_actual=hor_actual,
+            modo_edicion=True,
+            on_confirm=confirmar_edicion,
             page=self.app_page,
         )
         self.app_page.show_dialog(dlg)

@@ -20,6 +20,7 @@ from mobile.components.student_dialog import (
     ConfirmDeleteDialog,
     CustomizeColumnsDialog,
     StudentFormDialog,
+    ColegioFormDialog,
 )
 from mobile.components.grade_editor import GradeEditorDialog
 from mobile.components.export_dialog import ExportDialog
@@ -1049,3 +1050,149 @@ def test_estadisticas_view_vacio(isolated_app_state, mock_page_mobile):
     view = EstadisticasView(isolated_app_state, mock_page_mobile, on_navigate=lambda dest: nav_dest.append(dest))
 
     assert view.content is not None
+
+
+def test_colegio_form_dialog_creacion(mock_page_mobile):
+    """Verifica instanciación y confirmación en modo creación de ColegioFormDialog."""
+    confirmado = []
+
+    def on_confirm(nombre, direccion, horarios):
+        confirmado.append((nombre, direccion, horarios))
+        return True
+
+    dlg = ColegioFormDialog(
+        titulo="Nuevo Colegio",
+        on_confirm=on_confirm,
+        modo_edicion=False,
+        page=mock_page_mobile,
+    )
+    mock_page_mobile.show_dialog(dlg)
+
+    assert dlg.modo_edicion is False
+    assert dlg.txt_nombre.value == ""
+    assert dlg.txt_direccion.value == ""
+    assert dlg.txt_horarios.value == ""
+
+    dlg.txt_nombre.value = "Colegio Nacional"
+    dlg.txt_direccion.value = "Av. San Martín 123"
+    dlg.txt_horarios.value = "Lun y Mié 08:00 - 12:30"
+    dlg._confirmar()
+
+    assert confirmado == [("Colegio Nacional", "Av. San Martín 123", "Lun y Mié 08:00 - 12:30")]
+    assert dlg.open is False
+
+
+def test_colegio_form_dialog_edicion(mock_page_mobile):
+    """Verifica prellenado y guardado en modo edición de ColegioFormDialog."""
+    confirmado = []
+
+    def on_confirm(nombre, direccion, horarios):
+        confirmado.append((nombre, direccion, horarios))
+        return True
+
+    dlg = ColegioFormDialog(
+        titulo="Editar colegio",
+        nombre_actual="Colegio Viejo",
+        direccion_actual="Calle 1",
+        horarios_actual="Mar 8-12",
+        on_confirm=on_confirm,
+        modo_edicion=True,
+        page=mock_page_mobile,
+    )
+    mock_page_mobile.show_dialog(dlg)
+
+    assert dlg.modo_edicion is True
+    assert dlg.txt_nombre.value == "Colegio Viejo"
+    assert dlg.txt_direccion.value == "Calle 1"
+    assert dlg.txt_horarios.value == "Mar 8-12"
+
+    dlg.txt_nombre.value = "Colegio Nuevo"
+    dlg.txt_direccion.value = "Calle 2"
+    dlg.txt_horarios.value = "Jue 8-12"
+    dlg._confirmar()
+
+    assert confirmado == [("Colegio Nuevo", "Calle 2", "Jue 8-12")]
+    assert dlg.open is False
+
+
+def test_colegio_form_dialog_validacion_nombre_vacio(mock_page_mobile):
+    """Verifica que el nombre obligatorio vacío bloquee la confirmación."""
+    confirmado = []
+
+    dlg = ColegioFormDialog(
+        titulo="Nuevo Colegio",
+        on_confirm=lambda n, d, h: confirmado.append((n, d, h)),
+        page=mock_page_mobile,
+    )
+    mock_page_mobile.show_dialog(dlg)
+
+    dlg.txt_nombre.value = "   "
+    dlg._confirmar()
+
+    assert len(confirmado) == 0
+    assert dlg.lbl_error.visible is True
+    assert "no puede estar vacío" in dlg.lbl_error.value
+
+
+def test_colegios_view_muestra_direccion_y_horarios_condicionalmente(isolated_app_state, mock_page_mobile):
+    """
+    Verifica que la tarjeta de colegio muestre filas de dirección y horarios solo cuando están presentes,
+    manteniendo exactamente 2 controles (cero regresión visual) si ambos están vacíos.
+    """
+    # Limpiar datos previos de la fixture
+    isolated_app_state.data = {K_COLEGIOS: {}}
+    # 1. Colegio vacío de metadatos
+    isolated_app_state.add_colegio("Colegio Basico")
+    # 2. Colegio completo
+    isolated_app_state.add_colegio("Colegio Full", direccion="Av. San Martín 100", horarios="Lun 8-12")
+    # 3. Colegio solo con dirección
+    isolated_app_state.add_colegio("Colegio Solo Dir", direccion="Calle Belgrano 200")
+
+    view = ColegiosView(isolated_app_state, mock_page_mobile, on_navigate=lambda x: None)
+
+    # Obtenemos los cards de la lista (después de header_section)
+    cards = view.list_view.controls[1:]
+    assert len(cards) == 3
+
+    # Buscamos la columna de info dentro de cada card
+    # card.content es ft.Row([avatar, info_column, stats_btn, popup_btn])
+    info_cols = {
+        card.content.controls[1].controls[0].value: card.content.controls[1].controls
+        for card in cards
+    }
+
+    # Colegio Basico: exactamente 2 controles (nombre y subtitulo) -> Cero regresión visual
+    assert len(info_cols["Colegio Basico"]) == 2
+    assert info_cols["Colegio Basico"][0].value == "Colegio Basico"
+
+    # Colegio Full: 4 controles (nombre, subtitulo, fila dirección, fila horarios)
+    assert len(info_cols["Colegio Full"]) == 4
+    fila_dir = info_cols["Colegio Full"][2]
+    assert fila_dir.controls[1].value == "Av. San Martín 100"
+    fila_hor = info_cols["Colegio Full"][3]
+    assert fila_hor.controls[1].value == "Lun 8-12"
+
+    # Colegio Solo Dir: 3 controles (nombre, subtitulo, fila dirección)
+    assert len(info_cols["Colegio Solo Dir"]) == 3
+    assert info_cols["Colegio Solo Dir"][2].controls[1].value == "Calle Belgrano 200"
+
+
+def test_colegios_view_modales_crear_y_editar(isolated_app_state, mock_page_mobile):
+    """Verifica apertura y funcionamiento de modales crear y editar en ColegiosView."""
+    isolated_app_state.add_colegio("Colegio San Martín", direccion="Rivadavia 50", horarios="Mar 8-12")
+    view = ColegiosView(isolated_app_state, mock_page_mobile, on_navigate=lambda x: None)
+
+    # 1. Abrir modal crear
+    view._abrir_modal_crear()
+    assert isinstance(mock_page_mobile.active_dialog, ColegioFormDialog)
+    dlg_crear = mock_page_mobile.active_dialog
+    assert dlg_crear.modo_edicion is False
+
+    # 2. Abrir modal editar
+    view._abrir_modal_editar("Colegio San Martín")
+    assert isinstance(mock_page_mobile.active_dialog, ColegioFormDialog)
+    dlg_edit = mock_page_mobile.active_dialog
+    assert dlg_edit.modo_edicion is True
+    assert dlg_edit.txt_nombre.value == "Colegio San Martín"
+    assert dlg_edit.txt_direccion.value == "Rivadavia 50"
+    assert dlg_edit.txt_horarios.value == "Mar 8-12"
