@@ -534,10 +534,54 @@ class TestExportModalIsolation:
         assert exito is True
         assert Path(output_path).exists()
         assert str(tmp_path) in output_path
+        esperado_prefijo = "Planilla 5to A" if tipo_exp == "notas" else "Planilla Asistencias 5to A"
+        assert esperado_prefijo in Path(output_path).name
         assert mock_page_mobile.active_dialog is None
 
+    def test_nombre_archivo_exportado_notas_y_asistencias(self, tmp_path):
+        """Verifica que el archivo exportado de notas y asistencias contenga 'Planilla <curso>'."""
+        dlg_notas = ExportDialog("notas", "Colegio Nacional", "4A", {}, lambda ok, p: None)
+        with patch.object(dlg_notas, "_obtener_carpeta_exportacion", return_value=tmp_path):
+            with patch("mobile.components.export_dialog.exportar_a_pdf", return_value=(True, None)):
+                dlg_notas._exportar()
+
+        archivo_notas = tmp_path / "Planilla 4A.pdf"
+        assert archivo_notas.name == "Planilla 4A.pdf"
+        assert "Planilla 4A" in archivo_notas.name
+
+    def test_obtener_carpeta_exportacion_android_documents_prioridad(self, monkeypatch, tmp_path):
+        """Verifica que en Android con almacenamiento externo se priorice la carpeta Documents sobre el almacenamiento privado."""
+        storage_mock = tmp_path / "storage_emulated_0"
+        storage_mock.mkdir()
+        monkeypatch.setenv("EXTERNAL_STORAGE", str(storage_mock))
+        monkeypatch.setenv("ANDROID_DATA", "/data")
+        monkeypatch.setenv("FLET_APP_STORAGE_DATA", str(tmp_path / "flet_internal"))
+
+        dlg = ExportDialog("notas", "Colegio Nacional", "5to A", {}, lambda ok, p: None)
+        destino = dlg._obtener_carpeta_exportacion()
+
+        assert str(destino) == str(storage_mock / "Documents")
+        assert destino.exists()
+
+    def test_obtener_carpeta_exportacion_android_download_fallback(self, monkeypatch, tmp_path):
+        """Verifica que si la carpeta Documents falla, se recurra a Download."""
+        storage_mock = tmp_path / "storage_emulated_0"
+        storage_mock.mkdir()
+        # Crear Documents y Documentos como archivos regulares para forzar error en mkdir / escritura
+        (storage_mock / "Documents").touch()
+        (storage_mock / "Documentos").touch()
+
+        monkeypatch.setenv("EXTERNAL_STORAGE", str(storage_mock))
+        monkeypatch.setenv("ANDROID_DATA", "/data")
+
+        dlg = ExportDialog("notas", "Colegio Nacional", "5to A", {}, lambda ok, p: None)
+        destino = dlg._obtener_carpeta_exportacion()
+
+        assert str(destino) == str(storage_mock / "Download")
+        assert destino.exists()
+
     def test_obtener_carpeta_exportacion_android_flet_storage(self, monkeypatch, tmp_path):
-        """Verifica que en Android con FLET_APP_STORAGE_DATA se use la carpeta de la app y nunca '/data'."""
+        """Verifica que en Android sin almacenamiento externo se use la carpeta de la app y nunca '/data'."""
         flet_storage = tmp_path / "flet_app_storage"
         monkeypatch.setenv("FLET_APP_STORAGE_DATA", str(flet_storage))
         monkeypatch.setenv("ANDROID_DATA", "/data")
@@ -551,7 +595,7 @@ class TestExportModalIsolation:
         assert str(flet_storage) in str(destino)
 
     def test_obtener_carpeta_exportacion_android_scoped_storage_denied_never_returns_root_data(self, monkeypatch):
-        """Verifica que ante Scoped Storage denegado en Download público nunca se devuelva '/data' ni '/'."""
+        """Verifica que ante Scoped Storage denegado nunca se devuelva '/data' ni '/'."""
         monkeypatch.delenv("FLET_APP_STORAGE_DATA", raising=False)
         monkeypatch.setenv("ANDROID_ROOT", "/system")
         monkeypatch.setenv("ANDROID_DATA", "/data")

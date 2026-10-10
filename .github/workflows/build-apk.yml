@@ -81,6 +81,10 @@ jobs:
             --product "Notaly" \
             --org com.notaly.app \
             --build-version 2.0.0 \
+            --android-permissions \
+              "android.permission.READ_EXTERNAL_STORAGE=true" \
+              "android.permission.WRITE_EXTERNAL_STORAGE=true" \
+              "android.permission.MANAGE_EXTERNAL_STORAGE=true" \
             --yes \
             --no-rich-output \
             --verbose

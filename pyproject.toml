@@ -25,3 +25,8 @@ build_version = "2.0.0"
 [tool.flet.app]
 path = "."
 module = "mobile_app"
+
+[tool.flet.android.permission]
+"android.permission.READ_EXTERNAL_STORAGE" = true
+"android.permission.WRITE_EXTERNAL_STORAGE" = true
+"android.permission.MANAGE_EXTERNAL_STORAGE" = true

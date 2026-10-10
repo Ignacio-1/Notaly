@@ -105,9 +105,10 @@ class ExportDialog(ft.AlertDialog):
     def _obtener_carpeta_exportacion(self) -> Path:
         """
         Determina un directorio con permisos reales de escritura.
-        En Android prioriza el almacenamiento seguro interno de la app (FLET_APP_STORAGE_DATA o
-        directorio de configuración) para evitar fallos de Scoped Storage y rutas denegadas como '/data'.
-        En PC utiliza la carpeta Downloads, Descargas o Documents del usuario.
+        En Android prioriza la carpeta pública estándar 'Documents' (o 'Documentos'),
+        seguida de 'Download', y utiliza el almacenamiento interno de la app como fallback
+        para garantizar que el usuario pueda acceder fácilmente a los archivos generados.
+        En PC utiliza la carpeta Documents, Downloads o Descargas del usuario.
         """
         es_android = (
             "ANDROID_ROOT" in os.environ
@@ -116,51 +117,72 @@ class ExportDialog(ft.AlertDialog):
             or hasattr(sys, "getandroidapilevel")
         )
 
+        def _probar_escritura(carpeta: Path) -> bool:
+            try:
+                carpeta_str = str(carpeta).rstrip("/\\")
+                if carpeta_str in ["", "/", "/data", "/root", "/system"]:
+                    return False
+                carpeta.mkdir(parents=True, exist_ok=True)
+                prueba = carpeta / f".test_probe_{os.getpid()}"
+                prueba.touch()
+                prueba.unlink()
+                return True
+            except Exception:
+                return False
+
         if es_android:
-            # 1. Almacenamiento privado de la app garantizado por Flet en Android
+            # 1. Prioridad: Carpeta pública 'Documents' / 'Documentos' en almacenamiento externo
+            bases_externas = []
+            if "EXTERNAL_STORAGE" in os.environ:
+                bases_externas.append(Path(os.environ["EXTERNAL_STORAGE"]))
+            bases_externas.extend([
+                Path("/storage/emulated/0"),
+                Path("/sdcard"),
+            ])
+
+            for base in bases_externas:
+                if base.exists():
+                    for sub in ["Documents", "Documentos"]:
+                        candidata = base / sub
+                        if _probar_escritura(candidata):
+                            return candidata
+
+            # 2. Alternativa pública: Carpeta 'Download' / 'Descargas'
+            for base in bases_externas:
+                if base.exists():
+                    for sub in ["Download", "Descargas"]:
+                        candidata = base / sub
+                        if _probar_escritura(candidata):
+                            return candidata
+
+            # 3. Almacenamiento externo específico de la app (accesible por exploradores)
+            for base in bases_externas:
+                if base.exists():
+                    candidata = base / "Android" / "data" / "com.notaly.app" / "files" / "Documents"
+                    if _probar_escritura(candidata):
+                        return candidata
+
+            # 4. Almacenamiento privado de la app (fallback seguro si el almacenamiento compartido está restringido)
             flet_storage = os.getenv("FLET_APP_STORAGE_DATA")
             if flet_storage:
                 carpeta = Path(flet_storage) / "exports"
-                try:
-                    carpeta.mkdir(parents=True, exist_ok=True)
+                if _probar_escritura(carpeta):
                     return carpeta
-                except Exception:
-                    pass
 
-            # 2. Directorio de configuración interno de la app (mismo lugar de datos_promedios.json)
+            # 5. Directorio de configuración interno de la app (mismo lugar de datos_promedios.json)
             try:
                 carpeta_cfg = gestor_datos._get_config_dir() / "exports"
-                carpeta_cfg.mkdir(parents=True, exist_ok=True)
-                return carpeta_cfg
+                if _probar_escritura(carpeta_cfg):
+                    return carpeta_cfg
             except Exception:
                 pass
 
-            # 3. Probar carpetas públicas solo si tienen permiso real de escritura POSIX
-            rutas_candidatas = [
-                Path("/storage/emulated/0/Download"),
-                Path("/sdcard/Download"),
-            ]
-            for candidata in rutas_candidatas:
-                if candidata.exists() and os.access(candidata, os.W_OK):
-                    try:
-                        archivo_prueba = candidata / ".test_write"
-                        archivo_prueba.touch()
-                        archivo_prueba.unlink()
-                        return candidata
-                    except Exception:
-                        pass
-
-            # 4. Fallback temporal validando estrictamente que NO sea la raíz del sistema ('/data' o '/')
+            # 6. Fallback temporal validando estrictamente que NO sea la raíz del sistema
             tmp = Path(tempfile.gettempdir())
-            tmp_str = str(tmp).rstrip("/\\")
-            if tmp_str not in ["", "/", "/data", "/root"]:
-                try:
-                    tmp.mkdir(parents=True, exist_ok=True)
-                    return tmp
-                except Exception:
-                    pass
+            if _probar_escritura(tmp):
+                return tmp
 
-            # 5. Último recurso seguro
+            # 7. Último recurso seguro
             fallback_local = Path.cwd() / "exports"
             fallback_local.mkdir(parents=True, exist_ok=True)
             return fallback_local
@@ -169,18 +191,18 @@ class ExportDialog(ft.AlertDialog):
         home = Path.home()
         home_str = str(home).rstrip("/\\")
         if home_str not in ["", "/", "/data", "/root"]:
-            downloads = home / "Downloads"
-            if downloads.exists() and os.access(downloads, os.W_OK):
-                return downloads
-            descargas = home / "Descargas"
-            if descargas.exists() and os.access(descargas, os.W_OK):
-                return descargas
             docs = home / "Documents"
             if docs.exists() and os.access(docs, os.W_OK):
                 return docs
             documentos = home / "Documentos"
             if documentos.exists() and os.access(documentos, os.W_OK):
                 return documentos
+            downloads = home / "Downloads"
+            if downloads.exists() and os.access(downloads, os.W_OK):
+                return downloads
+            descargas = home / "Descargas"
+            if descargas.exists() and os.access(descargas, os.W_OK):
+                return descargas
             if os.access(home, os.W_OK):
                 return home
 
@@ -216,12 +238,13 @@ class ExportDialog(ft.AlertDialog):
             carpeta_destino = self._obtener_carpeta_exportacion()
             carpeta_destino.mkdir(parents=True, exist_ok=True)
 
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             curso_limpio = "".join(
                 c for c in (self.curso_nombre or "Curso") if c.isalnum() or c in (" ", "_", "-")
-            ).strip().replace(" ", "_")
-            prefijo = "Notas" if self.tipo_exportacion == "notas" else "Asistencias"
-            nombre_archivo = f"{prefijo}_{curso_limpio}_{timestamp}.{formato}"
+            ).strip() or "Curso"
+            if self.tipo_exportacion == "notas":
+                nombre_archivo = f"Planilla {curso_limpio}.{formato}"
+            else:
+                nombre_archivo = f"Planilla Asistencias {curso_limpio}.{formato}"
             ruta_archivo = carpeta_destino / nombre_archivo
             ruta_str = str(ruta_archivo)
 
