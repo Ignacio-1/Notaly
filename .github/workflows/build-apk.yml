@@ -20,12 +20,6 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Configurar Flutter SDK
-        uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-          cache: true
-
       - name: Configurar Python 3.11
         uses: actions/setup-python@v5
         with:
@@ -41,6 +35,23 @@ jobs:
         run: |
           python -m pip install --upgrade pip setuptools wheel
           pip install "flet[all]>=0.28.0" fpdf2 requests Pillow
+
+      - name: Detectar versión de Flutter requerida por Flet
+        id: flet-flutter
+        run: |
+          FLUTTER_VER=$(python -c "import flet.version; print(flet.version.flutter_version)" 2>/dev/null || echo "3.44.8")
+          if [ -z "$FLUTTER_VER" ] || [ "$FLUTTER_VER" = "0" ]; then
+            FLUTTER_VER="3.44.8"
+          fi
+          echo "version=$FLUTTER_VER" >> $GITHUB_OUTPUT
+          echo "Versión de Flutter requerida por Flet detectada: $FLUTTER_VER"
+
+      - name: Configurar Flutter SDK
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ steps.flet-flutter.outputs.version }}
+          channel: stable
+          cache: true
 
       - name: Aceptar licencias de Android
         run: |
@@ -58,7 +69,11 @@ jobs:
           echo -e "\n504667f4c0de7973335447fc6c3b7e40efee42e8" > "$ANDROID_HOME/licenses/android-sdk-preview-license"
           echo -e "\n1d8aae7e54b3ecb4c15a80bda3a9edbc11a0e30b" > "$ANDROID_HOME/licenses/android-google-chrome-intel-build-tools-license"
 
+          yes | flutter doctor --android-licenses || true
+
       - name: Compilar APK con Flet
+        env:
+          FLET_CLI_NO_RICH_OUTPUT: "true"
         run: |
           flet build apk . \
             --module-name mobile_app \
@@ -66,6 +81,8 @@ jobs:
             --product "Notaly" \
             --org com.notaly.app \
             --build-version 2.0.0 \
+            --yes \
+            --no-rich-output \
             --verbose
 
       - name: Verificar APK generado
