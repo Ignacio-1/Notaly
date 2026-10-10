@@ -40,37 +40,25 @@ jobs:
       - name: Instalar dependencias Python
         run: |
           python -m pip install --upgrade pip setuptools wheel
-          pip install "flet[all]==0.23.1" fpdf2 requests Pillow
+          pip install "flet[all]>=0.28.0" fpdf2 requests Pillow
 
       - name: Aceptar licencias de Android
         run: |
           mkdir -p ~/.android
           echo -e "### User Sources for Android SDK Manager\n" > ~/.android/repositories.cfg
 
-          # Aceptar todas las licencias de Android SDK
-          for license in $(ls "$ANDROID_HOME/licenses/")
+          for license in $(ls "$ANDROID_HOME/licenses/" 2>/dev/null || true)
           do
             echo "Aceptando licencia: $license"
             echo -e "\n$license" >> "$ANDROID_HOME/licenses/android-sdk-license"
           done
 
-          # Alternativa más confiable: crear las licencias directamente
           mkdir -p "$ANDROID_HOME/licenses"
           echo -e "\n24333f8a63b6825ea9c5514f83c2829b004d1fee" > "$ANDROID_HOME/licenses/android-sdk-license"
           echo -e "\n504667f4c0de7973335447fc6c3b7e40efee42e8" > "$ANDROID_HOME/licenses/android-sdk-preview-license"
           echo -e "\n1d8aae7e54b3ecb4c15a80bda3a9edbc11a0e30b" > "$ANDROID_HOME/licenses/android-google-chrome-intel-build-tools-license"
 
-      - name: Compilar APK con Flet (arm64-v8a)
-        run: |
-          flet build apk . \
-            --module-name mobile_app \
-            --project notaly \
-            --product "Notaly" \
-            --org com.notaly.app \
-            --build-version 2.0.0 \
-            --verbose
-
-      - name: Compilar APK con Flet (x86_64)
+      - name: Compilar APK con Flet
         run: |
           flet build apk . \
             --module-name mobile_app \
