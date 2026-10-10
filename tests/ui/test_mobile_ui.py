@@ -309,11 +309,9 @@ class TestNavigationAndStateFlow:
             modo_continuo=True,
             page=mock_page_mobile,
         )
-        # Mock focus to prevent coroutine unawaited warning in test environment
         dlg.txt_apellido.focus = MagicMock()
         mock_page_mobile.show_dialog(dlg)
 
-        # Cargar primer alumno en modo continuo
         dlg.txt_apellido.value = "Benitez"
         dlg.txt_nombre.value = "Agustin"
         dlg._guardar_alumno(continuar=True)
@@ -324,7 +322,6 @@ class TestNavigationAndStateFlow:
         assert dlg.txt_nombre.value == ""
         assert mock_page_mobile.active_dialog is dlg
 
-        # Cargar segundo alumno y finalizar
         dlg.txt_apellido.value = "Alonso"
         dlg.txt_nombre.value = "Marcos"
         dlg._guardar_alumno(continuar=False)
@@ -332,7 +329,6 @@ class TestNavigationAndStateFlow:
         assert len(added) == 2
         assert mock_page_mobile.active_dialog is None
 
-        # Verificar ordenamiento por apellido
         isolated_app_state.order_alumnos_alphabetically()
         alumnos = isolated_app_state.get_alumnos()
         nombres_ord = [al['nombre'] for al in alumnos.values()]
@@ -387,26 +383,22 @@ class TestGradeEditorInteraction:
         assert mock_page_mobile.active_dialog is dlg
         assert dlg.txt_nota.value == '8'
 
-        # Guardar valor entero
         dlg.txt_nota.value = '10'
         dlg._guardar_desde_input()
         assert saved_values[-1] == 10
         assert mock_page_mobile.active_dialog is None
 
-        # Guardar valor con decimal (se unifica redondeando al entero correspondiente)
         mock_page_mobile.show_dialog(dlg)
         dlg.txt_nota.value = '8.75'
         dlg._guardar_desde_input()
         assert saved_values[-1] == 9
         assert mock_page_mobile.active_dialog is None
 
-        # Guardar nota vacía (None)
         mock_page_mobile.show_dialog(dlg)
         dlg._guardar_valor(None)
         assert saved_values[-1] is None
         assert mock_page_mobile.active_dialog is None
 
-        # Rechazar valor fuera de rango
         mock_page_mobile.show_dialog(dlg)
         dlg.txt_nota.value = '15'
         dlg._guardar_desde_input()
@@ -429,11 +421,9 @@ class TestAttendanceInteraction:
         view._cambiar_estado_alumno('2', ESTADO_AUSENTE)
         assert isolated_app_state.get_asistencias_dia(fecha_test).get('2') == ESTADO_AUSENTE
 
-        # Toggle: presionar el mismo estado lo desmarca
         view._cambiar_estado_alumno('1', ESTADO_PRESENTE)
         assert isolated_app_state.get_asistencias_dia(fecha_test).get('1') is None
 
-        # Acción en lote
         view._marcar_todos_presentes()
         asistencias = isolated_app_state.get_asistencias_dia(fecha_test)
         assert asistencias.get('1') == ESTADO_PRESENTE
@@ -449,22 +439,18 @@ class TestAttendanceInteraction:
         isolated_app_state.selected_curso = '5to A'
         view = AsistenciasView(isolated_app_state, mock_page_mobile, on_navigate=lambda x: None)
 
-        # 1. Abrir diálogo de selector de fecha
         view._abrir_selector_fecha()
         assert isinstance(mock_page_mobile.active_dialog, DatePickerDialog)
         dlg = mock_page_mobile.active_dialog
 
-        # 2. Navegar meses
         mes_inicial = dlg.current_view_month
         dlg._cambiar_mes(1)
         assert dlg.current_view_month == (mes_inicial % 12) + 1
 
-        # 3. Seleccionar día específico por calendario
         dlg._seleccionar_fecha("2026-05-15")
         assert isolated_app_state.asistencia_fecha == "2026-05-15"
         assert mock_page_mobile.active_dialog is None
 
-        # 4. Selección manual por texto DD/MM/AAAA
         view._abrir_selector_fecha()
         dlg2 = mock_page_mobile.active_dialog
         dlg2.txt_manual.value = "10/03/2026"
@@ -485,7 +471,6 @@ class TestUnsavedDialogsAndModals:
         isolated_app_state.set_nota('1', 0, 'P', 2, 9.5)
         assert isolated_app_state.has_unsaved_changes is True
 
-        # Al volver, se ejecuta flush_auto_save() inmediatamente y se navega a 'cursos'
         view._accion_volver()
         assert isolated_app_state.has_unsaved_changes is False
         assert isolated_app_state.save_status == 'saved'
@@ -551,6 +536,56 @@ class TestExportModalIsolation:
         assert str(tmp_path) in output_path
         assert mock_page_mobile.active_dialog is None
 
+    def test_obtener_carpeta_exportacion_android_flet_storage(self, monkeypatch, tmp_path):
+        """Verifica que en Android con FLET_APP_STORAGE_DATA se use la carpeta de la app y nunca '/data'."""
+        flet_storage = tmp_path / "flet_app_storage"
+        monkeypatch.setenv("FLET_APP_STORAGE_DATA", str(flet_storage))
+        monkeypatch.setenv("ANDROID_DATA", "/data")
+
+        dlg = ExportDialog("notas", "Colegio Nacional", "5to A", {}, lambda ok, p: None)
+        destino = dlg._obtener_carpeta_exportacion()
+
+        assert str(destino) != "/data"
+        assert "/data" not in [str(destino).rstrip("/\\")]
+        assert destino.exists()
+        assert str(flet_storage) in str(destino)
+
+    def test_obtener_carpeta_exportacion_android_scoped_storage_denied_never_returns_root_data(self, monkeypatch):
+        """Verifica que ante Scoped Storage denegado en Download público nunca se devuelva '/data' ni '/'."""
+        monkeypatch.delenv("FLET_APP_STORAGE_DATA", raising=False)
+        monkeypatch.setenv("ANDROID_ROOT", "/system")
+        monkeypatch.setenv("ANDROID_DATA", "/data")
+
+        # Simular comportamiento de CPython en Android cuando tempfile devuelve '/data'
+        monkeypatch.setattr("tempfile.gettempdir", lambda: "/data")
+
+        dlg = ExportDialog("notas", "Colegio Nacional", "5to A", {}, lambda ok, p: None)
+        destino = dlg._obtener_carpeta_exportacion()
+
+        assert str(destino).rstrip("/\\") not in ["", "/", "/data", "/root"]
+        assert destino.exists()
+
+    def test_export_dialog_error_handling(self, mock_page_mobile):
+        """Verifica que si ocurre un error durante la exportación se capture limpiamente y se notifique con exito=False."""
+        dlg = ExportDialog(
+            tipo_exportacion="notas",
+            colegio_nombre="Colegio Nacional",
+            curso_nombre="5to A",
+            curso_data={},
+            on_success=MagicMock(),
+            page=mock_page_mobile,
+        )
+        mock_page_mobile.show_dialog(dlg)
+
+        with patch.object(dlg, "_obtener_carpeta_exportacion", side_effect=PermissionError("Acceso denegado simulado")):
+            dlg._exportar()
+
+        dlg.on_success.assert_called_once()
+        args = dlg.on_success.call_args[0]
+        assert args[0] is False
+        assert "Acceso denegado simulado" in str(args[1])
+        assert mock_page_mobile.active_dialog is None
+
 
 class TestScrollPreservationAndInPlaceUpdates:
     def test_attendance_preserves_listview_and_scroll_instance(self, isolated_app_state, mock_page_mobile):
@@ -560,19 +595,13 @@ class TestScrollPreservationAndInPlaceUpdates:
         view = AsistenciasView(isolated_app_state, mock_page_mobile, on_navigate=lambda x: None)
 
         with patch.object(view, '_build_ui', wraps=view._build_ui) as mock_rebuild:
-            # Modificar asistencia de alumno 1
             view._cambiar_estado_alumno('1', ESTADO_PRESENTE)
-
-            # Debe actualizar in-place sin reconstruir toda la interfaz
             assert mock_rebuild.call_count == 0
 
-        # Verificar actualización reactiva de los botones del alumno
         botones_alumno1 = view.alumnos_botones['1']
         btn_p, txt_p, col_p = botones_alumno1[ESTADO_PRESENTE]
         assert btn_p.bgcolor == col_p
         assert txt_p.color == ft.Colors.WHITE
-
-        # Verificar KPIs actualizados inmediatamente
         assert view.kpi_presentes_text.value == "1"
 
     def test_grade_edition_preserves_table_and_scroll_instance(self, isolated_app_state, mock_page_mobile):
@@ -582,22 +611,17 @@ class TestScrollPreservationAndInPlaceUpdates:
         isolated_app_state.active_trimestre = 0
         view = NotasView(isolated_app_state, mock_page_mobile, on_navigate=lambda x: None)
 
-        # Celda P1 del alumno 1 (valor inicial en fixture es 8.0)
         celdas_alumno1 = view.alumnos_celdas['1']
         assert celdas_alumno1['P0']['text_widget'].value == "8"
 
         with patch.object(view, '_build_ui', wraps=view._build_ui) as mock_rebuild:
-            # Simular tap en celda y guardar una nueva nota (ej: 9.5)
             celdas_alumno1['P0']['container'].on_click(None)
             dialogo = mock_page_mobile.active_dialog
             assert isinstance(dialogo, GradeEditorDialog)
             dialogo.txt_nota.value = "9.5"
             dialogo._guardar_desde_input()
-
-            # La vista no debe sufrir una reconstrucción completa
             assert mock_rebuild.call_count == 0
 
-        # Comprobar que la celda y los cálculos del alumno se actualizaron in-place con valor entero
         assert celdas_alumno1['P0']['text_widget'].value == "10"
         assert celdas_alumno1['prom_text'].value != "-"
         assert isolated_app_state.has_unsaved_changes is True
@@ -613,26 +637,21 @@ class TestScrollPreservationAndInPlaceUpdates:
         assert view.expanded_student_id == '1'
         assert view.active_grade_index == 0
 
-        # Verificar píldoras de trimestres (.grade-pill)
         pills_alumno1 = view.pills_alumnos['1']
         assert len(pills_alumno1) == 3
         assert pills_alumno1[0].data == "grade-pill"
 
-        # Simular pulsar el botón numérico '9' en el dock
         view._aplicar_nota_dock(9.0)
         assert view.alumnos_celdas['1']['P0']['text_widget'].value == "9"
         assert view.active_grade_index == 1
         assert isolated_app_state.has_unsaved_changes is True
 
-        # Simular botón 'Sig.' para avanzar al siguiente slot
         view._avanzar_slot_dock()
         assert view.active_grade_index == 2
 
-        # Simular borrar con botón Backspace
         view._limpiar_nota_dock()
         assert view.alumnos_celdas['1']['P2']['text_widget'].value == "-"
 
-        # Verificar toggle expand / colapse
         view._toggle_expand_alumno('2')
         assert view.expanded_student_id == '2'
         assert view.active_grade_index == 0
@@ -651,16 +670,13 @@ class TestScrollPreservationAndInPlaceUpdates:
         assert view.expanded_containers['2'].visible is False
 
         with patch.object(view, '_build_ui', wraps=view._build_ui) as mock_rebuild:
-            # Expandir alumno 2
             view._toggle_expand_alumno('2')
             assert mock_rebuild.call_count == 0
             assert view.expanded_student_id == '2'
             assert view.expanded_containers['1'].visible is False
             assert view.expanded_containers['2'].visible is True
-            # La instancia del ListView se mantiene intacta
             assert view.lista_tarjetas_listview is initial_listview
 
-            # Colapsar alumno 2
             view._toggle_expand_alumno('2')
             assert mock_rebuild.call_count == 0
             assert view.expanded_student_id is None
@@ -676,12 +692,10 @@ class TestScrollPreservationAndInPlaceUpdates:
 
         view = NotasView(isolated_app_state, mock_page_mobile, on_navigate=lambda x: None)
 
-        # El alumno 2 debe estar expandido de forma predeterminada
         assert view.expanded_student_id == '2'
         assert view.active_grade_index == 0
         assert "#2" in view.dock_label_active.value
 
-        # El borde de la tarjeta del alumno 2 debe estar activo (PRIMARY)
         tarjeta_al2 = view.tarjetas_alumnos['2']
         assert tarjeta_al2.border.top.color == PRIMARY
 
@@ -719,10 +733,8 @@ def test_create_curso_dialog_input_filter_y_validacion_enteros(mock_page_mobile)
     )
     mock_page_mobile.show_dialog(dlg)
 
-    # Verificar que tiene NumbersOnlyInputFilter
     assert isinstance(dlg.txt_cantidad.input_filter, ft.NumbersOnlyInputFilter)
 
-    # Rechazar cantidad decimal / no entera
     dlg.txt_nombre.value = "3° B"
     dlg.txt_cantidad.value = "12.5"
     dlg._confirmar()
@@ -730,13 +742,11 @@ def test_create_curso_dialog_input_filter_y_validacion_enteros(mock_page_mobile)
     assert dlg.lbl_error.visible is True
     assert "entero" in dlg.lbl_error.value
 
-    # Rechazar cantidad 0
     dlg.txt_cantidad.value = "0"
     dlg._confirmar()
     assert len(created) == 0
     assert dlg.lbl_error.visible is True
 
-    # Aceptar cantidad entera positiva
     dlg.txt_cantidad.value = "28"
     dlg._confirmar()
     assert len(created) == 1
@@ -750,24 +760,19 @@ def test_conmutacion_trimestres_in_place_preserva_listview(isolated_app_state, m
     isolated_app_state.selected_curso = '5to A'
     view = NotasView(isolated_app_state, mock_page_mobile, on_navigate=lambda x: None)
 
-    # El ListView inicial debe existir y ser una referencia persistente
     initial_listview = view.lista_tarjetas_listview
     assert initial_listview is not None
     assert view.state.active_trimestre == 0
     assert view.dock_badge_trimestre.value == "T1"
 
-    # Cambiar a Trimestre 2 vía _seleccionar_trimestre(1)
     view._seleccionar_trimestre(1)
     assert view.state.active_trimestre == 1
-    # La instancia del ListView NO debe ser destruida ni re-instanciada
     assert view.lista_tarjetas_listview is initial_listview
     assert view.dock_badge_trimestre.value == "T2"
 
-    # Verificar que las pestañas superiores reflejen el estado activo
     assert view.top_trimester_tabs[1].bgcolor == SURFACE_WHITE
     assert view.top_trimester_tabs[0].bgcolor == ft.Colors.TRANSPARENT
 
-    # Cambiar a Trimestre 3 vía _seleccionar_trimestre(2)
     view._seleccionar_trimestre(2)
     assert view.state.active_trimestre == 2
     assert view.lista_tarjetas_listview is initial_listview
@@ -775,11 +780,9 @@ def test_conmutacion_trimestres_in_place_preserva_listview(isolated_app_state, m
     assert view.top_trimester_tabs[2].bgcolor == SURFACE_WHITE
     assert view.top_trimester_tabs[1].bgcolor == ft.Colors.TRANSPARENT
 
-    # Probar conmutación desde botón local de una tarjeta expandida
     sid = list(view.tarjetas_alumnos.keys())[0]
     local_btns = view.local_trim_buttons[sid]
     assert len(local_btns) == 3
-    # Click en Trimestre 1 local
     local_btns[0].on_click(None)
     assert view.state.active_trimestre == 0
     assert view.lista_tarjetas_listview is initial_listview
@@ -799,26 +802,21 @@ def test_reactividad_recuperacion_notas_view(isolated_app_state, mock_page_mobil
     view = NotasView(isolated_app_state, mock_page_mobile, on_navigate=lambda x: None)
     sid = '1'
 
-    # Alumno 1 inicia con notas que promedian 8.0 (aprobado >= 5.50) -> R0 deshabilitado
     celdas_alumno = view.alumnos_celdas[sid]
     assert celdas_alumno['R0']['deshabilitado'] is True
 
-    # Modificar notas para que el promedio baje de 5.50: P0 = 4, P1 = 4, P2 = 4 (promedio = 4.0)
     isolated_app_state.set_nota(sid, 0, 'P', 0, 4)
     isolated_app_state.set_nota(sid, 0, 'P', 1, 4)
     isolated_app_state.set_nota(sid, 0, 'P', 2, 4)
     view._actualizar_fila_alumno_ui(sid)
 
-    # El casillero de recuperación debe habilitarse reactivamente
     assert celdas_alumno['R0']['deshabilitado'] is False
 
-    # El docente corrige P0 = 8, P1 = 8, P2 = 8 (promedio = 8.0 >= 5.50)
     isolated_app_state.set_nota(sid, 0, 'P', 0, 8)
     isolated_app_state.set_nota(sid, 0, 'P', 1, 8)
     isolated_app_state.set_nota(sid, 0, 'P', 2, 8)
     view._actualizar_fila_alumno_ui(sid)
 
-    # El casillero de recuperación debe inhabilitarse inmediatamente
     assert celdas_alumno['R0']['deshabilitado'] is True
 
 
@@ -839,24 +837,17 @@ def test_vista_anual_solo_lectura_informativa_y_dock_oculto(isolated_app_state, 
     assert view.dock_container is not None
     assert view.dock_container.visible is True
 
-    # 1. Conmutar a 'Anual' vía top_trimester_tabs o _seleccionar_trimestre(3)
     view._seleccionar_trimestre(3)
     assert view.state.active_trimestre == 3
-
-    # El dock debe ocultarse
     assert view.dock_container.visible is False
-
-    # El ListView debe ser el mismo objeto en memoria (preservación estricta de scroll)
     assert view.lista_tarjetas_listview is initial_listview
 
-    # Verificar tarjetas de alumnos en modo Anual
     for sid in ['1', '2']:
         assert view.paneles_anuales[sid]['container'].visible is True
         assert view.expanded_containers[sid].visible is False
         assert view.chevron_icons[sid].visible is False
         assert view.header_pills_containers[sid].visible is False
 
-    # Alumno 1 (Gomez Juan): T1=8.0 (promedio 7.5 redondea a 8) -> Aprobado (>= 5.50)
     anual_al1 = view.paneles_anuales['1']
     assert anual_al1['t1_text'].value == "8"
     assert anual_al1['t2_text'].value == "--"
@@ -864,7 +855,6 @@ def test_vista_anual_solo_lectura_informativa_y_dock_oculto(isolated_app_state, 
     assert anual_al1['promedio_anual_text'].value == "8"
     assert anual_al1['estado_text'].value == "Aprobado"
 
-    # Alumno 2 (Perez Ana): T1=4.0 (promedio 4.0) -> Desaprobado (< 5.50)
     anual_al2 = view.paneles_anuales['2']
     assert anual_al2['t1_text'].value == "4"
     assert anual_al2['t2_text'].value == "--"
@@ -872,36 +862,26 @@ def test_vista_anual_solo_lectura_informativa_y_dock_oculto(isolated_app_state, 
     assert anual_al2['promedio_anual_text'].value == "4"
     assert anual_al2['estado_text'].value == "Desaprobado"
 
-    # Prohibición de edición en modo 'Anual'
-    # Intentar expandir tarjeta debe ser ignorado
     view._toggle_expand_alumno('1')
     assert view.expanded_containers['1'].visible is False
 
-    # Intentar aplicar nota desde dock o atajos debe ser ignorado
     nota_previa_p0 = isolated_app_state.get_curso_data()['alumnos']['1']['trimestres']['Primer trimestre']['principales'][0]
     view._aplicar_nota_dock(10)
     view._limpiar_nota_dock()
     nota_post = isolated_app_state.get_curso_data()['alumnos']['1']['trimestres']['Primer trimestre']['principales'][0]
     assert nota_post == nota_previa_p0
 
-    # 2. Retorno a Trimestre 1
     view._seleccionar_trimestre(0)
     assert view.state.active_trimestre == 0
-
-    # El dock debe volver a ser visible
     assert view.dock_container.visible is True
 
-    # Los paneles anuales deben ocultarse y los controles de trimestre restaurarse
     for sid in ['1', '2']:
         assert view.paneles_anuales[sid]['container'].visible is False
         assert view.header_pills_containers[sid].visible is True
         assert view.chevron_icons[sid].visible is True
 
-    # El alumno expandido debe mostrar su grilla editable
     exp_sid = view.expanded_student_id
     assert view.expanded_containers[exp_sid].visible is True
-
-    # Preservación absoluta del ListView
     assert view.lista_tarjetas_listview is initial_listview
 
 
@@ -913,11 +893,8 @@ def test_corte_calificacion_anual_aprobado_desaprobado_5_50(isolated_app_state, 
     isolated_app_state.selected_colegio = 'Colegio Nacional'
     isolated_app_state.selected_curso = '5to A'
 
-    # Alumno 3: T1=5, T2=6 -> promedio (5+6)/2 = 5.50 exacto -> Aprobado, redondea a 6
     isolated_app_state.add_alumno("Lopez", "Carlos")
-    # Alumno 4: T1=5, T2=5, T3=6 -> promedio (5+5+6)/3 = 5.33 -> Desaprobado, redondea a 5
     isolated_app_state.add_alumno("Ruiz", "Martin")
-    # Alumno 5: Sin notas -> '--'
     isolated_app_state.add_alumno("Sosa", "Elena")
 
     alumnos = isolated_app_state.get_alumnos()
@@ -925,11 +902,9 @@ def test_corte_calificacion_anual_aprobado_desaprobado_5_50(isolated_app_state, 
     id_al4 = [k for k, v in alumnos.items() if "Ruiz" in v['nombre']][0]
     id_al5 = [k for k, v in alumnos.items() if "Sosa" in v['nombre']][0]
 
-    # Cargar notas Alumno 3: T1 final = 5, T2 final = 6
     isolated_app_state.set_nota(id_al3, 0, 'P', 0, 5)
     isolated_app_state.set_nota(id_al3, 1, 'P', 0, 6)
 
-    # Cargar notas Alumno 4: T1 final = 5, T2 final = 5, T3 final = 6
     isolated_app_state.set_nota(id_al4, 0, 'P', 0, 5)
     isolated_app_state.set_nota(id_al4, 1, 'P', 0, 5)
     isolated_app_state.set_nota(id_al4, 2, 'P', 0, 6)
@@ -937,14 +912,12 @@ def test_corte_calificacion_anual_aprobado_desaprobado_5_50(isolated_app_state, 
     isolated_app_state.active_trimestre = 3
     view = NotasView(isolated_app_state, mock_page_mobile, on_navigate=lambda x: None)
 
-    # Alumno 3: 5.50 -> Aprobado
     anual_3 = view.paneles_anuales[id_al3]
     assert anual_3['t1_text'].value == "5"
     assert anual_3['t2_text'].value == "6"
     assert anual_3['promedio_anual_text'].value == "6"
     assert anual_3['estado_text'].value == "Aprobado"
 
-    # Alumno 4: 5.33 -> Desaprobado
     anual_4 = view.paneles_anuales[id_al4]
     assert anual_4['t1_text'].value == "5"
     assert anual_4['t2_text'].value == "5"
@@ -952,16 +925,9 @@ def test_corte_calificacion_anual_aprobado_desaprobado_5_50(isolated_app_state, 
     assert anual_4['promedio_anual_text'].value == "5"
     assert anual_4['estado_text'].value == "Desaprobado"
 
-    # Alumno 5: Sin notas -> '--'
     anual_5 = view.paneles_anuales[id_al5]
     assert anual_5['t1_text'].value == "--"
     assert anual_5['t2_text'].value == "--"
     assert anual_5['t3_text'].value == "--"
     assert anual_5['promedio_anual_text'].value == "--"
     assert anual_5['estado_text'].value == "--"
-
-
-
-
-
-
