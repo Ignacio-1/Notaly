@@ -10,6 +10,8 @@ import flet as ft
 from mobile.state import AppState
 from mobile.components.export_dialog import ExportDialog
 from mobile.components.date_picker_dialog import DatePickerDialog
+from mobile.components.planificacion_dialog import PlanificacionCursoDialog
+from core.constants import formatear_fecha
 from mobile.components.ui_header import (
     build_app_header,
     build_module_tabs,
@@ -81,9 +83,9 @@ class AsistenciasView(ft.Container):
     def _formatear_fecha(self, fecha_iso: str) -> str:
         try:
             dt = datetime.strptime(fecha_iso, "%Y-%m-%d")
-            return dt.strftime("%d/%m/%Y")
+            return dt.strftime("%d-%m-%Y")
         except Exception:
-            return fecha_iso
+            return formatear_fecha(fecha_iso)
 
     def _build_ui(self):
         colegio = self.state.selected_colegio or ""
@@ -102,12 +104,25 @@ class AsistenciasView(ft.Container):
             title=curso,
             on_back=self._accion_volver,
             status_indicator=self.save_indicator,
-            trailing=ft.IconButton(
-                icon=ft.Icons.INSIGHTS,
-                tooltip="Estadísticas del Curso",
-                icon_color=PRIMARY,
-                icon_size=20,
-                on_click=lambda _: self._abrir_estadisticas_curso(),
+            trailing=ft.Row(
+                spacing=4,
+                tight=True,
+                controls=[
+                    ft.IconButton(
+                        icon=ft.Icons.EDIT_CALENDAR,
+                        tooltip="Planificación de Clases",
+                        icon_color=PRIMARY,
+                        icon_size=20,
+                        on_click=lambda _: self._abrir_planificacion_curso(),
+                    ),
+                    ft.IconButton(
+                        icon=ft.Icons.INSIGHTS,
+                        tooltip="Estadísticas del Curso",
+                        icon_color=PRIMARY,
+                        icon_size=20,
+                        on_click=lambda _: self._abrir_estadisticas_curso(),
+                    ),
+                ],
             ),
         )
 
@@ -648,6 +663,19 @@ class AsistenciasView(ft.Container):
         self.state.origen_pantalla = "asistencias"
         self.state.estadisticas_nivel = "curso"
         self.on_navigate("estadisticas")
+
+    def _abrir_planificacion_curso(self):
+        colegio = self.state.selected_colegio or ""
+        curso = self.state.selected_curso or ""
+        dlg = PlanificacionCursoDialog(
+            state=self.state,
+            colegio=colegio,
+            curso=curso,
+            on_close=lambda: None,
+            page=self.app_page,
+        )
+        self.app_page.show_dialog(dlg)
+        self.app_page.update()
 
 
     def _preguntar_guardar_antes_de_salir(self, destino: str):

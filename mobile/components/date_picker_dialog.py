@@ -55,8 +55,8 @@ class DatePickerDialog(ft.AlertDialog):
         # Contenedor del cuerpo del calendario
         self.calendar_body = ft.Container()
         self.txt_manual = ft.TextField(
-            label="O ingresar fecha (DD/MM/AAAA)",
-            hint_text=dt.strftime("%d/%m/%Y"),
+            label="O ingresar fecha (DD-MM-AAAA)",
+            hint_text=dt.strftime("%d-%m-%Y"),
             text_size=14,
             keyboard_type=ft.KeyboardType.DATETIME,
             dense=True,
@@ -236,7 +236,7 @@ class DatePickerDialog(ft.AlertDialog):
             ultima_fecha = fechas_reg[0]
             try:
                 ult_dt = datetime.strptime(ultima_fecha, "%Y-%m-%d")
-                ult_txt = ult_dt.strftime("%d/%m")
+                ult_txt = ult_dt.strftime("%d-%m-%Y")
                 chips.append(
                     ft.Chip(
                         label=ft.Text(f"Última: {ult_txt}"),
@@ -289,7 +289,7 @@ class DatePickerDialog(ft.AlertDialog):
             except Exception:
                 pass
 
-        self.lbl_error.value = "Fecha inválida. Usa el formato DD/MM/AAAA (ej: 25/08/2026)."
+        self.lbl_error.value = "Fecha inválida. Usa el formato DD-MM-AAAA (ej: 25-08-2026)."
         self.lbl_error.visible = True
         if self.app_page:
             self.app_page.update()

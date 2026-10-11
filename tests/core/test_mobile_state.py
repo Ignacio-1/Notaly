@@ -486,4 +486,186 @@ def test_get_colegio_data_compatibilidad_retroactiva(temp_state):
     assert data["horarios"] == ""
 
 
+def test_add_curso_con_horario(temp_state):
+    """Verifica que add_curso almacene horario y clases vacías."""
+    from core.constants import K_COLEGIOS, K_CURSOS, K_HORARIO, K_CLASES
+    temp_state.add_colegio("Colegio San Martin")
+    ok, msg = temp_state.add_curso("Colegio San Martin", "1A", 5, horario="Lun y Mie 08:00 - 10:00")
+    assert ok is True
+
+    curso_data = temp_state.data[K_COLEGIOS]["Colegio San Martin"][K_CURSOS]["1A"]
+    assert curso_data[K_HORARIO] == "Lun y Mie 08:00 - 10:00"
+    assert curso_data[K_CLASES] == {}
+
+
+def test_get_set_horario_curso(temp_state):
+    """Verifica lectura y modificación de horario del curso."""
+    temp_state.add_colegio("Colegio San Martin")
+    temp_state.add_curso("Colegio San Martin", "1A")
+    temp_state.selected_colegio = "Colegio San Martin"
+    temp_state.selected_curso = "1A"
+
+    assert temp_state.get_horario_curso() == ""
+
+    ok, msg = temp_state.set_horario_curso("  Vie 14:00 - 17:00  ", auto_save=False)
+    assert ok is True
+    assert temp_state.get_horario_curso() == "Vie 14:00 - 17:00"
+
+
+def test_get_set_delete_clases_curso(temp_state):
+    """Verifica creación, edición, consulta y eliminación de clases planificadas."""
+    from core.constants import K_TEMA
+    temp_state.add_colegio("Colegio San Martin")
+    temp_state.add_curso("Colegio San Martin", "1A")
+    temp_state.selected_colegio = "Colegio San Martin"
+    temp_state.selected_curso = "1A"
+
+    assert temp_state.get_clases_curso() == {}
+
+    # Agregar clase
+    ok, msg = temp_state.set_clase_tema("2026-04-10", "Fracciones e introducción", auto_save=False)
+    assert ok is True
+
+    clases = temp_state.get_clases_curso()
+    assert "2026-04-10" in clases
+    assert clases["2026-04-10"][K_TEMA] == "Fracciones e introducción"
+
+    # Modificar tema
+    ok, msg = temp_state.set_clase_tema("2026-04-10", "Fracciones equivalentes", auto_save=False)
+    assert ok is True
+    assert temp_state.get_clases_curso()["2026-04-10"][K_TEMA] == "Fracciones equivalentes"
+
+    # Eliminar clase
+    ok, msg = temp_state.delete_clase_planificada("2026-04-10", auto_save=False)
+    assert ok is True
+    assert temp_state.get_clases_curso() == {}
+
+    # Eliminar inexistente
+    ok, msg = temp_state.delete_clase_planificada("2026-04-10", auto_save=False)
+    assert ok is False
+
+
+def test_compatibilidad_retroactiva_cursos_sin_horario_ni_clases(temp_state):
+    """Verifica que cursos sin las claves K_HORARIO ni K_CLASES retornen valores por defecto seguros."""
+    from core.constants import K_COLEGIOS, K_CURSOS, K_ALUMNOS, K_ASISTENCIAS
+    temp_state.add_colegio("Colegio Antiguo")
+    # Inyectar curso sin horario ni clases
+    temp_state.data[K_COLEGIOS]["Colegio Antiguo"][K_CURSOS]["3B"] = {
+        K_ALUMNOS: {},
+        K_ASISTENCIAS: {},
+    }
+
+    horario = temp_state.get_horario_curso("Colegio Antiguo", "3B")
+    assert horario == ""
+
+    clases = temp_state.get_clases_curso("Colegio Antiguo", "3B")
+    assert clases == {}
+
+
+def test_es_fecha_iso_valida():
+    """Verifica que _es_fecha_iso_valida valide correctamente el formato YYYY-MM-DD y calendario gregoriano."""
+    from mobile.state import _es_fecha_iso_valida
+
+    # Fechas válidas
+    assert _es_fecha_iso_valida("2026-04-10") is True
+    assert _es_fecha_iso_valida("2024-02-29") is True  # Bisiesto
+    assert _es_fecha_iso_valida("2026-12-31") is True
+
+    # Fechas inválidas o corruptas
+    assert _es_fecha_iso_valida("2026-02-29") is False  # No bisiesto
+    assert _es_fecha_iso_valida("2026-02-30") is False
+    assert _es_fecha_iso_valida("2026-13-01") is False  # Mes inexistente
+    assert _es_fecha_iso_valida("2026-04-00") is False  # Día 0
+    assert _es_fecha_iso_valida("") is False
+    assert _es_fecha_iso_valida("invalida") is False
+    assert _es_fecha_iso_valida("2026/04/10") is False
+    assert _es_fecha_iso_valida(None) is False
+    assert _es_fecha_iso_valida(12345) is False
+
+
+def test_get_resumen_planificaciones_institucion_orden_cronologico(temp_state):
+    """Verifica que get_resumen_planificaciones_institucion ordene las clases cronológicamente."""
+    temp_state.add_colegio("Colegio San Martin")
+    temp_state.add_curso("Colegio San Martin", "1° A", horario="Lun 08:00")
+
+    # Agregar clases en orden desordenado
+    temp_state.set_clase_tema("2026-05-20", "Tema Mayo", "Colegio San Martin", "1° A", auto_save=False)
+    temp_state.set_clase_tema("2026-03-10", "Tema Marzo", "Colegio San Martin", "1° A", auto_save=False)
+    temp_state.set_clase_tema("2026-04-15", "Tema Abril", "Colegio San Martin", "1° A", auto_save=False)
+
+    resumen = temp_state.get_resumen_planificaciones_institucion("Colegio San Martin")
+    assert len(resumen) == 1
+
+    curso_res = resumen[0]
+    assert curso_res["curso"] == "1° A"
+    assert curso_res["horario"] == "Lun 08:00"
+    assert curso_res["total_clases"] == 3
+
+    fechas = [c["fecha_iso"] for c in curso_res["clases"]]
+    assert fechas == ["2026-03-10", "2026-04-15", "2026-05-20"]
+    assert curso_res["clases"][0]["tema"] == "Tema Marzo"
+    assert "fecha_badge" in curso_res["clases"][0]
+    assert curso_res["clases"][0]["fecha_badge"] != ""
+
+
+def test_get_resumen_planificaciones_institucion_descarta_fechas_invalidas(temp_state):
+    """Verifica que claves corruptas o no ISO se descarten defensivamente."""
+    from core.constants import K_COLEGIOS, K_CURSOS, K_CLASES, K_TEMA
+    temp_state.add_colegio("Colegio San Martin")
+    temp_state.add_curso("Colegio San Martin", "2° B")
+
+    # Inyectar claves válidas y claves corruptas directamente
+    clases_dict = temp_state.data[K_COLEGIOS]["Colegio San Martin"][K_CURSOS]["2° B"][K_CLASES]
+    clases_dict["2026-04-10"] = {K_TEMA: "Clase Válida 1"}
+    clases_dict["2026-04-17"] = {K_TEMA: "Clase Válida 2"}
+    clases_dict[""] = {K_TEMA: "Clave Vacía"}
+    clases_dict["invalida"] = {K_TEMA: "Texto Arbitrario"}
+    clases_dict["2026-02-30"] = {K_TEMA: "Día Imposible"}
+
+    resumen = temp_state.get_resumen_planificaciones_institucion("Colegio San Martin")
+    assert len(resumen) == 1
+    curso_res = resumen[0]
+    assert curso_res["total_clases"] == 2
+    fechas = [c["fecha_iso"] for c in curso_res["clases"]]
+    assert fechas == ["2026-04-10", "2026-04-17"]
+
+
+def test_get_resumen_planificaciones_institucion_colegio_inexistente_o_sin_cursos(temp_state):
+    """Verifica retorno de lista vacía ante colegio None, inexistente o sin cursos."""
+    # 1. Colegio None sin selección activa
+    assert temp_state.get_resumen_planificaciones_institucion(None) == []
+
+    # 2. Colegio inexistente
+    assert temp_state.get_resumen_planificaciones_institucion("Colegio Fantasma") == []
+
+    # 3. Colegio existente pero sin cursos
+    temp_state.add_colegio("Colegio Vacio")
+    assert temp_state.get_resumen_planificaciones_institucion("Colegio Vacio") == []
+
+
+def test_get_resumen_planificaciones_institucion_cursos_con_y_sin_clases(temp_state):
+    """Verifica estructura homogénea cuando coexisten cursos con y sin clases planificadas."""
+    temp_state.add_colegio("Colegio San Martin")
+    temp_state.add_curso("Colegio San Martin", "1° A")
+    temp_state.add_curso("Colegio San Martin", "2° B")
+
+    temp_state.set_clase_tema("2026-04-05", "Álgebra", "Colegio San Martin", "1° A", auto_save=False)
+
+    resumen = temp_state.get_resumen_planificaciones_institucion("Colegio San Martin")
+    assert len(resumen) == 2
+
+    # Debe estar ordenado alfabéticamente por curso ("1° A", "2° B")
+    c1, c2 = resumen[0], resumen[1]
+    assert c1["curso"] == "1° A"
+    assert c1["total_clases"] == 1
+    assert len(c1["clases"]) == 1
+    assert c1["clases"][0]["tema"] == "Álgebra"
+
+    assert c2["curso"] == "2° B"
+    assert c2["total_clases"] == 0
+    assert c2["clases"] == []
+
+
+
+
 

@@ -6,6 +6,7 @@ Centraliza la lógica de persistencia, navegación y manipulación de datos.
 import os
 import json
 import math
+import re
 from datetime import datetime, date, timedelta
 import logging
 from pathlib import Path
@@ -22,6 +23,9 @@ from core.constants import (
     K_NOMBRE,
     K_DIRECCION,
     K_HORARIOS,
+    K_HORARIO,
+    K_CLASES,
+    K_TEMA,
     K_TRIMESTRES,
     K_PRINCIPALES,
     K_EXTRAS,
@@ -38,6 +42,24 @@ from core.constants import (
     NUM_PRINCIPALES,
     NUM_EXTRAS,
     crear_trimestres_vacios,
+    K_COMPORTAMIENTOS,
+    K_FECHA,
+    K_TIPO,
+    K_SUBTIPO,
+    K_OBSERVACION,
+    COMPORTAMIENTO_POSITIVO,
+    COMPORTAMIENTO_REGULAR,
+    COMPORTAMIENTO_NEGATIVO,
+    SUBTIPO_MERITORIA,
+    SUBTIPO_EJEMPLAR,
+    SUBTIPO_REGULAR,
+    SUBTIPO_INADECUADO,
+    SUBTIPO_GRAVE,
+    FORMATO_FECHA,
+    FORMATO_HORA,
+    FORMATO_FECHA_HORA,
+    formatear_fecha,
+    parsear_fecha_para_orden,
 )
 from core.calculos import (
     procesar_calificaciones_alumno,
@@ -45,9 +67,24 @@ from core.calculos import (
     resumen_asistencia_curso,
     obtener_estadisticas_curso,
     obtener_estadisticas_colegio,
+    procesar_estadisticas_comportamiento,
 )
 
 logger = logging.getLogger(__name__)
+
+_REGEX_FECHA_ISO = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def _es_fecha_iso_valida(fecha_str: str) -> bool:
+    """Valida que la cadena cumpla estrictamente con el formato ISO 'YYYY-MM-DD' y fecha de calendario válida."""
+    if not isinstance(fecha_str, str) or not _REGEX_FECHA_ISO.match(fecha_str):
+        return False
+    try:
+        y, m, d = (int(x) for x in fecha_str.split("-"))
+        date(y, m, d)
+        return True
+    except Exception:
+        return False
 
 
 class AppState:
@@ -369,8 +406,14 @@ class AppState:
             cursos = [c for c in cursos if query in c.lower()]
         return sorted(cursos)
 
-    def add_curso(self, nombre_colegio: str, nombre_curso: str, cantidad_alumnos: int = 0) -> tuple[bool, str]:
-        """Crea un nuevo curso dentro de un colegio con una cantidad inicial opcional de alumnos."""
+    def add_curso(
+        self,
+        nombre_colegio: str,
+        nombre_curso: str,
+        cantidad_alumnos: int = 0,
+        horario: str = "",
+    ) -> tuple[bool, str]:
+        """Crea un nuevo curso dentro de un colegio con una cantidad inicial opcional de alumnos y horario."""
         nombre_curso = nombre_curso.strip()
         if not nombre_curso:
             return False, "El nombre del curso no puede estar vacío."
@@ -407,6 +450,8 @@ class AppState:
             K_NOMBRES_COLUMNAS: {
                 t: list(NOMBRES_COLUMNAS_DEFAULT) for t in NOMBRES_TRIMESTRES
             },
+            K_HORARIO: (horario or "").strip(),
+            K_CLASES: {},
         }
         self.save_data()
         return True, "Curso creado exitosamente."
@@ -438,6 +483,163 @@ class AppState:
             self.save_data()
             return True, "Curso eliminado exitosamente."
         return False, "El curso no existe."
+
+    def get_horario_curso(self, colegio: str | None = None, curso: str | None = None) -> str:
+        """Retorna el horario en texto libre del curso especificado o activo (cadena vacía por defecto)."""
+        c_col = colegio or self.selected_colegio
+        c_cur = curso or self.selected_curso
+        if not c_col or not c_cur:
+            return ""
+        curso_dict = self.get_curso_data(c_col, c_cur)
+        return str(curso_dict.get(K_HORARIO, curso_dict.get("horarios", "")) or "").strip()
+
+    def set_horario_curso(
+        self,
+        horario: str,
+        colegio: str | None = None,
+        curso: str | None = None,
+        auto_save: bool = True,
+    ) -> tuple[bool, str]:
+        """
+        Actualiza el horario del curso. Aplica .strip().
+        Si auto_save=True, dispara trigger_auto_save(delay=0.4); si False, ejecuta save_data().
+        Retorna (True, 'Horario actualizado.') o (False, 'Curso no encontrado.').
+        """
+        c_col = colegio or self.selected_colegio
+        c_cur = curso or self.selected_curso
+        curso_dict = self.get_curso_data(c_col, c_cur)
+        if not curso_dict:
+            return False, "Curso no encontrado."
+        curso_dict[K_HORARIO] = (horario or "").strip()
+        if auto_save:
+            self.trigger_auto_save(delay=0.4)
+        else:
+            self.save_data()
+        return True, "Horario actualizado."
+
+    def get_clases_curso(self, colegio: str | None = None, curso: str | None = None) -> dict[str, dict]:
+        """
+        Retorna el diccionario de clases planificadas {fecha_iso: {K_TEMA: str}} del curso.
+        Normaliza y asegura que siempre retorne un diccionario con valores sanitizados.
+        """
+        c_col = colegio or self.selected_colegio
+        c_cur = curso or self.selected_curso
+        curso_dict = self.get_curso_data(c_col, c_cur)
+        if not curso_dict:
+            return {}
+        clases = curso_dict.setdefault(K_CLASES, {})
+        if not isinstance(clases, dict):
+            clases = {}
+            curso_dict[K_CLASES] = clases
+        res = {}
+        for f, c in clases.items():
+            if isinstance(c, dict):
+                res[f] = {K_TEMA: str(c.get(K_TEMA, "") or "").strip()}
+            else:
+                res[f] = {K_TEMA: str(c or "").strip()}
+        return res
+
+    def set_clase_tema(
+        self,
+        fecha_iso: str,
+        tema: str,
+        colegio: str | None = None,
+        curso: str | None = None,
+        auto_save: bool = True,
+    ) -> tuple[bool, str]:
+        """
+        Agrega o actualiza una clase planificada para la fecha indicada con el tema especificado.
+        Si auto_save=True, dispara trigger_auto_save(delay=0.4); si False, ejecuta save_data().
+        Retorna (True, 'Clase actualizada.') o (False, 'Curso no encontrado.').
+        """
+        c_col = colegio or self.selected_colegio
+        c_cur = curso or self.selected_curso
+        curso_dict = self.get_curso_data(c_col, c_cur)
+        if not curso_dict:
+            return False, "Curso no encontrado."
+        clases = curso_dict.setdefault(K_CLASES, {})
+        if not isinstance(clases, dict):
+            clases = {}
+            curso_dict[K_CLASES] = clases
+        clases[fecha_iso] = {K_TEMA: (tema or "").strip()}
+        if auto_save:
+            self.trigger_auto_save(delay=0.4)
+        else:
+            self.save_data()
+        return True, "Clase actualizada."
+
+    def delete_clase_planificada(
+        self,
+        fecha_iso: str,
+        colegio: str | None = None,
+        curso: str | None = None,
+        auto_save: bool = True,
+    ) -> tuple[bool, str]:
+        """
+        Elimina una fecha del cronograma de clases del curso.
+        Si auto_save=True, dispara trigger_auto_save(delay=0.4); si False, ejecuta save_data().
+        Retorna (True, 'Clase eliminada.') o (False, 'Clase no encontrada.').
+        """
+        c_col = colegio or self.selected_colegio
+        c_cur = curso or self.selected_curso
+        curso_dict = self.get_curso_data(c_col, c_cur)
+        if not curso_dict:
+            return False, "Curso no encontrado."
+        clases = curso_dict.get(K_CLASES, {})
+        if fecha_iso in clases:
+            del clases[fecha_iso]
+            if auto_save:
+                self.trigger_auto_save(delay=0.4)
+            else:
+                self.save_data()
+            return True, "Clase eliminada."
+        return False, "Clase no encontrada."
+
+    def get_resumen_planificaciones_institucion(self, colegio: str | None = None) -> list[dict]:
+        """
+        Retorna un resumen estructurado de las planificaciones de todos los cursos de la institución.
+        Descarta defensivamente fechas malformadas o anómalas.
+        Ordena las clases en forma cronológica ascendente.
+        Si el colegio es None o no existe, o no tiene cursos, retorna lista vacía [].
+        """
+        col = colegio or self.selected_colegio
+        if not col or col not in self.data.get(K_COLEGIOS, {}):
+            return []
+
+        cursos_dict = self.data[K_COLEGIOS][col].get(K_CURSOS, {})
+        if not cursos_dict:
+            return []
+
+        cursos = sorted(list(cursos_dict.keys()))
+        resumen = []
+
+        from mobile.components.planificacion_dialog import format_fecha_badge
+
+        for nom_curso in cursos:
+            horario = self.get_horario_curso(col, nom_curso)
+            clases_dict = self.get_clases_curso(col, nom_curso)
+
+            # Filtrado defensivo de claves de fecha
+            fechas_validas = [f for f in clases_dict.keys() if _es_fecha_iso_valida(f)]
+
+            clases_ordenadas = []
+            for fecha_iso in sorted(fechas_validas):
+                clase_val = clases_dict[fecha_iso]
+                tema = str(clase_val.get(K_TEMA, "") if isinstance(clase_val, dict) else clase_val or "").strip()
+                clases_ordenadas.append({
+                    "fecha_iso": fecha_iso,
+                    "tema": tema,
+                    "fecha_badge": format_fecha_badge(fecha_iso),
+                })
+
+            resumen.append({
+                "curso": nom_curso,
+                "horario": horario,
+                "total_clases": len(clases_ordenadas),
+                "clases": clases_ordenadas,
+            })
+
+        return resumen
 
     # =========================================================================
     # --- GESTIÓN DE ALUMNOS Y PLANILLA DE NOTAS ---
@@ -713,6 +915,194 @@ class AppState:
         self.trigger_auto_save(delay=0.3)
 
     # =========================================================================
+    # --- GESTIÓN DE COMPORTAMIENTO DE ALUMNOS ---
+    # =========================================================================
+
+    def get_comportamientos_alumno(
+        self,
+        id_al: str,
+        colegio: str | None = None,
+        curso: str | None = None,
+    ) -> list[dict]:
+        """
+        Retorna la lista de observaciones de comportamiento del alumno especificado,
+        ordenadas cronológicamente de forma descendente (más recientes primero).
+        """
+        curso_dict = self.get_curso_data(colegio, curso)
+        alumnos = curso_dict.get(K_ALUMNOS, {})
+        al_data = alumnos.get(str(id_al), {})
+        raw_list = al_data.get(K_COMPORTAMIENTOS, [])
+        if not isinstance(raw_list, list):
+            return []
+        res = []
+        for c in raw_list:
+            if isinstance(c, dict):
+                c_copy = dict(c)
+                c_copy[K_FECHA] = formatear_fecha(c.get(K_FECHA, ""))
+                res.append(c_copy)
+        return sorted(res, key=lambda x: parsear_fecha_para_orden(x.get(K_FECHA, "")), reverse=True)
+
+    def add_comportamiento_alumno(
+        self,
+        id_al: str,
+        tipo: str,
+        subtipo: str,
+        observacion: str = "",
+        fecha: str | None = None,
+        colegio: str | None = None,
+        curso: str | None = None,
+        auto_save: bool = True,
+    ) -> tuple[bool, str, dict]:
+        """
+        Registra una nueva observación de comportamiento para el alumno.
+        Persiste automáticamente mediante trigger_auto_save con debounce si auto_save=True.
+        """
+        curso_dict = self.get_curso_data(colegio, curso)
+        alumnos = curso_dict.get(K_ALUMNOS, {})
+        id_str = str(id_al)
+        if id_str not in alumnos:
+            return False, "Alumno no encontrado.", {}
+
+        al_data = alumnos[id_str]
+        comps = al_data.setdefault(K_COMPORTAMIENTOS, [])
+        if not isinstance(comps, list):
+            comps = []
+            al_data[K_COMPORTAMIENTOS] = comps
+
+        fecha_val = (fecha or "").strip()
+        if not fecha_val:
+            fecha_val = datetime.now().strftime(FORMATO_FECHA)
+        else:
+            fecha_val = formatear_fecha(fecha_val)
+
+        comp_id = f"comp_{int(time.time() * 1000)}"
+
+        nueva_obs = {
+            "id": comp_id,
+            K_FECHA: fecha_val,
+            K_TIPO: (tipo or "").strip().lower(),
+            K_SUBTIPO: (subtipo or "").strip(),
+            K_OBSERVACION: (observacion or "").strip(),
+        }
+        comps.append(nueva_obs)
+
+        self.has_unsaved_changes = True
+        self.notify()
+        if auto_save:
+            self.trigger_auto_save(delay=0.4)
+        else:
+            self.save_data()
+
+        return True, "Comportamiento registrado exitosamente.", nueva_obs
+
+    def update_comportamiento_alumno(
+        self,
+        id_al: str,
+        comp_id: str,
+        observacion: str | None = None,
+        subtipo: str | None = None,
+        tipo: str | None = None,
+        fecha: str | None = None,
+        colegio: str | None = None,
+        curso: str | None = None,
+        auto_save: bool = True,
+    ) -> tuple[bool, str]:
+        """
+        Actualiza los campos de una observación de comportamiento existente.
+        """
+        curso_dict = self.get_curso_data(colegio, curso)
+        alumnos = curso_dict.get(K_ALUMNOS, {})
+        id_str = str(id_al)
+        if id_str not in alumnos:
+            return False, "Alumno no encontrado."
+
+        comps = alumnos[id_str].get(K_COMPORTAMIENTOS, [])
+        for obs in comps:
+            if isinstance(obs, dict) and obs.get("id") == comp_id:
+                if observacion is not None:
+                    obs[K_OBSERVACION] = str(observacion).strip()
+                if subtipo is not None:
+                    obs[K_SUBTIPO] = str(subtipo).strip()
+                if tipo is not None:
+                    obs[K_TIPO] = str(tipo).strip().lower()
+                if fecha is not None and _es_fecha_iso_valida(fecha.strip()):
+                    obs[K_FECHA] = fecha.strip()
+
+                self.has_unsaved_changes = True
+                self.notify()
+                if auto_save:
+                    self.trigger_auto_save(delay=0.4)
+                else:
+                    self.save_data()
+                return True, "Comportamiento actualizado."
+
+        return False, "Observación no encontrada."
+
+    def delete_comportamiento_alumno(
+        self,
+        id_al: str,
+        comp_id: str,
+        colegio: str | None = None,
+        curso: str | None = None,
+        auto_save: bool = True,
+    ) -> tuple[bool, str]:
+        """
+        Elimina una observación de comportamiento específica de un alumno.
+        """
+        curso_dict = self.get_curso_data(colegio, curso)
+        alumnos = curso_dict.get(K_ALUMNOS, {})
+        id_str = str(id_al)
+        if id_str not in alumnos:
+            return False, "Alumno no encontrado."
+
+        comps = alumnos[id_str].get(K_COMPORTAMIENTOS, [])
+        inicial_len = len(comps)
+        alumnos[id_str][K_COMPORTAMIENTOS] = [
+            c for c in comps if isinstance(c, dict) and c.get("id") != comp_id
+        ]
+
+        if len(alumnos[id_str][K_COMPORTAMIENTOS]) < inicial_len:
+            self.has_unsaved_changes = True
+            self.notify()
+            if auto_save:
+                self.trigger_auto_save(delay=0.4)
+            else:
+                self.save_data()
+            return True, "Comportamiento eliminado."
+
+        return False, "Observación no encontrada."
+
+    def get_estadisticas_comportamiento(
+        self,
+        colegio: str | None = None,
+        curso: str | None = None,
+    ) -> dict:
+        """
+        Retorna las analíticas agregadas de comportamiento procesadas por
+        la función pura procesar_estadisticas_comportamiento.
+        Si se pasa curso (o hay uno activo en nivel curso), procesa ese curso.
+        Si curso es None, consolida todos los alumnos de la institución activa.
+        """
+        col = colegio or self.selected_colegio
+        if not col or col not in self.data.get(K_COLEGIOS, {}):
+            return procesar_estadisticas_comportamiento({})
+
+        if curso:
+            alumnos = self.get_alumnos(col, curso)
+            return procesar_estadisticas_comportamiento(alumnos)
+
+        cursos_dict = self.data[K_COLEGIOS][col].get(K_CURSOS, {})
+        todos_alumnos = {}
+        for cur_nom, cur_data in cursos_dict.items():
+            als = cur_data.get(K_ALUMNOS, {})
+            for a_id, a_val in als.items():
+                copia = dict(a_val)
+                copia["_curso"] = cur_nom
+                todos_alumnos[f"{cur_nom}_{a_id}"] = copia
+
+        return procesar_estadisticas_comportamiento(todos_alumnos)
+
+    # =========================================================================
     # --- GESTIÓN DE ASISTENCIAS ---
     # =========================================================================
 
@@ -823,7 +1213,7 @@ class AppState:
             try:
                 stat = file_path.stat()
                 file_size_kb = round(stat.st_size / 1024, 2)
-                last_modified = datetime.fromtimestamp(stat.st_mtime).strftime("%d/%m/%Y %H:%M:%S")
+                last_modified = datetime.fromtimestamp(stat.st_mtime).strftime(FORMATO_FECHA_HORA)
             except Exception:
                 pass
 
@@ -877,10 +1267,20 @@ class AppState:
             if p.exists() and p.is_dir():
                 add_candidate(p)
 
-        # 2. Desktop user directories (evitando raíces de sistema como / o /data que no son carpetas de usuario válidas)
+        # 2. Desktop user directories: Prioridad absoluta para la carpeta Downloads del equipo
         home = Path.home()
-        home_str = str(home).rstrip("\\/")
+        home_str = str(home).rstrip("\\/").replace("\\", "/")
         if home_str not in ["", "/", "/data", "/root"]:
+            downloads_dir = home / "Downloads"
+            descargas_dir = home / "Descargas"
+            if downloads_dir.exists() and downloads_dir.is_dir():
+                add_candidate(downloads_dir)
+            elif descargas_dir.exists() and descargas_dir.is_dir():
+                add_candidate(descargas_dir)
+            elif not home_str.startswith("/"):
+                # En sistemas Desktop donde Downloads aún no exista pero el home sea de usuario válido
+                add_candidate(downloads_dir)
+
             for folder in ["Downloads", "Descargas", "Documents", "Documentos"]:
                 p = home / folder
                 if p.exists() and p.is_dir():
@@ -1015,7 +1415,7 @@ class AppState:
                                     "nombre": file.name,
                                     "ruta": resolved_str,
                                     "tamano_kb": round(stat.st_size / 1024, 1),
-                                    "fecha": datetime.fromtimestamp(stat.st_mtime).strftime("%d/%m/%Y %H:%M"),
+                                    "fecha": datetime.fromtimestamp(stat.st_mtime).strftime(FORMATO_FECHA_HORA),
                                     "timestamp": stat.st_mtime,
                                     "total_colegios": total_cols,
                                     "total_cursos": total_cur,

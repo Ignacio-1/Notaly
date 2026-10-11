@@ -32,6 +32,9 @@ from .constants import (
     K_NOMBRE,
     K_DIRECCION,
     K_HORARIOS,
+    K_HORARIO,
+    K_CLASES,
+    K_COMPORTAMIENTOS,
 )
 
 logger = logging.getLogger(__name__)
@@ -402,6 +405,19 @@ def fusionar_datos(datos_destino: dict, datos_origen: dict) -> dict:
                     stats["cursos_nuevos"] += 1
                     stats["alumnos_nuevos"] += len(curso_data.get(K_ALUMNOS, {}))
                 else:
+                    # Incorporar horario si el destino carece de él o está vacío
+                    hor_origen = (curso_data.get(K_HORARIO) or curso_data.get("horarios") or "").strip()
+                    if hor_origen and not (cursos_destino[nombre_curso].get(K_HORARIO) or "").strip():
+                        cursos_destino[nombre_curso][K_HORARIO] = hor_origen
+
+                    # Fusionar clases planificadas de forma no destructiva
+                    clases_destino = cursos_destino[nombre_curso].setdefault(K_CLASES, {})
+                    clases_origen = curso_data.get(K_CLASES, {})
+                    if isinstance(clases_origen, dict):
+                        for fecha, clase_info in clases_origen.items():
+                            if fecha not in clases_destino:
+                                clases_destino[fecha] = clase_info
+
                     # Curso ya existe: fusionar alumnos nuevos
                     alumnos_destino = cursos_destino[nombre_curso].setdefault(K_ALUMNOS, {})
                     alumnos_origen = curso_data.get(K_ALUMNOS, {})
@@ -412,22 +428,32 @@ def fusionar_datos(datos_destino: dict, datos_origen: dict) -> dict:
                     else:
                         max_id = 0
 
-                    # Obtener nombres existentes para evitar duplicados
-                    nombres_existentes = {
-                        al.get("nombre", "").strip().upper()
+                    # Mapear alumnos existentes por nombre para preservar y fusionar comportamientos
+                    alumnos_por_nombre_destino = {
+                        al.get("nombre", "").strip().upper(): al
                         for al in alumnos_destino.values()
                     }
 
                     for al_data in alumnos_origen.values():
                         nombre_alumno = al_data.get("nombre", "").strip().upper()
-                        if nombre_alumno and nombre_alumno in nombres_existentes:
-                            # Alumno con mismo nombre ya existe, no duplicar
+                        if nombre_alumno and nombre_alumno in alumnos_por_nombre_destino:
+                            # Alumno ya existe: incorporar comportamientos nuevos si existen
+                            al_dest = alumnos_por_nombre_destino[nombre_alumno]
+                            comps_dest = al_dest.setdefault(K_COMPORTAMIENTOS, [])
+                            ids_existentes = {c.get("id") for c in comps_dest if isinstance(c, dict) and "id" in c}
+                            for comp_origen in al_data.get(K_COMPORTAMIENTOS, []):
+                                if isinstance(comp_origen, dict):
+                                    c_id = comp_origen.get("id")
+                                    if not c_id or c_id not in ids_existentes:
+                                        comps_dest.append(comp_origen)
+                                        if c_id:
+                                            ids_existentes.add(c_id)
                             continue
                         max_id += 1
                         alumnos_destino[str(max_id)] = al_data
                         stats["alumnos_nuevos"] += 1
                         if nombre_alumno:
-                            nombres_existentes.add(nombre_alumno)
+                            alumnos_por_nombre_destino[nombre_alumno] = al_data
 
     logger.info(
         "Fusión completada: %d colegios, %d cursos, %d alumnos nuevos.",

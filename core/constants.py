@@ -20,6 +20,31 @@ K_NOMBRES_COLUMNAS = "nombres_columnas"
 K_ASISTENCIAS = "asistencias"
 K_DIRECCION = "direccion"
 K_HORARIOS = "horarios"
+K_HORARIO = "horario"
+K_CLASES = "clases"
+K_TEMA = "tema"
+K_COMPORTAMIENTOS = "comportamientos"
+K_FECHA = "fecha"
+K_TIPO = "tipo"
+K_SUBTIPO = "subtipo"
+K_OBSERVACION = "observacion"
+
+# --- Comportamientos de alumnos ---
+COMPORTAMIENTO_POSITIVO = "positivo"
+COMPORTAMIENTO_REGULAR = "regular"
+COMPORTAMIENTO_NEGATIVO = "negativo"
+COMPORTAMIENTOS_TIPOS = [COMPORTAMIENTO_POSITIVO, COMPORTAMIENTO_REGULAR, COMPORTAMIENTO_NEGATIVO]
+
+SUBTIPO_MERITORIA = "Meritoria"
+SUBTIPO_EJEMPLAR = "Ejemplar"
+SUBTIPOS_POSITIVOS = [SUBTIPO_MERITORIA, SUBTIPO_EJEMPLAR]
+
+SUBTIPO_REGULAR = "Regular"
+SUBTIPOS_REGULARES = [SUBTIPO_REGULAR]
+
+SUBTIPO_INADECUADO = "Inadecuado"
+SUBTIPO_GRAVE = "Grave"
+SUBTIPOS_NEGATIVOS = [SUBTIPO_INADECUADO, SUBTIPO_GRAVE]
 
 
 def formatear_nombre_completo(apellido: str, nombre: str = "") -> str:
@@ -99,3 +124,60 @@ def crear_trimestre_vacio() -> dict:
 def crear_trimestres_vacios() -> dict:
     """Crea y retorna la estructura de datos vacía para todos los trimestres."""
     return {trimestre: crear_trimestre_vacio() for trimestre in NOMBRES_TRIMESTRES}
+
+
+# --- Formatos estándar constitucionales de fecha y hora ---
+FORMATO_FECHA = "%d-%m-%Y"
+FORMATO_HORA = "%H:%M"
+FORMATO_FECHA_HORA = "%d-%m-%Y %H:%M"
+
+
+def formatear_fecha(fecha: str | None) -> str:
+    """
+    Normaliza y formatea cualquier fecha al formato constitucional 'dd-mm-aaaa'.
+    Acepta 'YYYY-MM-DD', 'DD/MM/YYYY', 'DD-MM-YYYY', etc.
+    Si la fecha es inválida o vacía, retorna la cadena original saneada.
+    """
+    if not fecha:
+        return ""
+    f_clean = str(fecha).strip()
+    if "-" in f_clean:
+        partes = f_clean.split("-")
+        if len(partes) == 3:
+            # Caso YYYY-MM-DD -> DD-MM-YYYY
+            if len(partes[0]) == 4 and len(partes[1]) == 2 and len(partes[2]) == 2:
+                return f"{partes[2]}-{partes[1]}-{partes[0]}"
+            # Caso DD-MM-YYYY
+            if len(partes[0]) == 2 and len(partes[1]) == 2 and len(partes[2]) == 4:
+                return f"{partes[0]}-{partes[1]}-{partes[2]}"
+    elif "/" in f_clean:
+        partes = f_clean.split("/")
+        if len(partes) == 3:
+            # Caso DD/MM/YYYY -> DD-MM-YYYY
+            if len(partes[0]) <= 2 and len(partes[2]) == 4:
+                return f"{int(partes[0]):02d}-{int(partes[1]):02d}-{partes[2]}"
+            # Caso YYYY/MM/DD -> DD-MM-YYYY
+            if len(partes[0]) == 4:
+                return f"{int(partes[2]):02d}-{int(partes[1]):02d}-{partes[0]}"
+    return f_clean
+
+
+def parsear_fecha_para_orden(fecha_str: str) -> tuple[int, int, int]:
+    """
+    Retorna una tupla (año, mes, día) para ordenamiento cronológico fiable,
+    admitiendo formatos 'dd-mm-aaaa' o 'yyyy-mm-dd'.
+    """
+    if not fecha_str:
+        return (0, 0, 0)
+    try:
+        partes = str(fecha_str).strip().replace("/", "-").split("-")
+        if len(partes) == 3:
+            if len(partes[0]) == 4:
+                # yyyy-mm-dd
+                return (int(partes[0]), int(partes[1]), int(partes[2]))
+            elif len(partes[2]) == 4:
+                # dd-mm-yyyy
+                return (int(partes[2]), int(partes[1]), int(partes[0]))
+    except Exception:
+        pass
+    return (0, 0, 0)

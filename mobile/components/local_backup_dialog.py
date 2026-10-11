@@ -1,6 +1,7 @@
 """
-Diálogo modal de Copia de Seguridad Local y Visualizador de Datos.
-Desarrollado para Flet Mobile (Android y PC) sin dependencias de servicios externos ni OAuth.
+Diálogo modal de Copia de Seguridad Local y Restauración.
+Diseñado para la experiencia de usuario común: interfaz simple, información justa y clara,
+con guardado automático en la carpeta Descargas del equipo y diseño Slate/Indigo unificado.
 """
 
 import json
@@ -8,34 +9,40 @@ import logging
 from pathlib import Path
 import flet as ft
 
-from core import gestor_datos
-from core.constants import K_COLEGIOS, K_CURSOS, K_ALUMNOS, K_NOMBRE
+from core.constants import K_COLEGIOS, K_CURSOS, K_ALUMNOS
 from mobile.state import AppState
-from mobile.theme import PRIMARY, TEXT_MAIN, TEXT_MUTED, BORDER_COLOR, BG_PAGE, SURFACE_WHITE
+from mobile.theme import PRIMARY, TEXT_MAIN, TEXT_MUTED, BORDER_COLOR, SURFACE_WHITE
 
 logger = logging.getLogger(__name__)
 
 
 class LocalBackupDialog(ft.AlertDialog):
-    """Diálogo interactivo para ver los datos, crear y restaurar copias de seguridad locales."""
+    """Diálogo interactivo simple y moderno para guardar y restaurar copias de seguridad locales."""
 
     def __init__(self, state: AppState, page: ft.Page, file_picker: ft.FilePicker | None = None):
         self.app_state = state
         self.app_page = page
         self.file_picker = file_picker
 
-        # Contenedor dinámico principal
+        # Contenedor dinámico de la pestaña activa
         self.tabs_content_container = ft.Container(expand=True)
 
-        # Selector de navegación por segmentos Material 3
+        # Selector de dos apartados: Guardar Copia y Restaurar
         self.tab_selector = ft.SegmentedButton(
-            selected=["datos"],
+            selected=["guardar"],
             allow_empty_selection=False,
             allow_multiple_selection=False,
             segments=[
-                ft.Segment(value="datos", label=ft.Text("Mis Datos", size=11), icon=ft.Icon(ft.Icons.ANALYTICS_OUTLINED, size=16)),
-                ft.Segment(value="crear", label=ft.Text("Crear Copia", size=11), icon=ft.Icon(ft.Icons.SAVE_ALT, size=16)),
-                ft.Segment(value="restaurar", label=ft.Text("Restaurar", size=11), icon=ft.Icon(ft.Icons.RESTORE_PAGE, size=16)),
+                ft.Segment(
+                    value="guardar",
+                    label=ft.Text("Guardar Copia", size=12, weight=ft.FontWeight.W_500),
+                    icon=ft.Icon(ft.Icons.SAVE_ALT, size=16),
+                ),
+                ft.Segment(
+                    value="restaurar",
+                    label=ft.Text("Restaurar", size=12, weight=ft.FontWeight.W_500),
+                    icon=ft.Icon(ft.Icons.SETTINGS_BACKUP_RESTORE_ROUNDED, size=16),
+                ),
             ],
             on_change=self._on_tab_changed,
         )
@@ -43,10 +50,11 @@ class LocalBackupDialog(ft.AlertDialog):
         super().__init__(
             title=ft.Row(
                 [
-                    ft.Icon(ft.Icons.FOLDER_SPECIAL, color=PRIMARY, size=26),
-                    ft.Text("Copias y Datos", weight=ft.FontWeight.BOLD, size=18, color=TEXT_MAIN),
+                    ft.Icon(ft.Icons.SETTINGS_BACKUP_RESTORE_ROUNDED, color=PRIMARY, size=24),
+                    ft.Text("Copia de Seguridad", weight=ft.FontWeight.BOLD, size=16, color=TEXT_MAIN),
                 ],
                 spacing=8,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
             ),
             content=ft.Container(
                 content=ft.Column(
@@ -58,8 +66,8 @@ class LocalBackupDialog(ft.AlertDialog):
                     tight=True,
                     spacing=8,
                 ),
-                width=370,
-                height=480,
+                width=360,
+                height=430,
             ),
             actions=[
                 ft.TextButton(
@@ -72,12 +80,12 @@ class LocalBackupDialog(ft.AlertDialog):
             modal=True,
         )
 
-        # Configurar callback de FilePicker si está disponible (compatibilidad)
+        # Configurar callback de FilePicker si está disponible
         if self.file_picker and hasattr(self.file_picker, "on_result"):
             self.file_picker.on_result = self._on_file_picker_result
 
-        # Renderizar pestaña inicial
-        self._mostrar_tab_mis_datos()
+        # Renderizar pestaña inicial: Guardar Copia
+        self._mostrar_tab_guardar()
 
     def _cerrar(self):
         self.open = False
@@ -99,18 +107,6 @@ class LocalBackupDialog(ft.AlertDialog):
         except Exception:
             pass
 
-    def _copiar_al_portapapeles(self, texto: str, mensaje_exito: str = "¡Copiado al portapapeles!"):
-        """Copia texto al portapapeles de forma compatible."""
-        try:
-            ft.Clipboard().set(texto)
-            self._mostrar_snackbar(mensaje_exito)
-        except Exception:
-            try:
-                self.app_page.set_clipboard(texto)
-                self._mostrar_snackbar(mensaje_exito)
-            except Exception as e:
-                self._mostrar_snackbar(f"No se pudo copiar automáticamente: {e}", error=True)
-
     def _run_async(self, async_fn, *args, **kwargs):
         """Ejecuta una función asíncrona de forma segura en el bucle de Flet o entorno síncrono."""
         if self.app_page and hasattr(self.app_page, "run_task"):
@@ -127,351 +123,98 @@ class LocalBackupDialog(ft.AlertDialog):
                 logger.error(f"No se pudo programar tarea asíncrona: {err}")
 
     def _on_tab_changed(self, e):
-        selected = list(self.tab_selector.selected) if self.tab_selector.selected else ["datos"]
-        val = selected[0] if selected else "datos"
-        if val == "datos":
-            self._mostrar_tab_mis_datos()
-        elif val == "crear":
-            self._mostrar_tab_crear_copia()
+        selected = list(self.tab_selector.selected) if self.tab_selector.selected else ["guardar"]
+        val = selected[0] if selected else "guardar"
+        if val in ["guardar", "crear", "datos"]:
+            self._mostrar_tab_guardar()
         elif val == "restaurar":
             self._mostrar_tab_restaurar()
 
-    # =========================================================================
-    # --- PESTAÑA 1: VISUALIZADOR DE DATOS (MIS DATOS) ---
-    # =========================================================================
+    # Compatibilidad hacia atrás
+    def _mostrar_tab_crear_copia(self):
+        self._mostrar_tab_guardar()
 
     def _mostrar_tab_mis_datos(self):
-        summary = self.app_state.get_data_summary()
-        colegios = self.app_state.data.get(K_COLEGIOS, {})
-
-        # Tarjetas de resumen rápido en cuadrícula
-        metric_cards = ft.Row(
-            [
-                ft.Container(
-                    bgcolor=ft.Colors.PRIMARY_CONTAINER,
-                    border_radius=8,
-                    padding=8,
-                    expand=True,
-                    content=ft.Column(
-                        [
-                            ft.Text(str(summary["total_colegios"]), size=18, weight=ft.FontWeight.BOLD, color=ft.Colors.ON_PRIMARY_CONTAINER),
-                            ft.Text("Instituciones", size=11, color=ft.Colors.ON_PRIMARY_CONTAINER),
-                        ],
-                        spacing=1,
-                        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                    ),
-                ),
-                ft.Container(
-                    bgcolor=ft.Colors.SECONDARY_CONTAINER,
-                    border_radius=8,
-                    padding=8,
-                    expand=True,
-                    content=ft.Column(
-                        [
-                            ft.Text(str(summary["total_cursos"]), size=18, weight=ft.FontWeight.BOLD, color=ft.Colors.ON_SECONDARY_CONTAINER),
-                            ft.Text("Cursos", size=11, color=ft.Colors.ON_SECONDARY_CONTAINER),
-                        ],
-                        spacing=1,
-                        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                    ),
-                ),
-                ft.Container(
-                    bgcolor=ft.Colors.TERTIARY_CONTAINER,
-                    border_radius=8,
-                    padding=8,
-                    expand=True,
-                    content=ft.Column(
-                        [
-                            ft.Text(str(summary["total_alumnos"]), size=18, weight=ft.FontWeight.BOLD, color=ft.Colors.ON_TERTIARY_CONTAINER),
-                            ft.Text("Alumnos", size=11, color=ft.Colors.ON_TERTIARY_CONTAINER),
-                        ],
-                        spacing=1,
-                        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                    ),
-                ),
-            ],
-            spacing=6,
-        )
-
-        # Información del archivo
-        info_file_card = ft.Container(
-            bgcolor=ft.Colors.SURFACE_CONTAINER_HIGH,
-            border_radius=8,
-            padding=ft.Padding(left=10, right=10, top=6, bottom=6),
-            content=ft.Row(
-                [
-                    ft.Icon(ft.Icons.INFO_OUTLINE, size=16, color=ft.Colors.SECONDARY),
-                    ft.Text(f"Tamaño: {summary['file_size_kb']} KB | Modificado: {summary['last_modified']}", size=11, color=ft.Colors.SECONDARY),
-                ],
-                spacing=6,
-                alignment=ft.MainAxisAlignment.CENTER,
-            ),
-        )
-
-        # Árbol jerárquico de instituciones y cursos
-        hierarchy_controls = []
-        if not colegios:
-            hierarchy_controls.append(
-                ft.Container(
-                    padding=20,
-                    alignment=ft.Alignment.CENTER,
-                    content=ft.Column(
-                        [
-                            ft.Icon(ft.Icons.INBOX, size=36, color=ft.Colors.GREY_400),
-                            ft.Text("No hay datos guardados aún.", size=13, color=ft.Colors.GREY_600),
-                        ],
-                        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                        spacing=4,
-                    ),
-                )
-            )
-        else:
-            for nom_col, col_data in colegios.items():
-                cursos = col_data.get(K_CURSOS, {})
-                curso_items = []
-                for nom_cur, cur_data in cursos.items():
-                    alumnos = cur_data.get(K_ALUMNOS, {})
-                    cant_alum = len(alumnos)
-
-                    nombres_preview = [
-                        al.get(K_NOMBRE, f"#{id_al}")
-                        for id_al, al in list(alumnos.items())[:4]
-                        if al.get(K_NOMBRE)
-                    ]
-                    txt_preview = ", ".join(nombres_preview)
-                    if len(alumnos) > 4:
-                        txt_preview += f" y {len(alumnos) - 4} más..."
-
-                    curso_items.append(
-                        ft.ListTile(
-                            leading=ft.Icon(ft.Icons.CLASS_, size=20, color=ft.Colors.PRIMARY),
-                            title=ft.Text(f"{nom_cur} ({cant_alum} alumno{'s' if cant_alum != 1 else ''})", size=13, weight=ft.FontWeight.W_500),
-                            subtitle=ft.Text(txt_preview, size=11, color=ft.Colors.SECONDARY, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS) if txt_preview else None,
-                            dense=True,
-                        )
-                    )
-
-                if not curso_items:
-                    curso_items.append(
-                        ft.Container(
-                            padding=ft.Padding(left=16, right=16, top=4, bottom=4),
-                            content=ft.Text("Sin cursos registrados", size=12, italic=True, color=ft.Colors.GREY_500),
-                        )
-                    )
-
-                tile = ft.ExpansionTile(
-                    leading=ft.Icon(ft.Icons.SCHOOL, color=ft.Colors.PRIMARY, size=22),
-                    title=ft.Text(nom_col, size=14, weight=ft.FontWeight.BOLD),
-                    subtitle=ft.Text(f"{len(cursos)} curso{'s' if len(cursos) != 1 else ''}", size=12, color=ft.Colors.SECONDARY),
-                    controls=curso_items,
-                    expanded=len(colegios) == 1,
-                )
-                hierarchy_controls.append(tile)
-
-        hierarchy_scroll = ft.ListView(
-            controls=hierarchy_controls,
-            expand=True,
-            spacing=4,
-        )
-
-        # Botón para ver JSON en crudo o copiar
-        btn_ver_json = ft.OutlinedButton(
-            "Ver JSON / Copiar Texto",
-            icon=ft.Icons.CODE,
-            width=360,
-            style=ft.ButtonStyle(
-                color=PRIMARY,
-                side=ft.BorderSide(1, PRIMARY),
-                shape=ft.RoundedRectangleBorder(radius=8),
-            ),
-            on_click=lambda e: self._abrir_visor_json(self.app_state.data),
-        )
-
-        self.tabs_content_container.content = ft.Column(
-            [
-                metric_cards,
-                info_file_card,
-                ft.Text("Explorador de Datos:", size=13, weight=ft.FontWeight.BOLD),
-                ft.Container(content=hierarchy_scroll, expand=True),
-                btn_ver_json,
-            ],
-            expand=True,
-            spacing=8,
-        )
-        try:
-            self.app_page.update()
-        except Exception:
-            pass
-
-    def _abrir_visor_json(self, datos: dict, titulo: str = "Contenido JSON"):
-        json_str = json.dumps(datos, ensure_ascii=False, indent=2)
-
-        def copiar_json(e):
-            self._copiar_al_portapapeles(json_str, "¡Datos JSON copiados al portapapeles!")
-
-        dlg = ft.AlertDialog(
-            title=ft.Text(titulo, weight=ft.FontWeight.BOLD, size=16, color=TEXT_MAIN),
-            content=ft.Container(
-                content=ft.Column(
-                    [
-                        ft.Text("Puedes copiar todo el texto para guardarlo o transferirlo:", size=12, color=TEXT_MUTED),
-                        ft.Container(
-                            bgcolor=BG_PAGE,
-                            border=ft.Border.all(1, BORDER_COLOR),
-                            border_radius=8,
-                            padding=8,
-                            expand=True,
-                            content=ft.TextField(
-                                value=json_str,
-                                multiline=True,
-                                read_only=True,
-                                text_size=11,
-                                border=ft.InputBorder.NONE,
-                                expand=True,
-                            ),
-                        ),
-                    ],
-                    tight=True,
-                    spacing=8,
-                ),
-                width=340,
-                height=320,
-            ),
-            actions=[
-                ft.OutlinedButton(
-                    "Copiar Todo",
-                    icon=ft.Icons.COPY,
-                    style=ft.ButtonStyle(color=PRIMARY, side=ft.BorderSide(1, PRIMARY), shape=ft.RoundedRectangleBorder(radius=8)),
-                    on_click=copiar_json,
-                ),
-                ft.FilledButton(
-                    "Cerrar",
-                    style=ft.ButtonStyle(bgcolor=PRIMARY, color=ft.Colors.WHITE, shape=ft.RoundedRectangleBorder(radius=8)),
-                    on_click=lambda e: (self.app_page.pop_dialog(), self.app_page.update()),
-                ),
-            ],
-            actions_alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-            modal=True,
-        )
-        self.app_page.show_dialog(dlg)
-        self.app_page.update()
+        self._mostrar_tab_guardar()
 
     # =========================================================================
-    # --- PESTAÑA 2: CREAR COPIA DE SEGURIDAD ---
+    # --- APARTADO 1: GUARDAR COPIA DE SEGURIDAD ---
     # =========================================================================
 
-    def _mostrar_tab_crear_copia(self):
+    def _mostrar_tab_guardar(self):
         summary = self.app_state.get_data_summary()
 
-        def ejecutar_creacion_copia(e):
+        def ejecutar_guardar_copia(e):
             exito, msg, path = self.app_state.create_local_backup()
             if exito:
-                self._mostrar_snackbar(f"¡Copia guardada con éxito en {Path(path).name}!")
-                # Cambiar a la pestaña de restaurar para verla listada
+                nombre_archivo = Path(path).name if path else "archivo .json"
+                self._mostrar_snackbar(f"¡Copia guardada con éxito en Descargas ({nombre_archivo})!")
                 self.tab_selector.selected = ["restaurar"]
                 self._mostrar_tab_restaurar()
             else:
                 self._mostrar_snackbar(msg, error=True)
 
-        async def exportar_archivo_picker(e):
-            if self.file_picker and hasattr(self.file_picker, "save_file"):
-                try:
-                    from datetime import datetime
-                    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-                    file_name = f"backup_notaly_{ts}.json"
-                    json_str = json.dumps(self.app_state.data, ensure_ascii=False, indent=2)
-                    json_bytes = json_str.encode("utf-8")
+        card_info = ft.Container(
+            bgcolor=SURFACE_WHITE,
+            border=ft.Border.all(1, BORDER_COLOR),
+            border_radius=12,
+            padding=14,
+            content=ft.Column(
+                [
+                    ft.Row(
+                        [
+                            ft.Icon(ft.Icons.FOLDER_SPECIAL_OUTLINED, color=PRIMARY, size=22),
+                            ft.Text("Guardar en Descargas", size=14, weight=ft.FontWeight.BOLD, color=TEXT_MAIN),
+                        ],
+                        spacing=8,
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                    ),
+                    ft.Text(
+                        "Se creará una copia de respaldo con todos tus colegios, cursos, notas y asistencias directamente en la carpeta Descargas de este equipo.",
+                        size=12,
+                        color=TEXT_MUTED,
+                    ),
+                    ft.Divider(height=12, color=BORDER_COLOR),
+                    ft.Text(f"• Instituciones registradas: {summary['total_colegios']}", size=12, color=TEXT_MAIN),
+                    ft.Text(f"• Cursos registrados: {summary['total_cursos']}", size=12, color=TEXT_MAIN),
+                    ft.Text(f"• Alumnos totales: {summary['total_alumnos']}", size=12, color=TEXT_MAIN),
+                ],
+                spacing=6,
+            ),
+        )
 
-                    guardado = await self.file_picker.save_file(
-                        dialog_title="Guardar copia de seguridad de Notaly",
-                        file_name=file_name,
-                        file_type=ft.FilePickerFileType.CUSTOM,
-                        allowed_extensions=["json"],
-                        src_bytes=json_bytes,
-                    )
-                    if guardado:
-                        self._mostrar_snackbar("¡Archivo exportado con éxito!")
-                except Exception as err:
-                    logger.error(f"Error al exportar archivo: {err}")
-                    self._mostrar_snackbar(f"Error al exportar archivo: {err}", error=True)
-            else:
-                self._mostrar_snackbar("Selector de archivos no disponible en esta sesión.", error=True)
+        btn_guardar = ft.FilledButton(
+            "Guardar Copia de Seguridad",
+            icon=ft.Icons.SAVE_ALT,
+            width=350,
+            height=44,
+            style=ft.ButtonStyle(
+                bgcolor=PRIMARY,
+                color=ft.Colors.WHITE,
+                shape=ft.RoundedRectangleBorder(radius=10),
+            ),
+            on_click=ejecutar_guardar_copia,
+        )
 
-        def copiar_datos_portapapeles(e):
-            json_str = json.dumps(self.app_state.data, ensure_ascii=False, indent=2)
-            self._copiar_al_portapapeles(json_str, "¡Copia completa copiada al portapapeles!")
+        nota_pie = ft.Container(
+            padding=ft.Padding(left=4, right=4, top=4, bottom=4),
+            content=ft.Text(
+                "La copia se guardará como un archivo .json en tu carpeta Descargas para que puedas conservarla o transferirla fácilmente.",
+                size=11,
+                color=TEXT_MUTED,
+                italic=True,
+            ),
+        )
 
         self.tabs_content_container.content = ft.Column(
             [
-                ft.Container(
-                    bgcolor=ft.Colors.SURFACE_CONTAINER_HIGH,
-                    border_radius=10,
-                    padding=14,
-                    content=ft.Column(
-                        [
-                            ft.Row(
-                                [
-                                    ft.Icon(ft.Icons.SECURITY_UPDATE_GOOD, color=ft.Colors.PRIMARY, size=28),
-                                    ft.Text("Respaldo Local Seguro", size=15, weight=ft.FontWeight.BOLD),
-                                ],
-                                spacing=8,
-                            ),
-                            ft.Text(
-                                "Genera un archivo .json con todas tus instituciones, cursos, notas y asistencias directamente en tu dispositivo.",
-                                size=12,
-                            ),
-                            ft.Divider(height=12),
-                            ft.Text(f"• Instituciones a respaldar: {summary['total_colegios']}", size=12),
-                            ft.Text(f"• Cursos a respaldar: {summary['total_cursos']}", size=12),
-                            ft.Text(f"• Alumnos totales: {summary['total_alumnos']}", size=12),
-                        ],
-                        spacing=6,
-                    ),
-                ),
-                ft.Container(height=6),
-                ft.FilledButton(
-                    "Crear Copia de Seguridad",
-                    icon=ft.Icons.DOWNLOAD,
-                    width=360,
-                    height=45,
-                    style=ft.ButtonStyle(
-                        bgcolor=PRIMARY,
-                        color=ft.Colors.WHITE,
-                        shape=ft.RoundedRectangleBorder(radius=8),
-                    ),
-                    on_click=ejecutar_creacion_copia,
-                ),
-                ft.OutlinedButton(
-                    "Exportar con Selector del Sistema",
-                    icon=ft.Icons.DRIVE_FILE_MOVE,
-                    width=360,
-                    style=ft.ButtonStyle(
-                        color=TEXT_MAIN,
-                        side=ft.BorderSide(1, BORDER_COLOR),
-                        shape=ft.RoundedRectangleBorder(radius=8),
-                    ),
-                    on_click=lambda e: self._run_async(exportar_archivo_picker, e),
-                ),
-                ft.OutlinedButton(
-                    "Copiar Datos al Portapapeles",
-                    icon=ft.Icons.COPY,
-                    width=360,
-                    style=ft.ButtonStyle(
-                        color=TEXT_MAIN,
-                        side=ft.BorderSide(1, BORDER_COLOR),
-                        shape=ft.RoundedRectangleBorder(radius=8),
-                    ),
-                    on_click=copiar_datos_portapapeles,
-                ),
-                ft.Container(height=4),
-                ft.Text(
-                    "Consejo: Las copias se guardan en tu dispositivo para que puedas transferirlas o restaurarlas en cualquier momento desde la pestaña 'Restaurar'.",
-                    size=11,
-                    color=TEXT_MUTED,
-                    italic=True,
-                ),
+                card_info,
+                ft.Container(height=8),
+                btn_guardar,
+                nota_pie,
             ],
             spacing=6,
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
         )
         try:
             self.app_page.update()
@@ -479,7 +222,7 @@ class LocalBackupDialog(ft.AlertDialog):
             pass
 
     # =========================================================================
-    # --- PESTAÑA 3: RESTAURAR E IMPORTAR ---
+    # --- APARTADO 2: RESTAURAR COPIA DE SEGURIDAD ---
     # =========================================================================
 
     def _mostrar_tab_restaurar(self):
@@ -489,12 +232,13 @@ class LocalBackupDialog(ft.AlertDialog):
         if not backups:
             backup_cards.append(
                 ft.Container(
-                    padding=16,
+                    padding=24,
                     alignment=ft.Alignment.CENTER,
                     content=ft.Column(
                         [
-                            ft.Icon(ft.Icons.SEARCH_OFF, size=32, color="#94A3B8"),
+                            ft.Icon(ft.Icons.INBOX_OUTLINED, size=36, color=TEXT_MUTED),
                             ft.Text("No se encontraron copias en Descargas.", size=12, color=TEXT_MUTED),
+                            ft.Text("Puedes seleccionar una copia manualmente con el botón de abajo.", size=11, color=TEXT_MUTED),
                         ],
                         horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                         spacing=4,
@@ -515,10 +259,10 @@ class LocalBackupDialog(ft.AlertDialog):
                     border=ft.Border.all(1, BORDER_COLOR),
                     border_radius=12,
                     margin=ft.Margin(left=0, right=0, top=0, bottom=4),
-                    padding=ft.Padding(left=10, right=6, top=8, bottom=8),
+                    padding=ft.Padding(left=10, right=8, top=8, bottom=8),
                     content=ft.Row(
                         [
-                            ft.Icon(ft.Icons.DESCRIPTION, color=PRIMARY, size=24),
+                            ft.Icon(ft.Icons.DESCRIPTION_OUTLINED, color=PRIMARY, size=22),
                             ft.Column(
                                 [
                                     ft.Text(nom, size=12, weight=ft.FontWeight.BOLD, color=TEXT_MAIN, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS),
@@ -527,13 +271,6 @@ class LocalBackupDialog(ft.AlertDialog):
                                 spacing=2,
                                 expand=True,
                             ),
-                            ft.IconButton(
-                                icon=ft.Icons.VISIBILITY,
-                                icon_size=20,
-                                icon_color=TEXT_MUTED,
-                                tooltip="Ver contenido",
-                                on_click=lambda e, data=b["datos"], name=nom: self._abrir_visor_json(data, f"Copia: {name}"),
-                            ),
                             ft.FilledButton(
                                 "Restaurar",
                                 height=32,
@@ -541,7 +278,7 @@ class LocalBackupDialog(ft.AlertDialog):
                                     bgcolor=PRIMARY,
                                     color=ft.Colors.WHITE,
                                     shape=ft.RoundedRectangleBorder(radius=8),
-                                    padding=ft.Padding(left=8, right=8, top=0, bottom=0),
+                                    padding=ft.Padding(left=10, right=10, top=0, bottom=0),
                                 ),
                                 on_click=lambda e, data=b["datos"]: self._mostrar_opciones_restauracion(data),
                             ),
@@ -579,7 +316,7 @@ class LocalBackupDialog(ft.AlertDialog):
             [
                 ft.Row(
                     [
-                        ft.Text("Copias encontradas en el celular:", size=13, weight=ft.FontWeight.BOLD, color=TEXT_MAIN),
+                        ft.Text("Copias disponibles en Descargas:", size=13, weight=ft.FontWeight.BOLD, color=TEXT_MAIN),
                         ft.IconButton(
                             icon=ft.Icons.REFRESH,
                             icon_size=18,
@@ -591,15 +328,16 @@ class LocalBackupDialog(ft.AlertDialog):
                     alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                 ),
                 ft.Container(content=lista_backups, expand=True),
-                ft.Divider(height=8, color=BORDER_COLOR),
+                ft.Divider(height=6, color=BORDER_COLOR),
                 ft.OutlinedButton(
-                    "Seleccionar Archivo .JSON Externo",
-                    icon=ft.Icons.FILE_OPEN,
-                    width=360,
+                    "Seleccionar archivo de copia (.json)",
+                    icon=ft.Icons.FILE_OPEN_OUTLINED,
+                    width=350,
+                    height=40,
                     style=ft.ButtonStyle(
                         color=PRIMARY,
                         side=ft.BorderSide(1, PRIMARY),
-                        shape=ft.RoundedRectangleBorder(radius=8),
+                        shape=ft.RoundedRectangleBorder(radius=10),
                     ),
                     on_click=lambda e: self._run_async(abrir_selector_archivo, e),
                 ),
@@ -613,7 +351,7 @@ class LocalBackupDialog(ft.AlertDialog):
             pass
 
     def _procesar_archivo_seleccionado(self, picked_file):
-        """Procesa el archivo seleccionado desde el FilePicker del sistema (ruta o bytes)."""
+        """Procesa el archivo seleccionado desde el selector del sistema."""
         if not picked_file:
             return
 
@@ -652,7 +390,7 @@ class LocalBackupDialog(ft.AlertDialog):
             self._procesar_archivo_seleccionado(e)
 
     def _mostrar_opciones_restauracion(self, datos_a_importar: dict):
-        """Muestra el diálogo de decisión: Combinar Datos vs Reemplazar Todo."""
+        """Muestra el diálogo de decisión de restauración: Combinar Datos vs Reemplazar Todo."""
         colegios = datos_a_importar.get(K_COLEGIOS, {})
         num_colegios = len(colegios)
         num_cursos = sum(len(col.get(K_CURSOS, {})) for col in colegios.values())
@@ -666,24 +404,30 @@ class LocalBackupDialog(ft.AlertDialog):
             self.app_page.pop_dialog()
             exito, msg, stats = self.app_state.import_backup_data(datos_a_importar, mode=modo)
             if exito:
-                self._mostrar_snackbar(msg)
-                # Volver a tab 0 (Mis Datos)
-                self.tab_selector.selected = ["datos"]
-                self._mostrar_tab_mis_datos()
+                self._mostrar_snackbar("Datos restaurados con éxito.")
+                self.tab_selector.selected = ["guardar"]
+                self._mostrar_tab_guardar()
             else:
                 self._mostrar_snackbar(msg, error=True)
 
         dlg_confirm = ft.AlertDialog(
-            title=ft.Text("Confirmar Restauración", weight=ft.FontWeight.BOLD, size=16, color=TEXT_MAIN),
+            title=ft.Row(
+                [
+                    ft.Icon(ft.Icons.RESTORE_ROUNDED, color=PRIMARY, size=22),
+                    ft.Text("Confirmar Restauración", weight=ft.FontWeight.BOLD, size=16, color=TEXT_MAIN),
+                ],
+                spacing=8,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            ),
             content=ft.Column(
                 [
-                    ft.Text(f"Datos detectados en la copia:", size=13, weight=ft.FontWeight.W_500, color=TEXT_MAIN),
+                    ft.Text("Datos detectados en la copia:", size=13, weight=ft.FontWeight.W_500, color=TEXT_MAIN),
                     ft.Text(f"• Instituciones: {num_colegios}\n• Cursos: {num_cursos}\n• Alumnos: {num_alumnos}", size=12, color=TEXT_MUTED),
                     ft.Divider(height=12, color=BORDER_COLOR),
-                    ft.Text("¿Cómo deseas aplicar esta copia de seguridad?", size=13, weight=ft.FontWeight.BOLD, color=TEXT_MAIN),
+                    ft.Text("¿Cómo deseas aplicar esta copia?", size=13, weight=ft.FontWeight.BOLD, color=TEXT_MAIN),
                     ft.Text(
-                        "• Combinar Datos: Conserva lo que tienes actualmente y añade los colegios y alumnos nuevos de la copia.\n"
-                        "• Reemplazar Todo: Borra los datos actuales y deja exactamente la copia seleccionada.",
+                        "• Combinar Datos: Conserva lo que tienes actualmente y añade las instituciones y alumnos de la copia.\n"
+                        "• Reemplazar Todo: Reemplaza todos los datos actuales por los de la copia.",
                         size=11,
                         color=TEXT_MUTED,
                     ),
@@ -700,7 +444,7 @@ class LocalBackupDialog(ft.AlertDialog):
                 ),
                 ft.OutlinedButton(
                     "Combinar Datos",
-                    icon=ft.Icons.MERGE,
+                    icon=ft.Icons.MERGE_TYPE_ROUNDED,
                     style=ft.ButtonStyle(
                         color=PRIMARY,
                         side=ft.BorderSide(1, PRIMARY),
@@ -710,7 +454,7 @@ class LocalBackupDialog(ft.AlertDialog):
                 ),
                 ft.FilledButton(
                     "Reemplazar Todo",
-                    icon=ft.Icons.RESTORE,
+                    icon=ft.Icons.RESTORE_ROUNDED,
                     style=ft.ButtonStyle(
                         bgcolor=PRIMARY,
                         color=ft.Colors.WHITE,

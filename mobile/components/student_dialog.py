@@ -449,6 +449,15 @@ class CreateCursoDialog(ft.AlertDialog):
             bgcolor=BG_PAGE,
             border_color=BORDER_COLOR,
         )
+        self.txt_horario = ft.TextField(
+            label="Horario del curso (opcional)",
+            hint_text="Ej: lun a vie 12:00 a 12:40 última hora",
+            prefix_icon=ft.Icons.ACCESS_TIME_ROUNDED,
+            dense=True,
+            border_radius=10,
+            bgcolor=BG_PAGE,
+            border_color=BORDER_COLOR,
+        )
         self.lbl_error = ft.Text("", color=ft.Colors.ERROR, size=12, visible=False)
 
         super().__init__(
@@ -457,6 +466,7 @@ class CreateCursoDialog(ft.AlertDialog):
                 [
                     self.txt_nombre,
                     self.txt_cantidad,
+                    self.txt_horario,
                     self.lbl_error,
                 ],
                 tight=True,
@@ -516,7 +526,11 @@ class CreateCursoDialog(ft.AlertDialog):
                     self.app_page.update()
                 return
 
-        self.on_confirm(nom, cant)
+        hor = (self.txt_horario.value or "").strip()
+        try:
+            self.on_confirm(nom, cant, hor)
+        except TypeError:
+            self.on_confirm(nom, cant)
         self._cerrar()
 
     def _cerrar(self):

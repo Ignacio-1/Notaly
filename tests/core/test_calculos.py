@@ -497,4 +497,31 @@ def test_estadisticas_colegio_todos_pendientes():
     assert stats["promedio_colegio"] is None
 
 
+def test_estadisticas_curso_alumnos_con_nombre_pila():
+    """Verifica que obtener_estadisticas_curso resuelva el nombre con K_APELLIDO y K_NOMBRE_PILA sin error de K_NOMBRE_PILA no definido."""
+    curso_data = {
+        K_ALUMNOS: {
+            "1": {
+                K_APELLIDO: "Gómez",
+                K_NOMBRE_PILA: "Martín",
+                # Sin clave K_NOMBRE
+                K_TRIMESTRES: {
+                    TRIM_1: {K_PRINCIPALES: [8, 9], K_EXTRAS: [], K_RECUPERATORIO: None}
+                }
+            },
+            "2": {
+                # Sin ningún nombre ni apellido
+                K_TRIMESTRES: {
+                    TRIM_1: {K_PRINCIPALES: [7, 7], K_EXTRAS: [], K_RECUPERATORIO: None}
+                }
+            }
+        }
+    }
+    stats = obtener_estadisticas_curso(curso_data, periodo_idx=0)
+    assert stats["total_alumnos"] == 2
+    assert stats["alumnos_detalle"][0]["nombre"] == "Gómez, Martín"
+    assert stats["alumnos_detalle"][1]["nombre"] == "Alumno #2"
+
+
+
 

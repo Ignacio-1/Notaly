@@ -18,7 +18,22 @@ from .constants import (
     K_APELLIDO,
     K_NOMBRE_PILA,
     K_TRIMESTRES,
+    K_COMPORTAMIENTOS,
+    K_FECHA,
+    K_TIPO,
+    K_SUBTIPO,
+    K_OBSERVACION,
+    COMPORTAMIENTO_POSITIVO,
+    COMPORTAMIENTO_REGULAR,
+    COMPORTAMIENTO_NEGATIVO,
+    SUBTIPO_MERITORIA,
+    SUBTIPO_EJEMPLAR,
+    SUBTIPO_REGULAR,
+    SUBTIPO_INADECUADO,
+    SUBTIPO_GRAVE,
     formatear_nombre_completo,
+    formatear_fecha,
+    parsear_fecha_para_orden,
 )
 
 
@@ -446,6 +461,129 @@ def obtener_estadisticas_colegio(colegio_data: dict, periodo_idx: int = 0) -> di
         "pendientes_pct": pendientes_pct,
         "promedio_colegio": promedio_colegio,
         "por_curso": por_curso,
+    }
+
+
+def procesar_estadisticas_comportamiento(alumnos: dict) -> dict:
+    """
+    Función pura que totaliza y estructura analíticas sobre las observaciones
+    de comportamiento registradas para un conjunto de alumnos.
+
+    Args:
+        alumnos: Diccionario {id_str: datos_alumno_dict}.
+
+    Returns:
+        Diccionario estructurado con:
+        - total_observaciones: int
+        - totales_por_tipo: {"positivo": int, "regular": int, "negativo": int}
+        - porcentajes_por_tipo: {"positivo": float, "regular": float, "negativo": float}
+        - totales_por_subtipo: {"Meritoria": int, "Ejemplar": int, "Regular": int, "Inadecuado": int, "Grave": int}
+        - alumnos_por_tipo: {
+            "positivo": list[dict],
+            "regular": list[dict],
+            "negativo": list[dict]
+          }
+        - todos_los_alumnos: list[dict]  # Alumnos que poseen al menos una observación
+    """
+    if not isinstance(alumnos, dict):
+        alumnos = {}
+
+    totales_tipo = {
+        COMPORTAMIENTO_POSITIVO: 0,
+        COMPORTAMIENTO_REGULAR: 0,
+        COMPORTAMIENTO_NEGATIVO: 0,
+    }
+    totales_subtipo = {
+        SUBTIPO_MERITORIA: 0,
+        SUBTIPO_EJEMPLAR: 0,
+        SUBTIPO_REGULAR: 0,
+        SUBTIPO_INADECUADO: 0,
+        SUBTIPO_GRAVE: 0,
+    }
+
+    alumnos_por_tipo = {
+        COMPORTAMIENTO_POSITIVO: [],
+        COMPORTAMIENTO_REGULAR: [],
+        COMPORTAMIENTO_NEGATIVO: [],
+    }
+    todos_alumnos_con_obs = []
+    total_observaciones = 0
+
+    # Ordenar alumnos por ID numérico para consistencia
+    sorted_ids = sorted(alumnos.keys(), key=lambda x: int(x) if str(x).isdigit() else 9999)
+
+    for al_id in sorted_ids:
+        al_data = alumnos.get(al_id)
+        if not isinstance(al_data, dict):
+            continue
+        nombre = al_data.get(K_NOMBRE, f"Alumno #{al_id}")
+        raw_obs = al_data.get(K_COMPORTAMIENTOS, [])
+        if not isinstance(raw_obs, list):
+            raw_obs = []
+
+        obs_alumno = []
+        for o in raw_obs:
+            if not isinstance(o, dict):
+                continue
+            tipo = str(o.get(K_TIPO, "")).lower().strip()
+            subtipo = str(o.get(K_SUBTIPO, "")).strip()
+            fecha = formatear_fecha(str(o.get(K_FECHA, "")).strip())
+            observacion = str(o.get(K_OBSERVACION, "")).strip()
+            obs_id = str(o.get("id", "")).strip()
+
+            if tipo in totales_tipo:
+                totales_tipo[tipo] += 1
+            if subtipo in totales_subtipo:
+                totales_subtipo[subtipo] += 1
+
+            total_observaciones += 1
+            obs_alumno.append({
+                "id": obs_id,
+                "fecha": fecha,
+                "tipo": tipo,
+                "subtipo": subtipo,
+                "observacion": observacion,
+            })
+
+        # Ordenar observaciones del alumno: cronológico descendente (más recientes primero)
+        obs_alumno.sort(key=lambda x: parsear_fecha_para_orden(x.get("fecha", "")), reverse=True)
+
+        if obs_alumno:
+            entry = {
+                "id": str(al_id),
+                "nombre": nombre,
+                "total": len(obs_alumno),
+                "observaciones": obs_alumno,
+                "conteo_tipo": {
+                    COMPORTAMIENTO_POSITIVO: sum(1 for o in obs_alumno if o["tipo"] == COMPORTAMIENTO_POSITIVO),
+                    COMPORTAMIENTO_REGULAR: sum(1 for o in obs_alumno if o["tipo"] == COMPORTAMIENTO_REGULAR),
+                    COMPORTAMIENTO_NEGATIVO: sum(1 for o in obs_alumno if o["tipo"] == COMPORTAMIENTO_NEGATIVO),
+                },
+            }
+            todos_alumnos_con_obs.append(entry)
+
+            if entry["conteo_tipo"][COMPORTAMIENTO_POSITIVO] > 0:
+                alumnos_por_tipo[COMPORTAMIENTO_POSITIVO].append(entry)
+            if entry["conteo_tipo"][COMPORTAMIENTO_REGULAR] > 0:
+                alumnos_por_tipo[COMPORTAMIENTO_REGULAR].append(entry)
+            if entry["conteo_tipo"][COMPORTAMIENTO_NEGATIVO] > 0:
+                alumnos_por_tipo[COMPORTAMIENTO_NEGATIVO].append(entry)
+
+    pct_pos = round((totales_tipo[COMPORTAMIENTO_POSITIVO] / total_observaciones) * 100, 1) if total_observaciones > 0 else 0.0
+    pct_reg = round((totales_tipo[COMPORTAMIENTO_REGULAR] / total_observaciones) * 100, 1) if total_observaciones > 0 else 0.0
+    pct_neg = round((totales_tipo[COMPORTAMIENTO_NEGATIVO] / total_observaciones) * 100, 1) if total_observaciones > 0 else 0.0
+
+    return {
+        "total_observaciones": total_observaciones,
+        "totales_por_tipo": totales_tipo,
+        "porcentajes_por_tipo": {
+            COMPORTAMIENTO_POSITIVO: pct_pos,
+            COMPORTAMIENTO_REGULAR: pct_reg,
+            COMPORTAMIENTO_NEGATIVO: pct_neg,
+        },
+        "totales_por_subtipo": totales_subtipo,
+        "alumnos_por_tipo": alumnos_por_tipo,
+        "todos_los_alumnos": todos_alumnos_con_obs,
     }
 
 

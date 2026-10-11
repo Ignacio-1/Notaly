@@ -239,3 +239,81 @@ def test_fusionar_datos_preserva_y_asigna_direccion_y_horarios():
     assert datos_destino[K_COLEGIOS]["Colegio Nuevo Total"][K_DIRECCION] == "Mitre 100"
     assert datos_destino[K_COLEGIOS]["Colegio Nuevo Total"][K_HORARIOS] == "Sábados 8:00 - 12:00"
 
+
+def test_constantes_planificacion_y_horario():
+    """Verifica las constantes de horario y planificación de clases."""
+    from core.constants import K_HORARIO, K_CLASES, K_TEMA
+    assert K_HORARIO == "horario"
+    assert K_CLASES == "clases"
+    assert K_TEMA == "tema"
+
+
+def test_fusionar_datos_preserva_y_asigna_horario_y_clases_curso():
+    """
+    Prueba que fusionar_datos incorpore horario y clases si el destino no los tiene,
+    y preserve sin sobreescribir los datos preexistentes.
+    """
+    from core.constants import K_HORARIO, K_CLASES, K_TEMA, K_ALUMNOS
+
+    datos_destino = {
+        K_COLEGIOS: {
+            "Colegio A": {
+                K_CURSOS: {
+                    "1A": {
+                        K_ALUMNOS: {},
+                        K_HORARIO: "",
+                        K_CLASES: {
+                            "2026-03-10": {K_TEMA: "Tema original destino"}
+                        }
+                    },
+                    "2B": {
+                        K_ALUMNOS: {},
+                        K_HORARIO: "Lun 08:00 - 10:00",
+                        K_CLASES: {}
+                    }
+                }
+            }
+        }
+    }
+
+    datos_origen = {
+        K_COLEGIOS: {
+            "Colegio A": {
+                K_CURSOS: {
+                    "1A": {
+                        K_ALUMNOS: {},
+                        K_HORARIO: "Mar 10:00 - 12:00",
+                        K_CLASES: {
+                            "2026-03-10": {K_TEMA: "Tema origen que no debe pisar"},
+                            "2026-03-15": {K_TEMA: "Nuevo tema origen"}
+                        }
+                    },
+                    "2B": {
+                        K_ALUMNOS: {},
+                        K_HORARIO: "Horario origen que no debe pisar",
+                        K_CLASES: {
+                            "2026-04-01": {K_TEMA: "Clase en 2B"}
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    stats = gestor_datos.fusionar_datos(datos_destino, datos_origen)
+
+    curso_1a = datos_destino[K_COLEGIOS]["Colegio A"][K_CURSOS]["1A"]
+    # 1A tenía horario vacío, adquiere el de origen
+    assert curso_1a[K_HORARIO] == "Mar 10:00 - 12:00"
+    # 1A conserva clase existente del 2026-03-10
+    assert curso_1a[K_CLASES]["2026-03-10"][K_TEMA] == "Tema original destino"
+    # 1A incorpora la nueva clase del 2026-03-15
+    assert curso_1a[K_CLASES]["2026-03-15"][K_TEMA] == "Nuevo tema origen"
+
+    curso_2b = datos_destino[K_COLEGIOS]["Colegio A"][K_CURSOS]["2B"]
+    # 2B tenía horario, no se sobreescribe
+    assert curso_2b[K_HORARIO] == "Lun 08:00 - 10:00"
+    # 2B incorpora la clase del origen
+    assert curso_2b[K_CLASES]["2026-04-01"][K_TEMA] == "Clase en 2B"
+
+

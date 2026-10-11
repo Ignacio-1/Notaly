@@ -137,6 +137,12 @@ def main(page: ft.Page):
         center_title=False,
         bgcolor=SURFACE_WHITE,
         actions=[
+            ft.IconButton(
+                icon=ft.Icons.SETTINGS_BACKUP_RESTORE_ROUNDED,
+                tooltip="Copia de Seguridad",
+                icon_color=PRIMARY,
+                on_click=lambda e: abrir_modal_copias(),
+            ),
             ft.PopupMenuButton(
                 icon=ft.Icons.MORE_VERT,
                 icon_color=TEXT_MUTED,
@@ -145,11 +151,6 @@ def main(page: ft.Page):
                         icon=ft.Icons.INSIGHTS,
                         content=ft.Text("Estadísticas"),
                         on_click=lambda e: abrir_estadisticas_global(),
-                    ),
-                    ft.PopupMenuItem(
-                        icon=ft.Icons.STORAGE_ROUNDED,
-                        content=ft.Text("Copias de Seguridad y Datos"),
-                        on_click=lambda e: abrir_modal_copias(),
                     ),
                     ft.PopupMenuItem(
                         icon=ft.Icons.INFO_OUTLINE,

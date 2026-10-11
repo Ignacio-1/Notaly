@@ -14,6 +14,8 @@ from mobile.components.student_dialog import (
     StudentFormDialog,
 )
 from mobile.components.export_dialog import ExportDialog
+from mobile.components.planificacion_dialog import PlanificacionCursoDialog
+from mobile.components.comportamiento_dialog import ComportamientoDialog
 from mobile.components.ui_header import (
     build_app_header,
     build_module_tabs,
@@ -200,12 +202,25 @@ class NotasView(ft.Container):
             title=curso,
             on_back=self._accion_volver,
             status_indicator=self.save_indicator,
-            trailing=ft.IconButton(
-                icon=ft.Icons.INSIGHTS,
-                tooltip="Estadísticas del Curso",
-                icon_color=PRIMARY,
-                icon_size=20,
-                on_click=lambda _: self._abrir_estadisticas_curso(),
+            trailing=ft.Row(
+                spacing=4,
+                tight=True,
+                controls=[
+                    ft.IconButton(
+                        icon=ft.Icons.EDIT_CALENDAR,
+                        tooltip="Planificación de Clases",
+                        icon_color=PRIMARY,
+                        icon_size=20,
+                        on_click=lambda _: self._abrir_planificacion_curso(),
+                    ),
+                    ft.IconButton(
+                        icon=ft.Icons.INSIGHTS,
+                        tooltip="Estadísticas del Curso",
+                        icon_color=PRIMARY,
+                        icon_size=20,
+                        on_click=lambda _: self._abrir_estadisticas_curso(),
+                    ),
+                ],
             ),
         )
 
@@ -967,6 +982,42 @@ class NotasView(ft.Container):
                 ],
             )
 
+            # 4. Acceso y resumen del sistema de calificación de comportamiento
+            colegio_activo = self.state.selected_colegio or ""
+            curso_activo = self.state.selected_curso or ""
+            comps_alumno = self.state.get_comportamientos_alumno(id_str, colegio_activo, curso_activo)
+            cant_comps = len(comps_alumno)
+            texto_resumen_comp = f"{cant_comps} observación{'es' if cant_comps != 1 else ''}" if cant_comps > 0 else "Sin observaciones"
+            lbl_resumen_comp = ft.Text(texto_resumen_comp, size=11, color=TEXT_MUTED)
+
+            btn_comportamiento = ft.OutlinedButton(
+                icon=ft.Icons.RULE,
+                content=ft.Text("Comportamiento", size=12, weight=ft.FontWeight.BOLD),
+                style=ft.ButtonStyle(
+                    color=PRIMARY,
+                    shape=ft.RoundedRectangleBorder(radius=8),
+                    padding=ft.Padding(left=12, right=12, top=6, bottom=6),
+                ),
+                on_click=lambda _, sid=id_str, nom=nombre_al: self._abrir_modal_comportamiento(sid, nom),
+            )
+
+            fila_comportamiento = ft.Container(
+                bgcolor="#F8FAFC",
+                border=ft.Border.all(1, BORDER_COLOR),
+                border_radius=8,
+                padding=ft.Padding(left=10, right=10, top=6, bottom=6),
+                content=ft.Row(
+                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                    controls=[
+                        btn_comportamiento,
+                        lbl_resumen_comp,
+                    ],
+                ),
+            )
+
+            self.alumnos_celdas[id_str]["lbl_resumen_comp"] = lbl_resumen_comp
+
             expanded_content = ft.Container(
                 visible=(is_open and not es_modo_anual),
                 padding=ft.Padding(left=12, right=12, top=10, bottom=12),
@@ -978,6 +1029,7 @@ class NotasView(ft.Container):
                         selector_trim_local,
                         ft.Row(spacing=6, controls=slots_widgets),
                         resumen_trimestre_row,
+                        fila_comportamiento,
                     ],
                 ),
             )
@@ -1566,6 +1618,60 @@ class NotasView(ft.Container):
         self.state.origen_pantalla = "notas"
         self.state.estadisticas_nivel = "curso"
         self.on_navigate("estadisticas")
+
+    def _abrir_planificacion_curso(self):
+        colegio = self.state.selected_colegio or ""
+        curso = self.state.selected_curso or ""
+        dlg = PlanificacionCursoDialog(
+            state=self.state,
+            colegio=colegio,
+            curso=curso,
+            on_close=lambda: None,
+            page=self.app_page,
+        )
+        self.app_page.show_dialog(dlg)
+        self.app_page.update()
+
+    def _abrir_modal_comportamiento(self, id_al: str, nombre_al: str):
+        """Abre el diálogo modal de calificación de comportamiento sin reiniciar scroll."""
+        colegio = self.state.selected_colegio or ""
+        curso = self.state.selected_curso or ""
+
+        def on_close():
+            self._actualizar_resumen_comportamiento_ui(id_al)
+
+        dlg = ComportamientoDialog(
+            state=self.state,
+            id_alumno=id_al,
+            nombre_alumno=nombre_al,
+            colegio=colegio,
+            curso=curso,
+            on_close=on_close,
+            page=self.app_page,
+        )
+        self.app_page.show_dialog(dlg)
+        self.app_page.update()
+
+    def _actualizar_resumen_comportamiento_ui(self, id_al: str):
+        """Actualiza in-place el texto descriptivo de comportamiento del alumno preservando el scroll."""
+        id_str = str(id_al)
+        if hasattr(self, "alumnos_celdas") and id_str in self.alumnos_celdas:
+            if "lbl_resumen_comp" in self.alumnos_celdas[id_str]:
+                colegio = self.state.selected_colegio or ""
+                curso = self.state.selected_curso or ""
+                comps = self.state.get_comportamientos_alumno(id_str, colegio, curso)
+                cant = len(comps)
+                txt = f"{cant} observación{'es' if cant != 1 else ''}" if cant > 0 else "Sin observaciones"
+                lbl = self.alumnos_celdas[id_str]["lbl_resumen_comp"]
+                lbl.value = txt
+                try:
+                    lbl.update()
+                except Exception:
+                    if hasattr(self, "app_page") and self.app_page:
+                        try:
+                            self.app_page.update()
+                        except Exception:
+                            pass
 
     def _preguntar_guardar_antes_de_salir(self, destino: str):
         def cerrar_dialogo():

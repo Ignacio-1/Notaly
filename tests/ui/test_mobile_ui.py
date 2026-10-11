@@ -993,7 +993,7 @@ def test_estadisticas_view_render_colegio(isolated_app_state, mock_page_mobile):
     assert view.kpi_container.content is not None
     assert view.donut_container.content is not None
     assert view.dynamic_content_container.content is not None
-    assert len(view.list_view.controls) == 5
+    assert len(view.list_view.controls) == 7
 
 
 def test_estadisticas_view_render_curso(isolated_app_state, mock_page_mobile):
@@ -1196,3 +1196,213 @@ def test_colegios_view_modales_crear_y_editar(isolated_app_state, mock_page_mobi
     assert dlg_edit.txt_nombre.value == "Colegio San Martín"
     assert dlg_edit.txt_direccion.value == "Rivadavia 50"
     assert dlg_edit.txt_horarios.value == "Mar 8-12"
+
+
+def test_create_curso_dialog_con_horario(mock_page_mobile):
+    """Verifica campo de horario en CreateCursoDialog y llamada con 3 parámetros."""
+    from mobile.components.student_dialog import CreateCursoDialog
+    confirmado = []
+
+    def on_confirm(nombre, cant, hor):
+        confirmado.append((nombre, cant, hor))
+
+    dlg = CreateCursoDialog(
+        titulo="Nuevo Curso",
+        on_confirm=on_confirm,
+        page=mock_page_mobile,
+    )
+    mock_page_mobile.show_dialog(dlg)
+
+    assert hasattr(dlg, "txt_horario")
+    assert dlg.txt_horario.value == ""
+
+    dlg.txt_nombre.value = "1° A"
+    dlg.txt_cantidad.value = "25"
+    dlg.txt_horario.value = "Lun a Vie 08:00 a 12:00"
+    dlg._confirmar()
+
+    assert confirmado == [("1° A", 25, "Lun a Vie 08:00 a 12:00")]
+    assert dlg.open is False
+
+
+def test_cursos_view_planificacion_popup_menu_and_cards(isolated_app_state, mock_page_mobile):
+    """Verifica integración de horarios, clases planificadas y popup de planificación en CursosView."""
+    from mobile.components.planificacion_dialog import PlanificacionCursoDialog
+    isolated_app_state.selected_colegio = "Colegio Nacional"
+
+    view = CursosView(isolated_app_state, mock_page_mobile, on_navigate=lambda x: None)
+    assert view.content is not None
+
+    # Caso 1: Curso 5to A no tiene horario ni clases -> pie = 'Ciclo Lectivo Activo'
+    # Buscar card de 5to A
+    body_container = view.content.controls[1]
+    list_view = body_container.content
+    # list_view.controls[0] is header, controls[1] is card for 5to A
+    card_5to_a = list_view.controls[1]
+    card_col = card_5to_a.content
+
+    # Verificar que el popup menu tiene Planificación de Clases
+    top_row = card_col.controls[0]
+    popup = top_row.controls[-1]
+    items_text = [item.content.value for item in popup.items if hasattr(item, "content") and hasattr(item.content, "value")]
+    assert "Planificación de Clases" in items_text
+
+    # Pie sin clases
+    footer_row = card_col.controls[-1]
+    assert footer_row.controls[1].value == "Ciclo Lectivo Activo"
+
+    # Caso 2: Asignar horario y clases a 5to A
+    isolated_app_state.set_horario_curso("Lun y Mie 08:00 a 09:20", "Colegio Nacional", "5to A", auto_save=False)
+    isolated_app_state.set_clase_tema("2026-03-16", "Fracciones", "Colegio Nacional", "5to A", auto_save=False)
+    isolated_app_state.set_clase_tema("2026-03-18", "Decimales", "Colegio Nacional", "5to A", auto_save=False)
+
+    view._build_ui()
+    card_5to_a = view.content.controls[1].content.controls[1]
+    card_col = card_5to_a.content
+
+    # Debe haber un renglón con el horario
+    schedule_row = card_col.controls[1]
+    assert schedule_row.controls[1].value == "Lun y Mie 08:00 a 09:20"
+
+    # Pie debe reflejar 2 clases planificadas
+    footer_row = card_col.controls[-1]
+    assert footer_row.controls[1].value == "2 clases planificadas"
+
+    # Abrir diálogo de planificación desde CursosView
+    view._abrir_planificacion_curso("5to A")
+    assert isinstance(mock_page_mobile.active_dialog, PlanificacionCursoDialog)
+    mock_page_mobile.pop_dialog()
+
+    # Probar creación de curso con horario desde _abrir_modal_crear
+    view._abrir_modal_crear()
+    create_dlg = mock_page_mobile.active_dialog
+    create_dlg.txt_nombre.value = "6to B"
+    create_dlg.txt_cantidad.value = "20"
+    create_dlg.txt_horario.value = "Vie 14:00 - 18:00"
+    create_dlg._confirmar()
+
+    assert "6to B" in isolated_app_state.get_cursos("Colegio Nacional")
+    assert isolated_app_state.get_horario_curso("Colegio Nacional", "6to B") == "Vie 14:00 - 18:00"
+
+
+def test_notas_and_asistencias_view_headers_planificacion(isolated_app_state, mock_page_mobile):
+    """Verifica la presencia del botón EDIT_CALENDAR en headers de NotasView y AsistenciasView."""
+    from mobile.components.planificacion_dialog import PlanificacionCursoDialog
+    isolated_app_state.selected_colegio = "Colegio Nacional"
+    isolated_app_state.selected_curso = "5to A"
+
+    # 1. NotasView
+    notas_view = NotasView(isolated_app_state, mock_page_mobile, on_navigate=lambda x: None)
+    header_notas = notas_view.content.controls[0]
+    trailing_notas = header_notas.content.controls[-1]
+    assert isinstance(trailing_notas, ft.Row)
+    # Contiene botón con EDIT_CALENDAR
+    icons_notas = [btn.icon for btn in trailing_notas.controls if hasattr(btn, "icon")]
+    assert ft.Icons.EDIT_CALENDAR in icons_notas
+
+    notas_view._abrir_planificacion_curso()
+    assert isinstance(mock_page_mobile.active_dialog, PlanificacionCursoDialog)
+    mock_page_mobile.pop_dialog()
+
+    # 2. AsistenciasView
+    asistencias_view = AsistenciasView(isolated_app_state, mock_page_mobile, on_navigate=lambda x: None)
+    header_asist = asistencias_view.content.controls[0]
+    trailing_asist = header_asist.content.controls[-1]
+    assert isinstance(trailing_asist, ft.Row)
+    icons_asist = [btn.icon for btn in trailing_asist.controls if hasattr(btn, "icon")]
+    assert ft.Icons.EDIT_CALENDAR in icons_asist
+
+    asistencias_view._abrir_planificacion_curso()
+    assert isinstance(mock_page_mobile.active_dialog, PlanificacionCursoDialog)
+    mock_page_mobile.pop_dialog()
+
+
+def test_cursos_view_cabecera_dos_niveles_y_boton_planificaciones(isolated_app_state, mock_page_mobile):
+    """Verifica que la cabecera de CursosView esté dividida en dos filas con botón de Planificaciones."""
+    from mobile.components.planificaciones_institucion_dialog import PlanificacionesInstitucionDialog
+    isolated_app_state.selected_colegio = "Colegio Nacional"
+
+    view = CursosView(isolated_app_state, mock_page_mobile, on_navigate=lambda x: None)
+    header = view.content.controls[1].content.controls[0]
+
+    # Debe ser una columna con 2 filas (dos niveles)
+    assert isinstance(header, ft.Column)
+    assert len(header.controls) == 2
+
+    fila_contexto = header.controls[0]
+    assert isinstance(fila_contexto, ft.Row)
+    assert fila_contexto.controls[0].controls[0].value == "Mis cursos"
+    assert fila_contexto.controls[1].icon == ft.Icons.INSIGHTS
+
+    fila_acciones = header.controls[1]
+    assert isinstance(fila_acciones, ft.Row)
+    btn_planif = fila_acciones.controls[0]
+    assert isinstance(btn_planif, ft.OutlinedButton)
+    btn_planif_text = getattr(btn_planif, "text", None) or (btn_planif.content if isinstance(btn_planif.content, str) else getattr(btn_planif.content, "value", str(btn_planif.content)))
+    assert btn_planif_text == "Planificaciones"
+    assert btn_planif.icon == ft.Icons.EVENT_NOTE
+    assert btn_planif.expand is True
+
+    btn_crear = fila_acciones.controls[1]
+    assert isinstance(btn_crear, ft.FilledButton)
+    btn_crear_text = getattr(btn_crear, "text", None) or (btn_crear.content if isinstance(btn_crear.content, str) else getattr(btn_crear.content, "value", str(btn_crear.content)))
+    assert "+ Curso" in btn_crear_text
+    assert btn_crear.expand is True
+
+    # Abrir planificaciones desde el botón general
+    view._abrir_planificaciones_institucion()
+    assert isinstance(mock_page_mobile.active_dialog, PlanificacionesInstitucionDialog)
+    assert mock_page_mobile.active_dialog.filtro_curso is None
+    mock_page_mobile.pop_dialog()
+
+
+def test_cursos_view_tarjeta_boton_directo_planificaciones(isolated_app_state, mock_page_mobile):
+    """Verifica el botón directo de planificación en la tarjeta del curso y el popup menu."""
+    from mobile.components.planificaciones_institucion_dialog import PlanificacionesInstitucionDialog
+    isolated_app_state.selected_colegio = "Colegio Nacional"
+
+    view = CursosView(isolated_app_state, mock_page_mobile, on_navigate=lambda x: None)
+    card_5to_a = view.content.controls[1].content.controls[1]
+    top_row = card_5to_a.content.controls[0]
+
+    # Verificar botón directo de planificaciones
+    btn_directo = top_row.controls[2]
+    assert isinstance(btn_directo, ft.IconButton)
+    assert btn_directo.icon == ft.Icons.EVENT_NOTE
+    assert btn_directo.tooltip == "Planificaciones del curso"
+
+    # Al hacer click en el botón directo, debe abrir el diálogo enfocado en '5to A'
+    btn_directo.on_click(None)
+    assert isinstance(mock_page_mobile.active_dialog, PlanificacionesInstitucionDialog)
+    assert mock_page_mobile.active_dialog.filtro_curso == "5to A"
+    mock_page_mobile.pop_dialog()
+
+    # Verificar que el popup menu también abre el diálogo contextualizado
+    popup = top_row.controls[-1]
+    item_planif = next(it for it in popup.items if it.content.value == "Planificación de Clases")
+    item_planif.on_click(None)
+    assert isinstance(mock_page_mobile.active_dialog, PlanificacionesInstitucionDialog)
+    assert mock_page_mobile.active_dialog.filtro_curso == "5to A"
+    mock_page_mobile.pop_dialog()
+
+
+def test_notas_view_boton_comportamiento(isolated_app_state, mock_page_mobile):
+    """Verifica que la tarjeta expandida de cada alumno en NotasView incluya el botón Comportamiento y abra ComportamientoDialog."""
+    from mobile.views.notas_view import NotasView
+    from mobile.components.comportamiento_dialog import ComportamientoDialog
+
+    isolated_app_state.selected_colegio = "Colegio Nacional"
+    isolated_app_state.selected_curso = "5to A"
+
+    view = NotasView(isolated_app_state, mock_page_mobile, on_navigate=lambda x: None)
+
+    # Verificar que exista la referencia lbl_resumen_comp en alumnos_celdas
+    assert "1" in view.alumnos_celdas
+    assert "lbl_resumen_comp" in view.alumnos_celdas["1"]
+    assert view.alumnos_celdas["1"]["lbl_resumen_comp"].value == "Sin observaciones"
+
+    # Abrir diálogo de comportamiento
+    view._abrir_modal_comportamiento("1", "Gómez, Martín")
+    assert isinstance(mock_page_mobile.active_dialog, ComportamientoDialog)
+    assert mock_page_mobile.active_dialog.id_alumno == "1"
+    mock_page_mobile.pop_dialog()

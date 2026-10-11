@@ -34,10 +34,26 @@ from mobile.theme import (
 )
 
 
+from core.constants import (
+    COMPORTAMIENTO_POSITIVO,
+    COMPORTAMIENTO_REGULAR,
+    COMPORTAMIENTO_NEGATIVO,
+    K_FECHA,
+    K_TIPO,
+    K_SUBTIPO,
+    K_OBSERVACION,
+    formatear_fecha,
+)
+from mobile.components.comportamiento_dialog import get_comportamiento_style
+
 COLOR_APROBADO = "#10B981"    # Emerald 500
 COLOR_DESAPROBADO = "#EF4444" # Red 500
 COLOR_PENDIENTE = "#94A3B8"   # Slate 400
 COLOR_VACIO = "#CBD5E1"       # Slate 300
+
+COLOR_COMP_POS = "#10B981"    # Emerald 500 (Positivo)
+COLOR_COMP_REG = "#F59E0B"    # Amber 500 (Regular)
+COLOR_COMP_NEG = "#EF4444"    # Red 500 (Negativo)
 
 NOMBRES_PERIODOS = ["1° Trimestre", "2° Trimestre", "3° Trimestre", "Resumen Anual"]
 
@@ -62,11 +78,18 @@ class EstadisticasView(ft.Container):
 
         # Contenedores reactivos mutables in-place para cumplir la Regla 3 Constitucional
         self.header_container = ft.Container()
-        self.period_selector_container = ft.Container()
         self.level_selector_container = ft.Container()
+        self.seccion_selector_container = ft.Container()
+        self.period_selector_container = ft.Container()
         self.kpi_container = ft.Container()
         self.donut_container = ft.Container()
         self.dynamic_content_container = ft.Container()
+        self.comportamiento_container = ft.Container(visible=False)
+
+        # Estado del módulo de estadísticas
+        self.seccion_activa = "rendimiento"  # "rendimiento" o "comportamiento"
+        self.filtro_comportamiento = "todos"  # "todos", "positivo", "regular", "negativo"
+        self.alumnos_expandidos_comp: set[str] = set()
 
         self.list_view = ft.ListView(
             expand=True,
@@ -91,10 +114,12 @@ class EstadisticasView(ft.Container):
 
         self.list_view.controls = [
             self.level_selector_container,
+            self.seccion_selector_container,
             self.period_selector_container,
             self.kpi_container,
             self.donut_container,
             self.dynamic_content_container,
+            self.comportamiento_container,
         ]
 
         self.content = ft.Column(
@@ -130,20 +155,39 @@ class EstadisticasView(ft.Container):
         # 2. Selector de Nivel (Institucional vs Curso)
         self.level_selector_container.content = self._build_level_selector()
 
-        # 3. Selector de Período (T1, T2, T3, Anual)
-        self.period_selector_container.content = self._build_period_selector()
+        # 2.5 Selector de Sección (Calificaciones vs Comportamiento)
+        self.seccion_selector_container.content = self._build_seccion_selector()
 
-        # 4. Tarjetas KPI
-        self.kpi_container.content = self._build_kpi_row(stats)
+        if self.seccion_activa == "rendimiento":
+            self.period_selector_container.visible = True
+            self.kpi_container.visible = True
+            self.donut_container.visible = True
+            self.dynamic_content_container.visible = True
+            self.comportamiento_container.visible = False
 
-        # 5. Gráfico de Dona y Leyendas
-        self.donut_container.content = self._build_donut_section(stats)
+            # 3. Selector de Período (T1, T2, T3, Anual)
+            self.period_selector_container.content = self._build_period_selector()
 
-        # 6. Contenido Dinámico (Barras de Cursos para Colegio ó Desglose de Alumnos para Curso)
-        if nivel == "curso" and self.state.selected_curso:
-            self.dynamic_content_container.content = self._build_curso_alumnos_section(stats)
+            # 4. Tarjetas KPI
+            self.kpi_container.content = self._build_kpi_row(stats)
+
+            # 5. Gráfico de Dona y Leyendas
+            self.donut_container.content = self._build_donut_section(stats)
+
+            # 6. Contenido Dinámico (Barras de Cursos para Colegio ó Desglose de Alumnos para Curso)
+            if nivel == "curso" and self.state.selected_curso:
+                self.dynamic_content_container.content = self._build_curso_alumnos_section(stats)
+            else:
+                self.dynamic_content_container.content = self._build_colegio_cursos_section(stats)
         else:
-            self.dynamic_content_container.content = self._build_colegio_cursos_section(stats)
+            self.period_selector_container.visible = False
+            self.kpi_container.visible = False
+            self.donut_container.visible = False
+            self.dynamic_content_container.visible = False
+            self.comportamiento_container.visible = True
+
+            # Apartado Comportamiento
+            self.comportamiento_container.content = self._build_comportamiento_section()
 
     def _al_volver(self):
         """Retorna determinísticamente a la pantalla y entidad de origen."""
@@ -168,6 +212,22 @@ class EstadisticasView(ft.Container):
         except RuntimeError:
             pass
 
+    def _conmutar_seccion(self, nueva_seccion: str):
+        """Conmuta entre analítica de calificaciones y comportamiento sin reiniciar scroll."""
+        if self.seccion_activa == nueva_seccion:
+            return
+        self.seccion_activa = nueva_seccion
+        self._actualizar_datos_ui()
+        try:
+            self.seccion_selector_container.update()
+            self.period_selector_container.update()
+            self.kpi_container.update()
+            self.donut_container.update()
+            self.dynamic_content_container.update()
+            self.comportamiento_container.update()
+        except RuntimeError:
+            pass
+
     def _conmutar_nivel(self, nuevo_nivel: str, curso: str | None = None):
         """Conmuta entre nivel colegio y nivel curso."""
         self.state.estadisticas_nivel = nuevo_nivel
@@ -177,9 +237,12 @@ class EstadisticasView(ft.Container):
         try:
             self.header_container.update()
             self.level_selector_container.update()
+            self.seccion_selector_container.update()
+            self.period_selector_container.update()
             self.kpi_container.update()
             self.donut_container.update()
             self.dynamic_content_container.update()
+            self.comportamiento_container.update()
         except RuntimeError:
             pass
 
@@ -251,6 +314,66 @@ class EstadisticasView(ft.Container):
 
         return ft.Container(
             content=ft.Row(tabs, spacing=8, scroll=ft.ScrollMode.AUTO),
+            margin=ft.Margin(bottom=4, top=0, left=0, right=0),
+        )
+
+    def _build_seccion_selector(self) -> ft.Container:
+        """Selector de dos pestañas: Calificaciones vs Comportamiento."""
+        is_rend = (self.seccion_activa == "rendimiento")
+        is_comp = (self.seccion_activa == "comportamiento")
+
+        tab_rend = ft.Container(
+            expand=True,
+            height=36,
+            border_radius=8,
+            bgcolor=PRIMARY_LIGHT if is_rend else SURFACE_WHITE,
+            border=ft.Border.all(1.5 if is_rend else 1, PRIMARY if is_rend else BORDER_COLOR),
+            alignment=ft.Alignment.CENTER,
+            ink=True,
+            on_click=lambda _: self._conmutar_seccion("rendimiento"),
+            content=ft.Row(
+                alignment=ft.MainAxisAlignment.CENTER,
+                spacing=6,
+                tight=True,
+                controls=[
+                    ft.Icon(ft.Icons.BAR_CHART, size=16, color=PRIMARY if is_rend else TEXT_MUTED),
+                    ft.Text(
+                        "Calificaciones",
+                        size=12,
+                        weight=ft.FontWeight.BOLD if is_rend else ft.FontWeight.W_500,
+                        color=PRIMARY if is_rend else TEXT_MUTED,
+                    ),
+                ],
+            ),
+        )
+
+        tab_comp = ft.Container(
+            expand=True,
+            height=36,
+            border_radius=8,
+            bgcolor=PRIMARY_LIGHT if is_comp else SURFACE_WHITE,
+            border=ft.Border.all(1.5 if is_comp else 1, PRIMARY if is_comp else BORDER_COLOR),
+            alignment=ft.Alignment.CENTER,
+            ink=True,
+            on_click=lambda _: self._conmutar_seccion("comportamiento"),
+            content=ft.Row(
+                alignment=ft.MainAxisAlignment.CENTER,
+                spacing=6,
+                tight=True,
+                controls=[
+                    ft.Icon(ft.Icons.RULE, size=16, color=PRIMARY if is_comp else TEXT_MUTED),
+                    ft.Text(
+                        "Comportamiento",
+                        size=12,
+                        weight=ft.FontWeight.BOLD if is_comp else ft.FontWeight.W_500,
+                        color=PRIMARY if is_comp else TEXT_MUTED,
+                    ),
+                ],
+            ),
+        )
+
+        return ft.Container(
+            content=ft.Row(spacing=8, controls=[tab_rend, tab_comp]),
             margin=ft.Margin(bottom=4, top=0, left=0, right=0),
         )
 
@@ -705,6 +828,465 @@ class EstadisticasView(ft.Container):
                 controls=[
                     ft.Text("Desglose Nominal de Alumnos", size=14, weight=ft.FontWeight.BOLD, color=TEXT_MAIN),
                     ft.Column(spacing=8, controls=grupos),
+                ],
+            ),
+        )
+
+    # -------------------------------------------------------------------------
+    # --- APARTADO COMPORTAMIENTO ---
+    # -------------------------------------------------------------------------
+
+    def _build_comportamiento_section(self) -> ft.Container:
+        """Construye el contenido completo del apartado Comportamiento."""
+        nivel = self.state.estadisticas_nivel
+        curso = self.state.selected_curso if nivel == "curso" else None
+        colegio = self.state.selected_colegio
+
+        stats_comp = self.state.get_estadisticas_comportamiento(colegio=colegio, curso=curso)
+
+        # 1. KPIs de comportamiento (Positivo, Regular, Negativo)
+        tot_pos = stats_comp["totales_por_tipo"][COMPORTAMIENTO_POSITIVO]
+        pct_pos = stats_comp["porcentajes_por_tipo"][COMPORTAMIENTO_POSITIVO]
+
+        tot_reg = stats_comp["totales_por_tipo"][COMPORTAMIENTO_REGULAR]
+        pct_reg = stats_comp["porcentajes_por_tipo"][COMPORTAMIENTO_REGULAR]
+
+        tot_neg = stats_comp["totales_por_tipo"][COMPORTAMIENTO_NEGATIVO]
+        pct_neg = stats_comp["porcentajes_por_tipo"][COMPORTAMIENTO_NEGATIVO]
+
+        kpis_row = ft.Row(
+            spacing=8,
+            controls=[
+                self._build_kpi_comp_card("Positivo", tot_pos, pct_pos, "#10B981", "#DCFCE7", "#166534", ft.Icons.THUMB_UP_OUTLINED),
+                self._build_kpi_comp_card("Regular", tot_reg, pct_reg, "#F59E0B", "#FEF3C7", "#B45309", ft.Icons.INFO_OUTLINE),
+                self._build_kpi_comp_card("Negativo", tot_neg, pct_neg, "#EF4444", "#FEE2E2", "#991B1B", ft.Icons.REPORT_PROBLEM_OUTLINED),
+            ],
+        )
+
+        # 2. Chips de filtro por comportamiento (Todos / Positivo / Regular / Negativo)
+        filtros = [
+            ("todos", f"Todos ({stats_comp['total_observaciones']})"),
+            (COMPORTAMIENTO_POSITIVO, f"Positivo ({tot_pos})"),
+            (COMPORTAMIENTO_REGULAR, f"Regular ({tot_reg})"),
+            (COMPORTAMIENTO_NEGATIVO, f"Negativo ({tot_neg})"),
+        ]
+
+        chips_controls = []
+        for f_key, f_lbl in filtros:
+            is_active = (self.filtro_comportamiento == f_key)
+            chips_controls.append(
+                ft.Container(
+                    bgcolor=PRIMARY_LIGHT if is_active else SURFACE_WHITE,
+                    border=ft.Border.all(1.5, PRIMARY if is_active else BORDER_COLOR),
+                    border_radius=20,
+                    padding=ft.Padding(left=12, right=12, top=6, bottom=6),
+                    ink=True,
+                    on_click=lambda _, k=f_key: self._conmutar_filtro_comportamiento(k),
+                    content=ft.Text(
+                        f_lbl,
+                        size=11,
+                        weight=ft.FontWeight.BOLD if is_active else ft.FontWeight.W_500,
+                        color=PRIMARY if is_active else TEXT_MAIN,
+                    ),
+                )
+            )
+
+        selector_filtros = ft.Row(
+            scroll=ft.ScrollMode.AUTO,
+            spacing=6,
+            controls=chips_controls,
+        )
+
+        # 3. Lista de alumnos según el filtro
+        alumnos_a_mostrar = self._obtener_alumnos_filtrados_comportamiento(stats_comp)
+
+        tarjetas_alumnos = []
+        if not alumnos_a_mostrar:
+            tarjetas_alumnos.append(
+                ft.Container(
+                    bgcolor=SURFACE_WHITE,
+                    border=ft.Border.all(1, BORDER_COLOR),
+                    border_radius=12,
+                    padding=24,
+                    alignment=ft.Alignment.CENTER,
+                    content=ft.Column(
+                        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                        spacing=6,
+                        tight=True,
+                        controls=[
+                            ft.Icon(ft.Icons.RULE, size=28, color=TEXT_MUTED),
+                            ft.Text(
+                                "No hay alumnos con registros en esta categoría.",
+                                size=13,
+                                color=TEXT_MUTED,
+                            ),
+                        ],
+                    ),
+                )
+            )
+        else:
+            for al in alumnos_a_mostrar:
+                tarjeta = self._build_alumno_comportamiento_card(al)
+                tarjetas_alumnos.append(tarjeta)
+
+        donut_comp = self._build_donut_section_comportamiento(stats_comp)
+
+        return ft.Container(
+            content=ft.Column(
+                spacing=14,
+                tight=True,
+                controls=[
+                    kpis_row,
+                    donut_comp,
+                    ft.Text("Alumnos por comportamiento:", size=13, weight=ft.FontWeight.BOLD, color=TEXT_MAIN),
+                    selector_filtros,
+                    ft.Column(spacing=8, tight=True, controls=tarjetas_alumnos),
+                ],
+            ),
+        )
+
+    def _build_donut_section_comportamiento(self, stats_comp: dict) -> ft.Container:
+        """
+        Gráfico circular tipo dona nativo dibujado con flet.canvas y tarjeta de métricas
+        para la distribución de comportamiento (Positivo, Regular, Negativo).
+        """
+        total = stats_comp.get("total_observaciones", 0)
+        tot_pos = stats_comp["totales_por_tipo"].get(COMPORTAMIENTO_POSITIVO, 0)
+        pct_pos = stats_comp["porcentajes_por_tipo"].get(COMPORTAMIENTO_POSITIVO, 0.0)
+
+        tot_reg = stats_comp["totales_por_tipo"].get(COMPORTAMIENTO_REGULAR, 0)
+        pct_reg = stats_comp["porcentajes_por_tipo"].get(COMPORTAMIENTO_REGULAR, 0.0)
+
+        tot_neg = stats_comp["totales_por_tipo"].get(COMPORTAMIENTO_NEGATIVO, 0)
+        pct_neg = stats_comp["porcentajes_por_tipo"].get(COMPORTAMIENTO_NEGATIVO, 0.0)
+
+        shapes = []
+        cx, cy, size = 10, 10, 120
+        stroke_w = 18
+
+        if total == 0:
+            # Estado vacío: anillo neutro completo
+            p_empty = ft.Paint(style=ft.PaintingStyle.STROKE, stroke_width=stroke_w, color=COLOR_VACIO)
+            shapes.append(cv.Arc(cx, cy, size, size, 0, 2 * math.pi, paint=p_empty))
+            centro_txt = "0"
+            centro_sub = "registros"
+        else:
+            start_ang = -math.pi / 2  # Comienza arriba (12 en punto)
+
+            items = [
+                (tot_pos, COLOR_COMP_POS),
+                (tot_reg, COLOR_COMP_REG),
+                (tot_neg, COLOR_COMP_NEG),
+            ]
+
+            for cant, color in items:
+                if cant > 0:
+                    sweep = (cant / total) * 2 * math.pi
+                    p = ft.Paint(
+                        style=ft.PaintingStyle.STROKE,
+                        stroke_width=stroke_w,
+                        color=color,
+                    )
+                    shapes.append(cv.Arc(cx, cy, size, size, start_ang, sweep, paint=p))
+                    start_ang += sweep
+
+            centro_txt = f"{pct_pos}%"
+            centro_sub = "Positivo"
+
+        canvas_donut = cv.Canvas(shapes=shapes, width=140, height=140)
+
+        donut_stack = ft.Stack(
+            width=140,
+            height=140,
+            alignment=ft.Alignment.CENTER,
+            controls=[
+                canvas_donut,
+                ft.Container(
+                    width=140,
+                    height=140,
+                    alignment=ft.Alignment.CENTER,
+                    content=ft.Column(
+                        alignment=ft.MainAxisAlignment.CENTER,
+                        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                        spacing=0,
+                        controls=[
+                            ft.Text(centro_txt, size=18, weight=ft.FontWeight.BOLD, color=TEXT_MAIN),
+                            ft.Text(centro_sub, size=10, color=TEXT_MUTED),
+                        ],
+                    ),
+                ),
+            ],
+        )
+
+        def _legend_item(color: str, etiqueta: str, cant: int, pct: float):
+            return ft.Row(
+                spacing=8,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                controls=[
+                    ft.Container(width=10, height=10, border_radius=5, bgcolor=color),
+                    ft.Text(etiqueta, size=12, color=TEXT_MAIN, expand=True),
+                    ft.Text(f"{cant} ({pct}%)", size=12, weight=ft.FontWeight.BOLD, color=TEXT_MAIN),
+                ],
+            )
+
+        legend_col = ft.Column(
+            spacing=8,
+            expand=True,
+            controls=[
+                _legend_item(COLOR_COMP_POS, "Positivo", tot_pos, pct_pos),
+                _legend_item(COLOR_COMP_REG, "Regular", tot_reg, pct_reg),
+                _legend_item(COLOR_COMP_NEG, "Negativo", tot_neg, pct_neg),
+            ],
+        )
+
+        return ft.Container(
+            bgcolor=SURFACE_WHITE,
+            border=ft.Border.all(1, BORDER_COLOR),
+            border_radius=14,
+            padding=ft.Padding(left=14, right=14, top=14, bottom=14),
+            content=ft.Column(
+                spacing=10,
+                controls=[
+                    ft.Text("Distribución de Comportamiento", size=14, weight=ft.FontWeight.BOLD, color=TEXT_MAIN),
+                    ft.Row(
+                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                        spacing=12,
+                        controls=[donut_stack, legend_col],
+                    ),
+                ],
+            ),
+        )
+
+    def _build_kpi_comp_card(
+        self,
+        titulo: str,
+        cantidad: int,
+        porcentaje: float,
+        color_solido: str,
+        color_bg: str,
+        color_texto: str,
+        icono: str,
+    ) -> ft.Container:
+        """Construye una tarjeta KPI para el apartado de comportamiento."""
+        return ft.Container(
+            expand=True,
+            bgcolor=SURFACE_WHITE,
+            border=ft.Border.all(1, BORDER_COLOR),
+            border_radius=12,
+            padding=ft.Padding(left=10, right=10, top=10, bottom=10),
+            content=ft.Column(
+                spacing=4,
+                tight=True,
+                controls=[
+                    ft.Row(
+                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                        controls=[
+                            ft.Text(titulo, size=11, weight=ft.FontWeight.W_500, color=TEXT_MUTED),
+                            ft.Icon(icono, size=16, color=color_solido),
+                        ],
+                    ),
+                    ft.Text(str(cantidad), size=20, weight=ft.FontWeight.BOLD, color=TEXT_MAIN),
+                    ft.Container(
+                        bgcolor=color_bg,
+                        border_radius=6,
+                        padding=ft.Padding(left=6, right=6, top=2, bottom=2),
+                        content=ft.Text(f"{porcentaje}%", size=10, weight=ft.FontWeight.BOLD, color=color_texto),
+                    ),
+                ],
+            ),
+        )
+
+    def _conmutar_filtro_comportamiento(self, nuevo_filtro: str):
+        """Conmuta el filtro de visualización de alumnos en el apartado Comportamiento."""
+        if self.filtro_comportamiento == nuevo_filtro:
+            return
+        self.filtro_comportamiento = nuevo_filtro
+        self._actualizar_datos_ui()
+        try:
+            self.comportamiento_container.update()
+        except RuntimeError:
+            pass
+
+    def _obtener_alumnos_filtrados_comportamiento(self, stats_comp: dict) -> list[dict]:
+        """Filtra y retorna los alumnos según el filtro seleccionado."""
+        f = self.filtro_comportamiento
+        if f == "todos":
+            return stats_comp.get("todos_los_alumnos", [])
+        elif f == COMPORTAMIENTO_POSITIVO:
+            return stats_comp.get("alumnos_por_tipo", {}).get(COMPORTAMIENTO_POSITIVO, [])
+        elif f == COMPORTAMIENTO_REGULAR:
+            return stats_comp.get("alumnos_por_tipo", {}).get(COMPORTAMIENTO_REGULAR, [])
+        elif f == COMPORTAMIENTO_NEGATIVO:
+            return stats_comp.get("alumnos_por_tipo", {}).get(COMPORTAMIENTO_NEGATIVO, [])
+        return stats_comp.get("todos_los_alumnos", [])
+
+    def _toggle_expand_alumno_comp(self, al_id: str):
+        """Expande o colapsa el historial de un alumno in-place sin mover scroll."""
+        id_str = str(al_id)
+        if id_str in self.alumnos_expandidos_comp:
+            self.alumnos_expandidos_comp.remove(id_str)
+        else:
+            self.alumnos_expandidos_comp.add(id_str)
+        self._actualizar_datos_ui()
+        try:
+            self.comportamiento_container.update()
+        except RuntimeError:
+            pass
+
+    def _build_alumno_comportamiento_card(self, al: dict) -> ft.Container:
+        """Construye una tarjeta expandible de alumno con su historial de observaciones."""
+        al_id = str(al.get("id", ""))
+        nombre = al.get("nombre", "")
+        observaciones = al.get("observaciones", [])
+        total_obs = al.get("total", len(observaciones))
+        conteo = al.get("conteo_tipo", {})
+
+        is_open = al_id in self.alumnos_expandidos_comp
+
+        num_id = int(al_id) if str(al_id).isdigit() else 0
+        avatar_bg, avatar_fg = get_avatar_palette(num_id)
+        iniciales = extract_initials(nombre)
+
+        # Badges de conteo por tipo
+        badges_conteo = []
+        if conteo.get(COMPORTAMIENTO_POSITIVO, 0) > 0:
+            badges_conteo.append(
+                ft.Container(
+                    bgcolor="#DCFCE7",
+                    border_radius=6,
+                    padding=ft.Padding(left=6, right=6, top=2, bottom=2),
+                    content=ft.Text(f"+{conteo[COMPORTAMIENTO_POSITIVO]}", size=10, weight=ft.FontWeight.BOLD, color="#166534"),
+                )
+            )
+        if conteo.get(COMPORTAMIENTO_REGULAR, 0) > 0:
+            badges_conteo.append(
+                ft.Container(
+                    bgcolor="#FEF3C7",
+                    border_radius=6,
+                    padding=ft.Padding(left=6, right=6, top=2, bottom=2),
+                    content=ft.Text(f"~{conteo[COMPORTAMIENTO_REGULAR]}", size=10, weight=ft.FontWeight.BOLD, color="#B45309"),
+                )
+            )
+        if conteo.get(COMPORTAMIENTO_NEGATIVO, 0) > 0:
+            badges_conteo.append(
+                ft.Container(
+                    bgcolor="#FEE2E2",
+                    border_radius=6,
+                    padding=ft.Padding(left=6, right=6, top=2, bottom=2),
+                    content=ft.Text(f"-{conteo[COMPORTAMIENTO_NEGATIVO]}", size=10, weight=ft.FontWeight.BOLD, color="#991B1B"),
+                )
+            )
+
+        chevron = ft.Icon(
+            ft.Icons.EXPAND_LESS if is_open else ft.Icons.EXPAND_MORE,
+            size=18,
+            color=PRIMARY if is_open else TEXT_MUTED,
+        )
+
+        header_card = ft.Container(
+            padding=ft.Padding(left=12, right=12, top=10, bottom=10),
+            ink=True,
+            on_click=lambda _, sid=al_id: self._toggle_expand_alumno_comp(sid),
+            content=ft.Row(
+                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                controls=[
+                    ft.Row(
+                        spacing=10,
+                        tight=True,
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                        controls=[
+                            ft.Container(
+                                width=36,
+                                height=36,
+                                bgcolor=avatar_bg,
+                                border_radius=18,
+                                alignment=ft.Alignment.CENTER,
+                                content=ft.Text(iniciales, size=11, weight=ft.FontWeight.BOLD, color=avatar_fg),
+                            ),
+                            ft.Column(
+                                spacing=1,
+                                tight=True,
+                                controls=[
+                                    ft.Text(f"#{al_id} {nombre}", size=13, weight=ft.FontWeight.BOLD, color=TEXT_MAIN),
+                                    ft.Text(f"{total_obs} observación{'es' if total_obs != 1 else ''}", size=11, color=TEXT_MUTED),
+                                ],
+                            ),
+                        ],
+                    ),
+                    ft.Row(
+                        spacing=6,
+                        tight=True,
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                        controls=[
+                            *badges_conteo,
+                            chevron,
+                        ],
+                    ),
+                ],
+            ),
+        )
+
+        # Historial desplegable cronológico
+        detalles_controles = []
+        if is_open:
+            for obs in observaciones:
+                fecha = obs.get(K_FECHA, "")
+                tipo = obs.get(K_TIPO, "")
+                subtipo = obs.get(K_SUBTIPO, "")
+                texto = obs.get(K_OBSERVACION, "").strip()
+
+                bg_c, text_c, solid_c = get_comportamiento_style(tipo)
+
+                badge_subtipo = ft.Container(
+                    bgcolor=bg_c,
+                    border_radius=6,
+                    padding=ft.Padding(left=6, right=6, top=2, bottom=2),
+                    content=ft.Text(subtipo or tipo.capitalize(), size=10, weight=ft.FontWeight.BOLD, color=text_c),
+                )
+
+                fila_obs_header = ft.Row(
+                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                    controls=[
+                        badge_subtipo,
+                        ft.Text(formatear_fecha(fecha), size=11, color=TEXT_MUTED),
+                    ],
+                )
+
+                controles_obs = [fila_obs_header]
+                # Si el profesor añadió texto opcional, mostrarlo; si no, solo se muestra la opción seleccionada
+                if texto:
+                    controles_obs.append(
+                        ft.Text(texto, size=11, color=TEXT_MAIN)
+                    )
+
+                item_obs = ft.Container(
+                    bgcolor="#F8FAFC",
+                    border=ft.Border.all(1, BORDER_COLOR),
+                    border_radius=8,
+                    padding=ft.Padding(left=10, right=10, top=6, bottom=6),
+                    content=ft.Column(spacing=4, tight=True, controls=controles_obs),
+                )
+                detalles_controles.append(item_obs)
+
+        historial_expanded = ft.Container(
+            visible=is_open,
+            padding=ft.Padding(left=12, right=12, top=4, bottom=12),
+            border=ft.Border.only(top=ft.BorderSide(1, "#F1F5F9")),
+            content=ft.Column(spacing=6, tight=True, controls=detalles_controles),
+        )
+
+        return ft.Container(
+            bgcolor=SURFACE_WHITE,
+            border=ft.Border.all(1.5, PRIMARY if is_open else BORDER_COLOR),
+            border_radius=12,
+            content=ft.Column(
+                spacing=0,
+                tight=True,
+                controls=[
+                    header_card,
+                    historial_expanded,
                 ],
             ),
         )

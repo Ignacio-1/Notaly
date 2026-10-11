@@ -1,7 +1,7 @@
 """
 Pruebas de interfaz y comportamiento para el diálogo de copias de seguridad locales (LocalBackupDialog).
-Valida navegación entre pestañas, visualización de jerarquía de datos, generación de copias,
-opciones de restauración (Combinar vs Reemplazar) y manejo de archivos seleccionados.
+Valida navegación entre apartados (Guardar Copia y Restaurar), visualización clara de información,
+generación de copias en Descargas, opciones de restauración (Combinar vs Reemplazar) y manejo de archivos seleccionados.
 """
 
 import json
@@ -153,52 +153,48 @@ def _obtener_texto_boton(control):
 
 
 def test_local_backup_dialog_tabs_navigation(populated_state, mock_page):
-    """Verifica que cambiar entre pestañas actualice el estado del selector y despliegue el contenido respectivo."""
+    """Verifica que cambiar entre apartados actualice el estado del selector y despliegue el contenido respectivo."""
     dlg = LocalBackupDialog(populated_state, mock_page)
     mock_page.show_dialog(dlg)
 
-    # 1. Pestaña 0: Mis Datos por defecto
-    assert "datos" in dlg.tab_selector.selected
+    # 1. Apartado 0: Guardar Copia por defecto
+    assert "guardar" in dlg.tab_selector.selected
     assert dlg.tabs_content_container.content is not None
 
-    # 2. Pestaña 1: Crear Copia
-    dlg.tab_selector.selected = ["crear"]
-    dlg._on_tab_changed(None)
-    assert "crear" in dlg.tab_selector.selected
-    textos_crear = _extraer_textos_recursivo(dlg.tabs_content_container.content)
-    assert any("copia" in t.lower() for t in textos_crear)
-
-    # 3. Pestaña 2: Restaurar
+    # 2. Apartado 1: Restaurar
     dlg.tab_selector.selected = ["restaurar"]
     dlg._on_tab_changed(None)
     assert "restaurar" in dlg.tab_selector.selected
     assert dlg.tabs_content_container.content is not None
+    textos_restaurar = _extraer_textos_recursivo(dlg.tabs_content_container.content)
+    assert any("descargas" in t.lower() or "copias" in t.lower() for t in textos_restaurar)
 
 
-def test_local_backup_dialog_data_hierarchy_display(populated_state, mock_page):
-    """Verifica que la pestaña 'Mis Datos' presente la jerarquía de colegios y cursos cargados."""
+def test_local_backup_dialog_summary_display(populated_state, mock_page):
+    """Verifica que el apartado de guardar presente la información clara y justa para el usuario común."""
     dlg = LocalBackupDialog(populated_state, mock_page)
-    dlg._mostrar_tab_mis_datos()
+    dlg._mostrar_tab_guardar()
 
     textos_visibles = _extraer_textos_recursivo(dlg.tabs_content_container.content)
-    # Deben estar presentes los colegios y cursos en la información visible
-    assert any("Colegio Belgrano" in t for t in textos_visibles)
-    assert any("Colegio San Martin" in t for t in textos_visibles)
-    assert any("3ro A" in t for t in textos_visibles)
-    assert any("1ro 1ra" in t for t in textos_visibles)
+    # Debe indicar claramente la carpeta Descargas y los datos a respaldar
+    assert any("descargas" in t.lower() for t in textos_visibles)
+    assert any("2" in t for t in textos_visibles)  # 2 colegios
+    assert any("3" in t for t in textos_visibles)  # 3 cursos
+    assert any("4" in t for t in textos_visibles)  # 4 alumnos
 
 
 def test_local_backup_dialog_create_backup_action(populated_state, mock_page, tmp_path):
-    """Verifica que la acción de crear copia genere el archivo y cambie de pestaña con retroalimentación."""
+    """Verifica que la acción de guardar copia genere el archivo y cambie de apartado con retroalimentación."""
     dlg = LocalBackupDialog(populated_state, mock_page)
 
     with patch("pathlib.Path.home", return_value=tmp_path):
-        dlg._mostrar_tab_crear_copia()
-        # Buscar el botón de crear copia semánticamente
+        dlg._mostrar_tab_guardar()
+        # Buscar el botón de guardar copia semánticamente
         btn_crear = next(
             (c for c in dlg.tabs_content_container.content.controls
              if isinstance(c, (ft.FilledButton, ft.ElevatedButton, ft.TextButton, ft.OutlinedButton))
-             and "Crear Copia" in _obtener_texto_boton(c) and c.on_click is not None),
+             and ("copia" in _obtener_texto_boton(c).lower() or "guardar" in _obtener_texto_boton(c).lower())
+             and c.on_click is not None),
             None
         )
         assert btn_crear is not None
@@ -226,7 +222,8 @@ def test_local_backup_dialog_restore_confirm_decision(populated_state, mock_page
     # Debe abrirse un diálogo modal de confirmación
     assert len(mock_page.dialog_stack) == 1
     confirm_dlg = mock_page.active_dialog
-    assert "Confirmar Restauración" in confirm_dlg.title.value
+    textos_titulo = _extraer_textos_recursivo(confirm_dlg.title)
+    assert any("Confirmar Restauración" in t for t in textos_titulo)
 
     # Identificar botones semánticamente por su texto
     btn_combinar = next((a for a in confirm_dlg.actions if "Combinar" in _obtener_texto_boton(a)), None)
@@ -257,7 +254,8 @@ def test_local_backup_dialog_file_picker_result_handling(populated_state, mock_p
     dlg._on_file_picker_result(mock_event)
 
     assert len(mock_page.dialog_stack) == 1
-    assert "Confirmar Restauración" in mock_page.active_dialog.title.value
+    textos_titulo = _extraer_textos_recursivo(mock_page.active_dialog.title)
+    assert any("Confirmar Restauración" in t for t in textos_titulo)
 
 
 def test_local_backup_dialog_file_picker_bytes_handling(populated_state, mock_page):
@@ -275,4 +273,38 @@ def test_local_backup_dialog_file_picker_bytes_handling(populated_state, mock_pa
     dlg._procesar_archivo_seleccionado(mock_file)
 
     assert len(mock_page.dialog_stack) == 1
-    assert "Confirmar Restauración" in mock_page.active_dialog.title.value
+    textos_titulo = _extraer_textos_recursivo(mock_page.active_dialog.title)
+    assert any("Confirmar Restauración" in t for t in textos_titulo)
+
+
+def test_main_appbar_backup_icon_not_in_three_dots():
+    """Verifica que en mobile/main.py el acceso a copias de seguridad esté en un IconButton y NO en el PopupMenuButton."""
+    from mobile.main import main
+
+    test_page = MockMobilePage()
+    main(test_page)
+
+    assert test_page.appbar is not None
+    actions = test_page.appbar.actions
+    assert len(actions) >= 2
+
+    # Debe haber un IconButton para copia de seguridad
+    icon_buttons = [a for a in actions if isinstance(a, ft.IconButton)]
+    backup_btn = next((b for b in icon_buttons if b.tooltip == "Copia de Seguridad"), None)
+    assert backup_btn is not None
+    assert backup_btn.icon == ft.Icons.SETTINGS_BACKUP_RESTORE_ROUNDED
+
+    # En el PopupMenuButton de los 3 puntos NO debe aparecer copia de seguridad
+    popup_menus = [a for a in actions if isinstance(a, ft.PopupMenuButton)]
+    assert len(popup_menus) >= 1
+    popup = popup_menus[0]
+    items_textos = []
+    for item in popup.items:
+        if hasattr(item, "content") and hasattr(item.content, "value"):
+            items_textos.append(item.content.value)
+        elif hasattr(item, "text"):
+            items_textos.append(item.text)
+
+    assert not any("copia" in t.lower() for t in items_textos)
+    assert any("Estadísticas" in t for t in items_textos)
+    assert any("Acerca de" in t for t in items_textos)
