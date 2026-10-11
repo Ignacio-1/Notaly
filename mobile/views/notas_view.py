@@ -1199,8 +1199,7 @@ class NotasView(ft.Container):
                 on_save=guardar_desde_dialogo,
                 page=self.app_page,
             )
-            self.app_page.show_dialog(dlg)
-            self.app_page.update()
+            self._mostrar_dialogo_con_dock_oculto(dlg)
 
         container.on_click = on_slot_click
 
@@ -1622,6 +1621,31 @@ class NotasView(ft.Container):
         self.state.estadisticas_nivel = "curso"
         self.on_navigate("estadisticas")
 
+    def _mostrar_dialogo_con_dock_oculto(self, dlg):
+        """Muestra un diálogo modal ocultando temporalmente el teclado dock numérico para evitar saturación visual."""
+        if hasattr(self, "dock_container") and self.dock_container:
+            self.dock_container.visible = False
+            try:
+                self.dock_container.update()
+            except Exception:
+                pass
+
+        original_dismiss = getattr(dlg, "on_dismiss", None)
+
+        def on_dismiss_wrapper(e=None):
+            if hasattr(self, "dock_container") and self.dock_container and self.state.active_trimestre < 3:
+                self.dock_container.visible = True
+                try:
+                    self.dock_container.update()
+                except Exception:
+                    pass
+            if callable(original_dismiss):
+                original_dismiss(e)
+
+        dlg.on_dismiss = on_dismiss_wrapper
+        self.app_page.show_dialog(dlg)
+        self.app_page.update()
+
     def _abrir_planificacion_curso(self):
         colegio = self.state.selected_colegio or ""
         curso = self.state.selected_curso or ""
@@ -1632,8 +1656,7 @@ class NotasView(ft.Container):
             on_close=lambda: None,
             page=self.app_page,
         )
-        self.app_page.show_dialog(dlg)
-        self.app_page.update()
+        self._mostrar_dialogo_con_dock_oculto(dlg)
 
     def _abrir_modal_comportamiento(self, id_al: str, nombre_al: str):
         """Abre el diálogo modal de calificación de comportamiento sin reiniciar scroll."""
@@ -1652,8 +1675,7 @@ class NotasView(ft.Container):
             on_close=on_close,
             page=self.app_page,
         )
-        self.app_page.show_dialog(dlg)
-        self.app_page.update()
+        self._mostrar_dialogo_con_dock_oculto(dlg)
 
     def _actualizar_resumen_comportamiento_ui(self, id_al: str):
         """Actualiza in-place el texto descriptivo de comportamiento del alumno preservando el scroll."""
@@ -1743,8 +1765,7 @@ class NotasView(ft.Container):
             modo_continuo=True,
             page=self.app_page,
         )
-        self.app_page.show_dialog(dlg)
-        self.app_page.update()
+        self._mostrar_dialogo_con_dock_oculto(dlg)
 
     def _abrir_modal_renombrar_alumno(self, id_al: str, nombre_actual: str):
         ap_act, nom_act = separar_nombre_completo(nombre_actual)
@@ -1768,8 +1789,7 @@ class NotasView(ft.Container):
             on_confirm=confirmar,
             page=self.app_page,
         )
-        self.app_page.show_dialog(dlg)
-        self.app_page.update()
+        self._mostrar_dialogo_con_dock_oculto(dlg)
 
     def _abrir_modal_eliminar_alumno(self, id_al: str, nombre: str):
         def confirmar():
@@ -1787,8 +1807,7 @@ class NotasView(ft.Container):
             on_confirm=confirmar,
             page=self.app_page,
         )
-        self.app_page.show_dialog(dlg)
-        self.app_page.update()
+        self._mostrar_dialogo_con_dock_oculto(dlg)
 
     def _abrir_modal_columnas(self):
         trim_idx = self.state.active_trimestre if 0 <= self.state.active_trimestre < 3 else 0
@@ -1805,8 +1824,7 @@ class NotasView(ft.Container):
             on_save=guardar_cols,
             page=self.app_page,
         )
-        self.app_page.show_dialog(dlg)
-        self.app_page.update()
+        self._mostrar_dialogo_con_dock_oculto(dlg)
 
     def _ordenar_alumnos_az(self):
         self.state.order_alumnos_alphabetically()
@@ -1840,8 +1858,7 @@ class NotasView(ft.Container):
             page=self.app_page,
             periodo_activo=self.state.active_trimestre,
         )
-        self.app_page.show_dialog(dlg)
-        self.app_page.update()
+        self._mostrar_dialogo_con_dock_oculto(dlg)
 
     def _mostrar_snackbar(self, mensaje: str, error: bool = False):
         sb = ft.SnackBar(

@@ -60,8 +60,9 @@ class SorteadorGruposDialog(ft.AlertDialog):
 
         self.tf_valor = ft.TextField(
             value=str(self.valor),
-            width=55,
-            height=38,
+            width=50,
+            height=36,
+            content_padding=ft.Padding(2, 2, 2, 2),
             text_align=ft.TextAlign.CENTER,
             text_size=14,
             border_radius=8,
@@ -282,15 +283,16 @@ class SorteadorGruposDialog(ft.AlertDialog):
             alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
             controls=[
-                ft.Text(stepper_label, size=12, color=TEXT_MAIN, weight=ft.FontWeight.W_500),
+                ft.Text(stepper_label, size=12, color=TEXT_MAIN, weight=ft.FontWeight.W_500, expand=True, max_lines=2),
                 ft.Row(
-                    spacing=4,
+                    spacing=2,
                     tight=True,
                     controls=[
                         ft.IconButton(
                             icon=ft.Icons.REMOVE,
                             icon_size=16,
                             icon_color=TEXT_MAIN,
+                            style=ft.ButtonStyle(padding=ft.Padding(4, 4, 4, 4)),
                             on_click=lambda _: self._ajustar_valor(-1),
                         ),
                         self.tf_valor,
@@ -298,6 +300,7 @@ class SorteadorGruposDialog(ft.AlertDialog):
                             icon=ft.Icons.ADD,
                             icon_size=16,
                             icon_color=TEXT_MAIN,
+                            style=ft.ButtonStyle(padding=ft.Padding(4, 4, 4, 4)),
                             on_click=lambda _: self._ajustar_valor(1),
                         ),
                     ],
@@ -347,11 +350,21 @@ class SorteadorGruposDialog(ft.AlertDialog):
                 self.temas_wrap,
             ])
 
+        calc_w = 340
+        if self.app_page and hasattr(self.app_page, "width") and self.app_page.width:
+            calc_w = min(self.app_page.width - 24, 380)
+
+        calc_max_h = 420
+        if self.app_page and hasattr(self.app_page, "height") and self.app_page.height:
+            calc_max_h = min(self.app_page.height * 0.65, 430)
+
         return ft.Container(
-            width=340,
+            width=calc_w,
+            height=calc_max_h,
             content=ft.Column(
                 tight=True,
                 spacing=10,
+                scroll=ft.ScrollMode.AUTO,
                 controls=[
                     self.tf_titulo,
                     modo_tabs,

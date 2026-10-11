@@ -81,10 +81,14 @@ class PlanificacionesInstitucionDialog(ft.AlertDialog):
             tight=False,
         )
 
-        content = ft.Container(
+        calc_w = 340
+        if self.app_page and hasattr(self.app_page, "width") and self.app_page.width:
+            calc_w = min(self.app_page.width - 24, 380)
+
+        self.dialog_container = ft.Container(
             content=self.scroll_column,
-            width=350,
-            height=480,
+            width=calc_w,
+            height=380,
             padding=ft.Padding(left=0, right=0, top=4, bottom=4),
         )
 
@@ -102,7 +106,7 @@ class PlanificacionesInstitucionDialog(ft.AlertDialog):
 
         super().__init__(
             title=title,
-            content=content,
+            content=self.dialog_container,
             actions=actions,
             actions_alignment=ft.MainAxisAlignment.END,
             modal=True,
@@ -199,6 +203,12 @@ class PlanificacionesInstitucionDialog(ft.AlertDialog):
         else:
             resumen_filtrado = resumen
 
+        if hasattr(self, "dialog_container"):
+            num_cards = len(resumen_filtrado)
+            total_clases_visible = sum(len(c.get("clases", [])) for c in resumen_filtrado)
+            calc_h = min(460, max(240, num_cards * 130 + total_clases_visible * 30 + 70))
+            self.dialog_container.height = calc_h
+
         for curso_info in resumen_filtrado:
             card = self._build_curso_card(curso_info)
             self.cursos_content_col.controls.append(card)
@@ -238,8 +248,9 @@ class PlanificacionesInstitucionDialog(ft.AlertDialog):
                 color=PRIMARY,
                 side=ft.BorderSide(1, PRIMARY),
                 shape=ft.RoundedRectangleBorder(radius=8),
+                padding=ft.Padding(8, 0, 8, 0),
             ),
-            height=32,
+            height=30,
             on_click=lambda e, cur=nom_curso: self._abrir_adicion_planificacion(cur),
         )
 
@@ -302,7 +313,7 @@ class PlanificacionesInstitucionDialog(ft.AlertDialog):
                                 [
                                     ft.Text(nom_curso, size=14, weight=ft.FontWeight.BOLD, color=TEXT_MAIN),
                                     *horario_widgets,
-                                    ft.Text(contador_txt, size=11, color=TEXT_MUTED),
+                                    ft.Text(contador_txt, size=11, color=TEXT_MUTED, no_wrap=True, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS),
                                 ],
                                 spacing=2,
                                 tight=True,

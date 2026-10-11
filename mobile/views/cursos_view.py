@@ -155,7 +155,7 @@ class CursosView(ft.Container):
                                 spacing=2,
                                 controls=[
                                     ft.Text(nombre, weight=ft.FontWeight.BOLD, size=15, color=TEXT_MAIN, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS),
-                                    ft.Text("Planilla y gestión integral", size=12, color=TEXT_MUTED),
+                                    ft.Text("Planilla y gestión integral", size=12, color=TEXT_MUTED, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS),
                                 ],
                             ),
                             ft.IconButton(
@@ -164,20 +164,6 @@ class CursosView(ft.Container):
                                 icon_color=PRIMARY,
                                 icon_size=20,
                                 on_click=lambda e, cur=nombre: self._abrir_planificaciones_institucion(cur),
-                            ),
-                            ft.IconButton(
-                                icon=ft.Icons.INSIGHTS,
-                                tooltip="Estadísticas del Curso",
-                                icon_color=PRIMARY,
-                                icon_size=20,
-                                on_click=lambda e, cur=nombre: self._abrir_estadisticas_curso(cur),
-                            ),
-                            ft.IconButton(
-                                icon=ft.Icons.CHECKLIST,
-                                tooltip="Ir a Asistencias",
-                                icon_color=PRIMARY,
-                                icon_size=20,
-                                on_click=lambda e, cur=nombre: self._abrir_curso(cur, "asistencias"),
                             ),
                             ft.PopupMenuButton(
                                 icon=ft.Icons.MORE_VERT,
@@ -248,6 +234,7 @@ class CursosView(ft.Container):
                 card_controls.append(
                     ft.Row(
                         alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
                         controls=[
                             ft.Text(f"{num_alumnos} estudiantes", size=11, color=TEXT_MUTED),
                             ft.Text(texto_pie, size=11, color=TEXT_MUTED),

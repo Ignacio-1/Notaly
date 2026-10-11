@@ -47,13 +47,13 @@ class ExportDialog(ft.AlertDialog):
         self.periodo_activo = int(periodo_activo) if str(periodo_activo).isdigit() else 0
 
         radios = [
-            ft.Radio(value="pdf", label="Documento PDF (.pdf) - Formato oficial"),
-            ft.Radio(value="csv", label="Hoja de Cálculo CSV (.csv) - Excel / Sheets"),
+            ft.Radio(value="pdf", label="Documento PDF (.pdf)"),
+            ft.Radio(value="csv", label="Hoja de Cálculo (.csv / Excel)"),
             ft.Radio(value="txt", label="Archivo de Texto Plano (.txt)"),
         ]
         if tipo_exportacion == "notas":
             radios.append(
-                ft.Radio(value="whatsapp", label="Texto para WhatsApp (Portapapeles)")
+                ft.Radio(value="whatsapp", label="Texto para WhatsApp")
             )
 
         self.formato_selector = ft.RadioGroup(
@@ -109,6 +109,10 @@ class ExportDialog(ft.AlertDialog):
             on_click=lambda e: self._exportar(),
         )
 
+        calc_w = 340
+        if self.app_page and hasattr(self.app_page, "width") and self.app_page.width:
+            calc_w = min(self.app_page.width - 24, 380)
+
         super().__init__(
             title=ft.Row(
                 [
@@ -118,10 +122,13 @@ class ExportDialog(ft.AlertDialog):
                 spacing=8,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
             ),
-            content=ft.Column(
-                controls_col,
-                tight=True,
-                width=340,
+            content=ft.Container(
+                width=calc_w,
+                content=ft.Column(
+                    controls_col,
+                    tight=True,
+                    scroll=ft.ScrollMode.AUTO,
+                ),
             ),
             actions=[
                 ft.TextButton(
