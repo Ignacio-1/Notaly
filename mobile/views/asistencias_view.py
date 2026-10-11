@@ -19,27 +19,6 @@ from mobile.components.ui_header import (
     SaveStatusIndicator,
 )
 from mobile.theme import (
-    BG_PAGE,
-    SURFACE_WHITE,
-    BORDER_COLOR,
-    PRIMARY,
-    PRIMARY_LIGHT,
-    TEXT_MAIN,
-    TEXT_MUTED,
-    TEXT_SUBTLE,
-    WARNING_AMBER,
-    ATTENDANCE_P_BG,
-    ATTENDANCE_P_TEXT,
-    ATTENDANCE_P_SOLID,
-    ATTENDANCE_A_BG,
-    ATTENDANCE_A_TEXT,
-    ATTENDANCE_A_SOLID,
-    ATTENDANCE_T_BG,
-    ATTENDANCE_T_TEXT,
-    ATTENDANCE_T_SOLID,
-    ATTENDANCE_J_BG,
-    ATTENDANCE_J_TEXT,
-    ATTENDANCE_J_SOLID,
     get_avatar_palette,
     extract_initials,
 )
@@ -55,7 +34,8 @@ from core.constants import (
 
 class AsistenciasView(ft.Container):
     def __init__(self, state: AppState, page: ft.Page, on_navigate: callable):
-        super().__init__(expand=True, bgcolor=BG_PAGE)
+        tok = state.tokens
+        super().__init__(expand=True, bgcolor=tok.bg_page)
         self.state = state
         self.app_page = page
         self.on_navigate = on_navigate
@@ -65,7 +45,7 @@ class AsistenciasView(ft.Container):
         self.active_student_id: str | None = None
 
         # Indicador de estado de auto-guardado
-        self.save_indicator = SaveStatusIndicator(status=self.state.save_status)
+        self.save_indicator = SaveStatusIndicator(status=self.state.save_status, tokens=tok)
         self.state.on_save_status_change = self._on_save_status_change
 
         self._build_ui()
@@ -95,6 +75,8 @@ class AsistenciasView(ft.Container):
         fecha_actual = self.state.asistencia_fecha
         asistencias_dia = self.state.get_asistencias_dia(fecha_actual, colegio, curso)
 
+        tok = self.state.tokens
+
         if not self.active_student_id and alumnos:
             self.active_student_id = list(alumnos.keys())[0]
 
@@ -104,6 +86,7 @@ class AsistenciasView(ft.Container):
             title=curso,
             on_back=self._accion_volver,
             status_indicator=self.save_indicator,
+            tokens=tok,
             trailing=ft.Row(
                 spacing=4,
                 tight=True,
@@ -111,14 +94,14 @@ class AsistenciasView(ft.Container):
                     ft.IconButton(
                         icon=ft.Icons.EDIT_CALENDAR,
                         tooltip="Planificación de Clases",
-                        icon_color=PRIMARY,
+                        icon_color=tok.primary,
                         icon_size=20,
                         on_click=lambda _: self._abrir_planificacion_curso(),
                     ),
                     ft.IconButton(
                         icon=ft.Icons.INSIGHTS,
                         tooltip="Estadísticas del Curso",
-                        icon_color=PRIMARY,
+                        icon_color=tok.primary,
                         icon_size=20,
                         on_click=lambda _: self._abrir_estadisticas_curso(),
                     ),
@@ -129,7 +112,7 @@ class AsistenciasView(ft.Container):
         # 2. Selector de módulo (Notas / Asistencia)
         module_tabs = ft.Container(
             padding=ft.Padding(left=16, right=16, top=6, bottom=6),
-            content=build_module_tabs(active_tab="asistencias", on_change=lambda dest: self._cambiar_pestana([dest])),
+            content=build_module_tabs(active_tab="asistencias", on_change=lambda dest: self._cambiar_pestana([dest]), tokens=tok),
         )
 
         # 3. Selector y navegación de fecha (Barra estilizada)
@@ -137,9 +120,9 @@ class AsistenciasView(ft.Container):
         btn_fecha_central = ft.Container(
             content=ft.Row(
                 [
-                    ft.Icon(ft.Icons.CALENDAR_MONTH, color=PRIMARY, size=18),
-                    ft.Text(fecha_str, size=14, weight=ft.FontWeight.BOLD, color=TEXT_MAIN),
-                    ft.Icon(ft.Icons.ARROW_DROP_DOWN, color=PRIMARY, size=18),
+                    ft.Icon(ft.Icons.CALENDAR_MONTH, color=tok.primary, size=18),
+                    ft.Text(fecha_str, size=14, weight=ft.FontWeight.BOLD, color=tok.text_main),
+                    ft.Icon(ft.Icons.ARROW_DROP_DOWN, color=tok.primary, size=18),
                 ],
                 alignment=ft.MainAxisAlignment.CENTER,
                 spacing=4,
@@ -153,8 +136,8 @@ class AsistenciasView(ft.Container):
         )
 
         date_bar = ft.Container(
-            bgcolor=SURFACE_WHITE,
-            border=ft.Border.all(1, BORDER_COLOR),
+            bgcolor=tok.surface,
+            border=ft.Border.all(1, tok.border_color),
             border_radius=12,
             padding=ft.Padding(left=6, right=6, top=4, bottom=4),
             content=ft.Row(
@@ -162,7 +145,7 @@ class AsistenciasView(ft.Container):
                     ft.IconButton(
                         icon=ft.Icons.CHEVRON_LEFT,
                         icon_size=20,
-                        icon_color=TEXT_MUTED,
+                        icon_color=tok.text_muted,
                         tooltip="Día Anterior",
                         on_click=lambda e: self._cambiar_dia(-1),
                     ),
@@ -170,21 +153,21 @@ class AsistenciasView(ft.Container):
                     ft.IconButton(
                         icon=ft.Icons.CHEVRON_RIGHT,
                         icon_size=20,
-                        icon_color=TEXT_MUTED,
+                        icon_color=tok.text_muted,
                         tooltip="Día Siguiente",
                         on_click=lambda e: self._cambiar_dia(1),
                     ),
                     ft.IconButton(
                         icon=ft.Icons.EVENT,
                         icon_size=20,
-                        icon_color=PRIMARY,
+                        icon_color=tok.primary,
                         tooltip="Elegir Fecha en Calendario",
                         on_click=lambda e: self._abrir_selector_fecha(),
                     ),
                     ft.TextButton(
                         "Hoy",
                         style=ft.ButtonStyle(
-                            color=PRIMARY,
+                            color=tok.primary,
                             padding=ft.Padding(left=8, right=8, top=0, bottom=0),
                             shape=ft.RoundedRectangleBorder(radius=8),
                         ),
@@ -202,11 +185,11 @@ class AsistenciasView(ft.Container):
         )
 
         # 4. Estadísticas del Día (KPIs)
-        self.kpi_presentes_text = ft.Text("", weight=ft.FontWeight.BOLD, size=14, color=ATTENDANCE_P_TEXT)
-        self.kpi_ausentes_text = ft.Text("", weight=ft.FontWeight.BOLD, size=14, color=ATTENDANCE_A_TEXT)
-        self.kpi_tardes_text = ft.Text("", weight=ft.FontWeight.BOLD, size=14, color=ATTENDANCE_T_TEXT)
-        self.kpi_justificados_text = ft.Text("", weight=ft.FontWeight.BOLD, size=14, color=ATTENDANCE_J_TEXT)
-        self.kpi_porc_text = ft.Text("", weight=ft.FontWeight.BOLD, size=14, color="#374151")
+        self.kpi_presentes_text = ft.Text("", weight=ft.FontWeight.BOLD, size=14, color=tok.attendance_p_text)
+        self.kpi_ausentes_text = ft.Text("", weight=ft.FontWeight.BOLD, size=14, color=tok.attendance_a_text)
+        self.kpi_tardes_text = ft.Text("", weight=ft.FontWeight.BOLD, size=14, color=tok.attendance_t_text)
+        self.kpi_justificados_text = ft.Text("", weight=ft.FontWeight.BOLD, size=14, color=tok.attendance_j_text)
+        self.kpi_porc_text = ft.Text("", weight=ft.FontWeight.BOLD, size=14, color=tok.text_main)
 
         def make_kpi(label, text_ctrl, color_bg, color_fg):
             return ft.Container(
@@ -229,11 +212,11 @@ class AsistenciasView(ft.Container):
             padding=ft.Padding(left=16, right=16, top=2, bottom=4),
             content=ft.Row(
                 [
-                    make_kpi("Presentes", self.kpi_presentes_text, ATTENDANCE_P_BG, ATTENDANCE_P_TEXT),
-                    make_kpi("Ausentes", self.kpi_ausentes_text, ATTENDANCE_A_BG, ATTENDANCE_A_TEXT),
-                    make_kpi("Tardes", self.kpi_tardes_text, ATTENDANCE_T_BG, ATTENDANCE_T_TEXT),
-                    make_kpi("Justificados", self.kpi_justificados_text, ATTENDANCE_J_BG, ATTENDANCE_J_TEXT),
-                    make_kpi("% Asist.", self.kpi_porc_text, "#F3F4F6", "#374151"),
+                    make_kpi("Presentes", self.kpi_presentes_text, tok.attendance_p_bg, tok.attendance_p_text),
+                    make_kpi("Ausentes", self.kpi_ausentes_text, tok.attendance_a_bg, tok.attendance_a_text),
+                    make_kpi("Tardes", self.kpi_tardes_text, tok.attendance_t_bg, tok.attendance_t_text),
+                    make_kpi("Justificados", self.kpi_justificados_text, tok.attendance_j_bg, tok.attendance_j_text),
+                    make_kpi("% Asist.", self.kpi_porc_text, tok.surface, tok.text_muted),
                 ],
                 spacing=6,
             ),
@@ -251,8 +234,8 @@ class AsistenciasView(ft.Container):
                         icon=ft.Icons.DONE_ALL,
                         height=34,
                         style=ft.ButtonStyle(
-                            color=PRIMARY,
-                            side=ft.BorderSide(1, PRIMARY),
+                            color=tok.primary,
+                            side=ft.BorderSide(1, tok.primary),
                             shape=ft.RoundedRectangleBorder(radius=8),
                             padding=ft.Padding(left=10, right=10, top=0, bottom=0),
                         ),
@@ -261,7 +244,7 @@ class AsistenciasView(ft.Container):
                     ft.IconButton(
                         icon=ft.Icons.SHARE,
                         icon_size=18,
-                        icon_color=TEXT_MUTED,
+                        icon_color=tok.text_muted,
                         tooltip="Exportar Asistencias (PDF/CSV/TXT)",
                         on_click=lambda e: self._abrir_modal_exportar(),
                     ),
@@ -307,8 +290,9 @@ class AsistenciasView(ft.Container):
 
     def _actualizar_boton_guardar(self):
         if hasattr(self, "btn_guardar"):
+            tok = self.state.tokens
             self.btn_guardar.style = ft.ButtonStyle(
-                bgcolor=WARNING_AMBER if self.state.has_unsaved_asistencias else PRIMARY,
+                bgcolor=tok.warning if self.state.has_unsaved_asistencias else tok.primary,
                 color=ft.Colors.WHITE,
                 shape=ft.RoundedRectangleBorder(radius=8),
                 padding=ft.Padding(left=12, right=12, top=0, bottom=0),
@@ -316,6 +300,7 @@ class AsistenciasView(ft.Container):
 
     def _construir_dock_marcado(self, alumnos: dict) -> ft.Control:
         """Construye la barra flotante anclada al pie con 4 botones grandes para marcado táctil rápido."""
+        tok = self.state.tokens
         alumnos_keys = list(alumnos.keys())
 
         def aplicar_estado_dock(estado_codigo: str):
@@ -340,8 +325,8 @@ class AsistenciasView(ft.Container):
             ft.Container(
                 expand=True,
                 height=44,
-                bgcolor=ATTENDANCE_P_BG,
-                border=ft.Border.all(1.5, ATTENDANCE_P_SOLID),
+                bgcolor=tok.attendance_p_bg,
+                border=ft.Border.all(1.5, tok.attendance_p_solid),
                 border_radius=10,
                 alignment=ft.Alignment.CENTER,
                 ink=True,
@@ -351,16 +336,16 @@ class AsistenciasView(ft.Container):
                     spacing=4,
                     tight=True,
                     controls=[
-                        ft.Text("P", weight=ft.FontWeight.BOLD, size=15, color=ATTENDANCE_P_TEXT),
-                        ft.Text("Presente", weight=ft.FontWeight.W_500, size=11, color=ATTENDANCE_P_TEXT),
+                        ft.Text("P", weight=ft.FontWeight.BOLD, size=15, color=tok.attendance_p_text),
+                        ft.Text("Presente", weight=ft.FontWeight.W_500, size=11, color=tok.attendance_p_text),
                     ],
                 ),
             ),
             ft.Container(
                 expand=True,
                 height=44,
-                bgcolor=ATTENDANCE_A_BG,
-                border=ft.Border.all(1.5, ATTENDANCE_A_SOLID),
+                bgcolor=tok.attendance_a_bg,
+                border=ft.Border.all(1.5, tok.attendance_a_solid),
                 border_radius=10,
                 alignment=ft.Alignment.CENTER,
                 ink=True,
@@ -370,16 +355,16 @@ class AsistenciasView(ft.Container):
                     spacing=4,
                     tight=True,
                     controls=[
-                        ft.Text("A", weight=ft.FontWeight.BOLD, size=15, color=ATTENDANCE_A_TEXT),
-                        ft.Text("Ausente", weight=ft.FontWeight.W_500, size=11, color=ATTENDANCE_A_TEXT),
+                        ft.Text("A", weight=ft.FontWeight.BOLD, size=15, color=tok.attendance_a_text),
+                        ft.Text("Ausente", weight=ft.FontWeight.W_500, size=11, color=tok.attendance_a_text),
                     ],
                 ),
             ),
             ft.Container(
                 expand=True,
                 height=44,
-                bgcolor=ATTENDANCE_T_BG,
-                border=ft.Border.all(1.5, ATTENDANCE_T_SOLID),
+                bgcolor=tok.attendance_t_bg,
+                border=ft.Border.all(1.5, tok.attendance_t_solid),
                 border_radius=10,
                 alignment=ft.Alignment.CENTER,
                 ink=True,
@@ -389,16 +374,16 @@ class AsistenciasView(ft.Container):
                     spacing=4,
                     tight=True,
                     controls=[
-                        ft.Text("T", weight=ft.FontWeight.BOLD, size=15, color=ATTENDANCE_T_TEXT),
-                        ft.Text("Tarde", weight=ft.FontWeight.W_500, size=11, color=ATTENDANCE_T_TEXT),
+                        ft.Text("T", weight=ft.FontWeight.BOLD, size=15, color=tok.attendance_t_text),
+                        ft.Text("Tarde", weight=ft.FontWeight.W_500, size=11, color=tok.attendance_t_text),
                     ],
                 ),
             ),
             ft.Container(
                 expand=True,
                 height=44,
-                bgcolor=ATTENDANCE_J_BG,
-                border=ft.Border.all(1.5, ATTENDANCE_J_SOLID),
+                bgcolor=tok.attendance_j_bg,
+                border=ft.Border.all(1.5, tok.attendance_j_solid),
                 border_radius=10,
                 alignment=ft.Alignment.CENTER,
                 ink=True,
@@ -408,8 +393,8 @@ class AsistenciasView(ft.Container):
                     spacing=4,
                     tight=True,
                     controls=[
-                        ft.Text("J", weight=ft.FontWeight.BOLD, size=15, color=ATTENDANCE_J_TEXT),
-                        ft.Text("Justif.", weight=ft.FontWeight.W_500, size=11, color=ATTENDANCE_J_TEXT),
+                        ft.Text("J", weight=ft.FontWeight.BOLD, size=15, color=tok.attendance_j_text),
+                        ft.Text("Justif.", weight=ft.FontWeight.W_500, size=11, color=tok.attendance_j_text),
                     ],
                 ),
             ),
@@ -421,15 +406,15 @@ class AsistenciasView(ft.Container):
             f"Alumno #{self.active_student_id}: {active_nombre}" if self.active_student_id else "Marcado rápido",
             size=11,
             weight=ft.FontWeight.BOLD,
-            color=PRIMARY,
+            color=tok.primary,
             no_wrap=True,
             max_lines=1,
             overflow=ft.TextOverflow.ELLIPSIS,
         )
 
         return ft.Container(
-            bgcolor=SURFACE_WHITE,
-            border=ft.Border.only(top=ft.BorderSide(1, BORDER_COLOR)),
+            bgcolor=tok.surface,
+            border=ft.Border.only(top=ft.BorderSide(1, tok.border_color)),
             padding=ft.Padding(left=16, right=16, top=8, bottom=14),
             content=ft.Column(
                 tight=True,
@@ -438,7 +423,7 @@ class AsistenciasView(ft.Container):
                     ft.Row(
                         alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                         controls=[
-                            ft.Text("DOCK DE MARCADO RÁPIDO", size=10, weight=ft.FontWeight.BOLD, color=TEXT_SUBTLE),
+                            ft.Text("DOCK DE MARCADO RÁPIDO", size=10, weight=ft.FontWeight.BOLD, color=tok.text_subtle),
                             self.dock_label_active,
                         ],
                     ),
@@ -449,16 +434,19 @@ class AsistenciasView(ft.Container):
 
     def _actualizar_seleccion_tarjetas_ui(self):
         """Actualiza el borde de la tarjeta del alumno seleccionado activamente."""
+        tok = self.state.tokens
         if hasattr(self, "tarjetas_alumnos"):
             for sid, card_container in self.tarjetas_alumnos.items():
                 is_sel = (str(sid) == str(self.active_student_id))
-                card_container.border = ft.Border.all(2, PRIMARY if is_sel else BORDER_COLOR)
+                card_container.border = ft.Border.all(2, tok.primary if is_sel else tok.border_color)
         if hasattr(self, "dock_label_active") and self.active_student_id:
             alumnos = self.state.get_alumnos()
             nombre = alumnos.get(str(self.active_student_id), {}).get("nombre", "")
             self.dock_label_active.value = f"Alumno #{self.active_student_id}: {nombre}"
 
     def _construir_lista_alumnos(self, alumnos: dict, asistencias_dia: dict, fecha: str) -> ft.Control:
+        tok = self.state.tokens
+        is_dark = self.state.is_dark_mode
         self.alumnos_botones = {}
         self.tarjetas_alumnos = {}
 
@@ -469,13 +457,13 @@ class AsistenciasView(ft.Container):
                         ft.Container(
                             width=56,
                             height=56,
-                            bgcolor=PRIMARY_LIGHT,
+                            bgcolor=tok.primary_light,
                             border_radius=16,
                             alignment=ft.Alignment.CENTER,
-                            content=ft.Icon(ft.Icons.GROUP_OUTLINED, size=28, color=PRIMARY),
+                            content=ft.Icon(ft.Icons.GROUP_OUTLINED, size=28, color=tok.primary),
                         ),
-                        ft.Text("No hay alumnos en este curso", size=15, weight=ft.FontWeight.BOLD, color=TEXT_MAIN),
-                        ft.Text("Agrega alumnos desde la pestaña 'Notas' para tomar asistencia.", size=12, color=TEXT_MUTED),
+                        ft.Text("No hay alumnos en este curso", size=15, weight=ft.FontWeight.BOLD, color=tok.text_main),
+                        ft.Text("Agrega alumnos desde la pestaña 'Notas' para tomar asistencia.", size=12, color=tok.text_muted),
                     ],
                     horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                     alignment=ft.MainAxisAlignment.CENTER,
@@ -489,7 +477,7 @@ class AsistenciasView(ft.Container):
         for idx, (id_al, al_data) in enumerate(alumnos.items()):
             nombre_al = al_data.get("nombre", "Sin nombre")
             estado_actual = asistencias_dia.get(str(id_al))
-            bg_avatar, txt_avatar = get_avatar_palette(idx)
+            bg_avatar, txt_avatar = get_avatar_palette(idx, is_dark=is_dark)
             initials = extract_initials(nombre_al)
 
             # Selector de estado táctil con 4 botones: P, A, T, J
@@ -513,10 +501,10 @@ class AsistenciasView(ft.Container):
                 )
                 return container, txt_widget, color_hex
 
-            btn_p, txt_p, col_p = make_state_btn(ESTADO_PRESENTE, "P", ATTENDANCE_P_SOLID, str(id_al))
-            btn_a, txt_a, col_a = make_state_btn(ESTADO_AUSENTE, "A", ATTENDANCE_A_SOLID, str(id_al))
-            btn_t, txt_t, col_t = make_state_btn(ESTADO_TARDE, "T", ATTENDANCE_T_SOLID, str(id_al))
-            btn_j, txt_j, col_j = make_state_btn(ESTADO_JUSTIFICADO, "J", ATTENDANCE_J_SOLID, str(id_al))
+            btn_p, txt_p, col_p = make_state_btn(ESTADO_PRESENTE, "P", tok.attendance_p_solid, str(id_al))
+            btn_a, txt_a, col_a = make_state_btn(ESTADO_AUSENTE, "A", tok.attendance_a_solid, str(id_al))
+            btn_t, txt_t, col_t = make_state_btn(ESTADO_TARDE, "T", tok.attendance_t_solid, str(id_al))
+            btn_j, txt_j, col_j = make_state_btn(ESTADO_JUSTIFICADO, "J", tok.attendance_j_solid, str(id_al))
 
             self.alumnos_botones[str(id_al)] = {
                 ESTADO_PRESENTE: (btn_p, txt_p, col_p),
@@ -528,8 +516,8 @@ class AsistenciasView(ft.Container):
             is_active_card = (str(id_al) == str(self.active_student_id))
 
             card_container = ft.Container(
-                bgcolor=SURFACE_WHITE,
-                border=ft.Border.all(2 if is_active_card else 1, PRIMARY if is_active_card else BORDER_COLOR),
+                bgcolor=tok.surface,
+                border=ft.Border.all(2 if is_active_card else 1, tok.primary if is_active_card else tok.border_color),
                 border_radius=14,
                 padding=ft.Padding(left=12, right=10, top=8, bottom=8),
                 ink=True,
@@ -548,8 +536,8 @@ class AsistenciasView(ft.Container):
                             expand=True,
                             spacing=1,
                             controls=[
-                                ft.Text(nombre_al, size=13, weight=ft.FontWeight.BOLD, color=TEXT_MAIN, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS),
-                                ft.Text(f"N° {id_al}", size=11, color=TEXT_MUTED),
+                                ft.Text(nombre_al, size=13, weight=ft.FontWeight.BOLD, color=tok.text_main, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS),
+                                ft.Text(f"N° {id_al}", size=11, color=tok.text_muted),
                             ],
                         ),
                         ft.Row([btn_p, btn_a, btn_t, btn_j], spacing=4),
@@ -640,6 +628,7 @@ class AsistenciasView(ft.Container):
             fechas_con_asistencia=fechas_reg,
             on_date_selected=self._seleccionar_fecha_personalizada,
             page=self.app_page,
+            tokens=self.state.tokens,
         )
         self.app_page.show_dialog(dlg)
         self.app_page.update()
@@ -676,12 +665,14 @@ class AsistenciasView(ft.Container):
             curso=curso,
             on_close=lambda: None,
             page=self.app_page,
+            tokens=self.state.tokens,
         )
         self.app_page.show_dialog(dlg)
         self.app_page.update()
 
 
     def _preguntar_guardar_antes_de_salir(self, destino: str):
+        tok = self.state.tokens
         def cerrar_dialogo():
             self.app_page.pop_dialog()
             self.app_page.update()
@@ -697,22 +688,22 @@ class AsistenciasView(ft.Container):
             self.on_navigate(destino)
 
         dlg = ft.AlertDialog(
-            title=ft.Text("Asistencias sin guardar", weight=ft.FontWeight.BOLD, color=TEXT_MAIN),
-            content=ft.Text("Tienes asistencias modificadas sin guardar.\n¿Deseas guardarlas antes de continuar?", color=TEXT_MUTED),
+            title=ft.Text("Asistencias sin guardar", weight=ft.FontWeight.BOLD, color=tok.text_main),
+            content=ft.Text("Tienes asistencias modificadas sin guardar.\n¿Deseas guardarlas antes de continuar?", color=tok.text_muted),
             actions=[
                 ft.TextButton(
                     "Cancelar",
-                    style=ft.ButtonStyle(color=TEXT_MUTED, shape=ft.RoundedRectangleBorder(radius=8)),
+                    style=ft.ButtonStyle(color=tok.text_muted, shape=ft.RoundedRectangleBorder(radius=8)),
                     on_click=lambda e: cerrar_dialogo(),
                 ),
                 ft.TextButton(
                     "Descartar",
-                    style=ft.ButtonStyle(color=ft.Colors.RED_600, shape=ft.RoundedRectangleBorder(radius=8)),
+                    style=ft.ButtonStyle(color=tok.danger, shape=ft.RoundedRectangleBorder(radius=8)),
                     on_click=lambda e: salir_sin_guardar(),
                 ),
                 ft.FilledButton(
                     "Guardar y Salir",
-                    style=ft.ButtonStyle(bgcolor=PRIMARY, color=ft.Colors.WHITE, shape=ft.RoundedRectangleBorder(radius=8)),
+                    style=ft.ButtonStyle(bgcolor=tok.primary, color=ft.Colors.WHITE, shape=ft.RoundedRectangleBorder(radius=8)),
                     on_click=lambda e: guardar_y_salir(),
                 ),
             ],
@@ -748,6 +739,7 @@ class AsistenciasView(ft.Container):
             curso_data=curso_data,
             on_success=resultado_exportacion,
             page=self.app_page,
+            tokens=self.state.tokens,
         )
         self.app_page.show_dialog(dlg)
         self.app_page.update()

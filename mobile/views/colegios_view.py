@@ -27,7 +27,7 @@ from mobile.theme import (
 
 class ColegiosView(ft.Container):
     def __init__(self, state: AppState, page: ft.Page, on_navigate: callable):
-        super().__init__(expand=True, bgcolor=BG_PAGE)
+        super().__init__(expand=True, bgcolor=state.tokens.bg_page)
         self.state = state
         self.app_page = page
         self.on_navigate = on_navigate
@@ -43,7 +43,7 @@ class ColegiosView(ft.Container):
             expand=True,
             spacing=0,
             controls=[
-                build_app_header("Gestión Docente", "Notaly"),
+                build_app_header("Gestión Docente", "Notaly", tokens=state.tokens),
                 body,
             ],
         )
@@ -51,6 +51,8 @@ class ColegiosView(ft.Container):
         self._build_ui()
 
     def _build_ui(self):
+        tok = self.state.tokens
+        self.bgcolor = tok.bg_page
         colegios = self.state.get_colegios()
 
         header_section = ft.Row(
@@ -59,14 +61,14 @@ class ColegiosView(ft.Container):
                 ft.Column(
                     spacing=2,
                     controls=[
-                        ft.Text("Colegios", size=16, weight=ft.FontWeight.BOLD, color=TEXT_MAIN),
-                        ft.Text(f"{len(colegios)} instituciones registradas", size=12, color=TEXT_MUTED),
+                        ft.Text("Colegios", size=16, weight=ft.FontWeight.BOLD, color=tok.text_main),
+                        ft.Text(f"{len(colegios)} instituciones registradas", size=12, color=tok.text_muted),
                     ],
                 ),
                 ft.FilledButton(
                     "+ Colegio",
                     style=ft.ButtonStyle(
-                        bgcolor=PRIMARY,
+                        bgcolor=tok.primary,
                         color=ft.Colors.WHITE,
                         shape=ft.RoundedRectangleBorder(radius=10),
                     ),
@@ -85,23 +87,23 @@ class ColegiosView(ft.Container):
                             ft.Container(
                                 width=64,
                                 height=64,
-                                bgcolor="#EEF2FF",
+                                bgcolor=tok.primary_light,
                                 border_radius=16,
                                 alignment=ft.Alignment.CENTER,
-                                content=ft.Icon(ft.Icons.SCHOOL_OUTLINED, size=32, color=PRIMARY),
+                                content=ft.Icon(ft.Icons.SCHOOL_OUTLINED, size=32, color=tok.primary),
                             ),
                             ft.Text(
                                 "No se encontraron colegios" if self.state.search_query_colegios else "¡Bienvenido a Notaly!",
                                 size=17,
                                 weight=ft.FontWeight.BOLD,
-                                color=TEXT_MAIN,
+                                color=tok.text_main,
                             ),
                             ft.Text(
                                 "Toca '+ Colegio' para agregar tu primera institución educativa."
                                 if not self.state.search_query_colegios
                                 else "Intenta con otra búsqueda.",
                                 size=13,
-                                color=TEXT_MUTED,
+                                color=tok.text_muted,
                                 text_align=ft.TextAlign.CENTER,
                             ),
                         ],
@@ -113,11 +115,12 @@ class ColegiosView(ft.Container):
                 )
             )
         else:
+            is_dark = self.state.is_dark_mode
             for idx, nombre in enumerate(colegios):
                 cursos = self.state.data.get("colegios", {}).get(nombre, {}).get("cursos", {})
                 num_cursos = len(cursos)
                 subtitulo = f"{num_cursos} curso{'s' if num_cursos != 1 else ''} registrados"
-                bg_badge, text_badge = get_avatar_palette(idx)
+                bg_badge, text_badge = get_avatar_palette(idx, is_dark=is_dark)
                 short_initials = extract_initials(nombre)
 
                 col_data = self.state.data.get("colegios", {}).get(nombre, {})
@@ -125,8 +128,8 @@ class ColegiosView(ft.Container):
                 horarios = col_data.get(K_HORARIOS, "").strip()
 
                 column_controls = [
-                    ft.Text(nombre, weight=ft.FontWeight.BOLD, size=15, color=TEXT_MAIN, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS),
-                    ft.Text(subtitulo, size=12, color=TEXT_MUTED),
+                    ft.Text(nombre, weight=ft.FontWeight.BOLD, size=15, color=tok.text_main, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS),
+                    ft.Text(subtitulo, size=12, color=tok.text_muted),
                 ]
                 if direccion:
                     column_controls.append(
@@ -134,8 +137,8 @@ class ColegiosView(ft.Container):
                             spacing=4,
                             vertical_alignment=ft.CrossAxisAlignment.CENTER,
                             controls=[
-                                ft.Icon(ft.Icons.LOCATION_ON_OUTLINED, size=13, color="#94A3B8"),
-                                ft.Text(direccion, size=11, color=TEXT_MUTED, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS, expand=True),
+                                ft.Icon(ft.Icons.LOCATION_ON_OUTLINED, size=13, color=tok.text_muted),
+                                ft.Text(direccion, size=11, color=tok.text_muted, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS, expand=True),
                             ],
                         )
                     )
@@ -145,15 +148,15 @@ class ColegiosView(ft.Container):
                             spacing=4,
                             vertical_alignment=ft.CrossAxisAlignment.CENTER,
                             controls=[
-                                ft.Icon(ft.Icons.ACCESS_TIME_ROUNDED, size=13, color="#94A3B8"),
-                                ft.Text(horarios, size=11, color=TEXT_MUTED, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS, expand=True),
+                                ft.Icon(ft.Icons.ACCESS_TIME_ROUNDED, size=13, color=tok.text_muted),
+                                ft.Text(horarios, size=11, color=tok.text_muted, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS, expand=True),
                             ],
                         )
                     )
 
                 card = ft.Container(
-                    bgcolor=SURFACE_WHITE,
-                    border=ft.Border.all(1, BORDER_COLOR),
+                    bgcolor=tok.surface,
+                    border=ft.Border.all(1, tok.border_color),
                     border_radius=16,
                     padding=ft.Padding(left=14, right=14, top=12, bottom=12),
                     ink=True,
@@ -178,13 +181,13 @@ class ColegiosView(ft.Container):
                             ft.IconButton(
                                 icon=ft.Icons.INSIGHTS,
                                 tooltip="Estadísticas",
-                                icon_color=PRIMARY,
+                                icon_color=tok.primary,
                                 icon_size=20,
                                 on_click=lambda e, col=nombre: self._abrir_estadisticas_colegio(col),
                             ),
                             ft.PopupMenuButton(
                                 icon=ft.Icons.MORE_VERT,
-                                icon_color="#94A3B8",
+                                icon_color=tok.text_muted,
                                 items=[
                                     ft.PopupMenuItem(
                                         icon=ft.Icons.INSIGHTS,
@@ -250,6 +253,7 @@ class ColegiosView(ft.Container):
             on_confirm=confirmar_creacion,
             modo_edicion=False,
             page=self.app_page,
+            tokens=self.state.tokens,
         )
         self.app_page.show_dialog(dlg)
         self.app_page.update()
@@ -282,6 +286,7 @@ class ColegiosView(ft.Container):
             modo_edicion=True,
             on_confirm=confirmar_edicion,
             page=self.app_page,
+            tokens=self.state.tokens,
         )
         self.app_page.show_dialog(dlg)
         self.app_page.update()
@@ -300,6 +305,7 @@ class ColegiosView(ft.Container):
             nombre_actual=nombre_actual,
             on_confirm=confirmar_renombrar,
             page=self.app_page,
+            tokens=self.state.tokens,
         )
         self.app_page.show_dialog(dlg)
         self.app_page.update()
@@ -319,6 +325,7 @@ class ColegiosView(ft.Container):
             mensaje=f"¿Estás seguro de que deseas eliminar '{nombre}' y todos sus cursos y notas asociados?\n\nEsta acción no se puede deshacer.",
             on_confirm=confirmar_eliminar,
             page=self.app_page,
+            tokens=self.state.tokens,
         )
         self.app_page.show_dialog(dlg)
         self.app_page.update()

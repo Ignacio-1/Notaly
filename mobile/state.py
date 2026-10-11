@@ -75,6 +75,7 @@ from core.calculos import (
     obtener_estadisticas_colegio,
     procesar_estadisticas_comportamiento,
 )
+from mobile.theme import ThemeTokens, get_tokens
 
 logger = logging.getLogger(__name__)
 
@@ -127,8 +128,34 @@ class AppState:
         self._save_lock: threading.Lock = threading.Lock()
         self._pending_save_event: threading.Event = threading.Event()
 
+        # Preferencia de tema visual (Claro / Oscuro)
+        self.theme_mode: str = gestor_datos.leer_preferencia_tema()
+
         # Cargar datos iniciales
         self.load_data()
+
+    @property
+    def is_dark_mode(self) -> bool:
+        """Indica si el modo oscuro está activo."""
+        return self.theme_mode == "dark"
+
+    @property
+    def tokens(self) -> ThemeTokens:
+        """Retorna el conjunto de tokens de diseño semánticos del tema activo."""
+        return get_tokens(self.theme_mode)
+
+    def toggle_theme(self) -> str:
+        """
+        Alterna el tema visual entre 'light' y 'dark'.
+        Asegura el volcado previo de cualquier cambio pendiente en debounce
+        antes de realizar la conmutación y persistir la nueva preferencia.
+        """
+        if self.has_unsaved_changes or self.has_unsaved_asistencias:
+            self.flush_auto_save()
+
+        self.theme_mode = "dark" if self.theme_mode == "light" else "light"
+        gestor_datos.guardar_preferencia_tema(self.theme_mode)
+        return self.theme_mode
 
     def set_save_status(self, status: str):
         """Actualiza el estado de persistencia y notifica a los oyentes de la UI."""

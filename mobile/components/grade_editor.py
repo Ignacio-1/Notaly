@@ -6,7 +6,16 @@ Ofrece un campo numérico optimizado con soporte para calificaciones enteras y d
 import math
 import flet as ft
 from typing import Callable
-from mobile.theme import PRIMARY, TEXT_MAIN, TEXT_MUTED, BORDER_COLOR, BG_PAGE
+from mobile.theme import (
+    PRIMARY,
+    TEXT_MAIN,
+    TEXT_MUTED,
+    BORDER_COLOR,
+    BG_PAGE,
+    LIGHT_TOKENS,
+    ThemeTokens,
+    get_tokens,
+)
 
 
 class GradeEditorDialog(ft.AlertDialog):
@@ -18,10 +27,13 @@ class GradeEditorDialog(ft.AlertDialog):
         on_save: Callable[[float | int | None], None],
         on_close: Callable[[], None] | None = None,
         page: ft.Page | None = None,
+        tokens: ThemeTokens | None = None,
     ):
         self.on_save = on_save
         self.on_close_cb = on_close
         self.app_page = page
+        self.tokens = tokens or (get_tokens("dark") if getattr(page, "theme_mode", None) == ft.ThemeMode.DARK else LIGHT_TOKENS)
+        tok = self.tokens
 
         # Campo de texto para notas (1 a 10)
         initial_val_str = ""
@@ -42,8 +54,9 @@ class GradeEditorDialog(ft.AlertDialog):
             autofocus=True,
             dense=False,
             border_radius=12,
-            bgcolor=BG_PAGE,
-            border_color=PRIMARY,
+            bgcolor=tok.bg_page,
+            border_color=tok.primary,
+            color=tok.text_main,
             on_submit=lambda e: self._guardar_desde_input(),
         )
 
@@ -57,8 +70,8 @@ class GradeEditorDialog(ft.AlertDialog):
                 ft.Container(
                     content=ft.Column(
                         [
-                            ft.Text(f"Alumno: {alumno_nombre}", weight=ft.FontWeight.BOLD, size=15, color=TEXT_MAIN),
-                            ft.Text(f"Evaluación: {columna_nombre}", color=TEXT_MUTED, size=13),
+                            ft.Text(f"Alumno: {alumno_nombre}", weight=ft.FontWeight.BOLD, size=15, color=tok.text_main),
+                            ft.Text(f"Evaluación: {columna_nombre}", color=tok.text_muted, size=13),
                         ],
                         spacing=2,
                     ),
@@ -78,21 +91,22 @@ class GradeEditorDialog(ft.AlertDialog):
             ),
             ft.OutlinedButton(
                 "Cancelar",
-                style=ft.ButtonStyle(color=TEXT_MUTED, side=ft.BorderSide(1, BORDER_COLOR), shape=ft.RoundedRectangleBorder(radius=8)),
+                style=ft.ButtonStyle(color=tok.text_muted, side=ft.BorderSide(1, tok.border_color), shape=ft.RoundedRectangleBorder(radius=8)),
                 on_click=lambda e: self._cerrar(),
             ),
             ft.FilledButton(
                 "Guardar",
-                style=ft.ButtonStyle(bgcolor=PRIMARY, color=ft.Colors.WHITE, shape=ft.RoundedRectangleBorder(radius=8)),
+                style=ft.ButtonStyle(bgcolor=tok.primary, color=ft.Colors.WHITE, shape=ft.RoundedRectangleBorder(radius=8)),
                 on_click=lambda e: self._guardar_desde_input(),
             ),
         ]
 
         super().__init__(
+            bgcolor=tok.surface,
             title=ft.Row(
                 [
-                    ft.Icon(ft.Icons.SCHOOL, color=PRIMARY, size=24),
-                    ft.Text("Cargar Nota", weight=ft.FontWeight.BOLD, size=16, color=TEXT_MAIN),
+                    ft.Icon(ft.Icons.SCHOOL, color=tok.primary, size=24),
+                    ft.Text("Cargar Nota", weight=ft.FontWeight.BOLD, size=16, color=tok.text_main),
                 ],
                 spacing=8,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,

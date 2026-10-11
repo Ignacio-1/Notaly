@@ -22,7 +22,7 @@ from mobile.theme import (
 
 class CursosView(ft.Container):
     def __init__(self, state: AppState, page: ft.Page, on_navigate: callable):
-        super().__init__(expand=True, bgcolor=BG_PAGE)
+        super().__init__(expand=True, bgcolor=state.tokens.bg_page)
         self.state = state
         self.app_page = page
         self.on_navigate = on_navigate
@@ -31,6 +31,8 @@ class CursosView(ft.Container):
         self._build_ui()
 
     def _build_ui(self):
+        tok = self.state.tokens
+        self.bgcolor = tok.bg_page
         colegio = self.state.selected_colegio or "Colegio"
         cursos = self.state.get_cursos(colegio)
 
@@ -44,17 +46,17 @@ class CursosView(ft.Container):
                         ft.Column(
                             spacing=2,
                             controls=[
-                                ft.Text("Mis cursos", size=16, weight=ft.FontWeight.BOLD, color=TEXT_MAIN),
-                                ft.Text(f"{len(cursos)} activos · Ciclo lectivo", size=12, color=TEXT_MUTED),
+                                ft.Text("Mis cursos", size=16, weight=ft.FontWeight.BOLD, color=tok.text_main),
+                                ft.Text(f"{len(cursos)} activos · Ciclo lectivo", size=12, color=tok.text_muted),
                             ],
                         ),
                         ft.IconButton(
                             icon=ft.Icons.INSIGHTS,
-                            icon_color=PRIMARY,
+                            icon_color=tok.primary,
                             icon_size=20,
                             tooltip="Estadísticas del Colegio",
                             style=ft.ButtonStyle(
-                                bgcolor=PRIMARY_LIGHT,
+                                bgcolor=tok.primary_light,
                                 shape=ft.RoundedRectangleBorder(radius=10),
                             ),
                             on_click=lambda _: self._abrir_estadisticas_colegio(),
@@ -69,8 +71,8 @@ class CursosView(ft.Container):
                             icon=ft.Icons.EVENT_NOTE,
                             expand=True,
                             style=ft.ButtonStyle(
-                                color=PRIMARY,
-                                side=ft.BorderSide(1, PRIMARY),
+                                color=tok.primary,
+                                side=ft.BorderSide(1, tok.primary),
                                 shape=ft.RoundedRectangleBorder(radius=10),
                             ),
                             height=36,
@@ -80,7 +82,7 @@ class CursosView(ft.Container):
                             "+ Curso",
                             expand=True,
                             style=ft.ButtonStyle(
-                                bgcolor=PRIMARY,
+                                bgcolor=tok.primary,
                                 color=ft.Colors.WHITE,
                                 shape=ft.RoundedRectangleBorder(radius=10),
                             ),
@@ -101,23 +103,23 @@ class CursosView(ft.Container):
                             ft.Container(
                                 width=64,
                                 height=64,
-                                bgcolor=PRIMARY_LIGHT,
+                                bgcolor=tok.primary_light,
                                 border_radius=16,
                                 alignment=ft.Alignment.CENTER,
-                                content=ft.Icon(ft.Icons.CLASS_OUTLINED, size=32, color=PRIMARY),
+                                content=ft.Icon(ft.Icons.CLASS_OUTLINED, size=32, color=tok.primary),
                             ),
                             ft.Text(
                                 "No se encontraron cursos" if self.state.search_query_cursos else "No hay cursos registrados",
                                 size=17,
                                 weight=ft.FontWeight.BOLD,
-                                color=TEXT_MAIN,
+                                color=tok.text_main,
                             ),
                             ft.Text(
                                 "Toca '+ Curso' para agregar el primer curso a este colegio."
                                 if not self.state.search_query_cursos
                                 else "Intenta con otra búsqueda.",
                                 size=13,
-                                color=TEXT_MUTED,
+                                color=tok.text_muted,
                                 text_align=ft.TextAlign.CENTER,
                             ),
                         ],
@@ -145,29 +147,29 @@ class CursosView(ft.Container):
                             ft.Container(
                                 width=44,
                                 height=44,
-                                bgcolor=PRIMARY_LIGHT,
+                                bgcolor=tok.primary_light,
                                 border_radius=12,
                                 alignment=ft.Alignment.CENTER,
-                                content=ft.Icon(ft.Icons.BOOK, color=PRIMARY, size=22),
+                                content=ft.Icon(ft.Icons.BOOK, color=tok.primary, size=22),
                             ),
                             ft.Column(
                                 expand=True,
                                 spacing=2,
                                 controls=[
-                                    ft.Text(nombre, weight=ft.FontWeight.BOLD, size=15, color=TEXT_MAIN, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS),
-                                    ft.Text("Planilla y gestión integral", size=12, color=TEXT_MUTED, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS),
+                                    ft.Text(nombre, weight=ft.FontWeight.BOLD, size=15, color=tok.text_main, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS),
+                                    ft.Text("Planilla y gestión integral", size=12, color=tok.text_muted, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS),
                                 ],
                             ),
                             ft.IconButton(
                                 icon=ft.Icons.EVENT_NOTE,
                                 tooltip="Planificaciones del curso",
-                                icon_color=PRIMARY,
+                                icon_color=tok.primary,
                                 icon_size=20,
                                 on_click=lambda e, cur=nombre: self._abrir_planificaciones_institucion(cur),
                             ),
                             ft.PopupMenuButton(
                                 icon=ft.Icons.MORE_VERT,
-                                icon_color="#94A3B8",
+                                icon_color=tok.text_muted,
                                 items=[
                                     ft.PopupMenuItem(
                                         icon=ft.Icons.EVENT_NOTE,
@@ -210,11 +212,11 @@ class CursosView(ft.Container):
                         ft.Row(
                             spacing=4,
                             controls=[
-                                ft.Icon(ft.Icons.ACCESS_TIME_ROUNDED, size=13, color="#94A3B8"),
+                                ft.Icon(ft.Icons.ACCESS_TIME_ROUNDED, size=13, color=tok.text_muted),
                                 ft.Text(
                                     horario.strip(),
                                     size=11,
-                                    color="#64748B",
+                                    color=tok.text_muted,
                                     expand=True,
                                     max_lines=1,
                                     overflow=ft.TextOverflow.ELLIPSIS,
@@ -223,7 +225,7 @@ class CursosView(ft.Container):
                         )
                     )
 
-                card_controls.append(ft.Divider(height=1, color="#F1F5F9"))
+                card_controls.append(ft.Divider(height=1, color=tok.border_color))
 
                 texto_pie = (
                     (f"{num_clases} clases planificadas" if num_clases != 1 else "1 clase planificada")
@@ -236,15 +238,15 @@ class CursosView(ft.Container):
                         alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                         vertical_alignment=ft.CrossAxisAlignment.CENTER,
                         controls=[
-                            ft.Text(f"{num_alumnos} estudiantes", size=11, color=TEXT_MUTED),
-                            ft.Text(texto_pie, size=11, color=TEXT_MUTED),
+                            ft.Text(f"{num_alumnos} estudiantes", size=11, color=tok.text_muted),
+                            ft.Text(texto_pie, size=11, color=tok.text_muted),
                         ],
                     )
                 )
 
                 card = ft.Container(
-                    bgcolor=SURFACE_WHITE,
-                    border=ft.Border.all(1, BORDER_COLOR),
+                    bgcolor=tok.surface,
+                    border=ft.Border.all(1, tok.border_color),
                     border_radius=16,
                     padding=16,
                     ink=True,
@@ -272,7 +274,7 @@ class CursosView(ft.Container):
             expand=True,
             spacing=0,
             controls=[
-                build_app_header("Institución", colegio, on_back=lambda: self.on_navigate("colegios")),
+                build_app_header("Institución", colegio, on_back=lambda: self.on_navigate("colegios"), tokens=tok),
                 body,
             ],
         )
@@ -300,6 +302,7 @@ class CursosView(ft.Container):
             titulo=f"Nuevo Curso en {self.state.selected_colegio}",
             on_confirm=confirmar_creacion,
             page=self.app_page,
+            tokens=self.state.tokens,
         )
         self.app_page.show_dialog(dlg)
         self.app_page.update()
@@ -340,6 +343,7 @@ class CursosView(ft.Container):
             nombre_actual=nombre_actual,
             on_confirm=confirmar_renombrar,
             page=self.app_page,
+            tokens=self.state.tokens,
         )
         self.app_page.show_dialog(dlg)
         self.app_page.update()
@@ -359,6 +363,7 @@ class CursosView(ft.Container):
             mensaje=f"¿Estás seguro de que deseas eliminar el curso '{nombre}' con todos sus alumnos, notas y asistencias?\n\nEsta acción no se puede deshacer.",
             on_confirm=confirmar_eliminar,
             page=self.app_page,
+            tokens=self.state.tokens,
         )
         self.app_page.show_dialog(dlg)
         self.app_page.update()

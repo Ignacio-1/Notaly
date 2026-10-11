@@ -20,6 +20,10 @@ from mobile.theme import (
     BORDER_ACTIVE,
     BG_PAGE,
     SURFACE_WHITE,
+    LIGHT_TOKENS,
+    DARK_TOKENS,
+    ThemeTokens,
+    get_tokens,
     get_avatar_palette,
     extract_initials,
 )
@@ -55,9 +59,17 @@ COLOR_NEG_TEXT = "#991B1B"
 COLOR_NEG_SOLID = "#EF4444"
 
 
-def get_comportamiento_style(tipo: str) -> tuple[str, str, str]:
+def get_comportamiento_style(tipo: str, tokens: ThemeTokens | None = None) -> tuple[str, str, str]:
     """Retorna (bgcolor_suave, text_color, solid_color) según el tipo de comportamiento."""
     t = str(tipo or "").lower().strip()
+    if tokens:
+        if t == COMPORTAMIENTO_POSITIVO:
+            return tokens.attendance_p_bg, tokens.attendance_p_text, tokens.attendance_p_solid
+        elif t == COMPORTAMIENTO_REGULAR:
+            return tokens.attendance_t_bg, tokens.attendance_t_text, tokens.attendance_t_solid
+        elif t == COMPORTAMIENTO_NEGATIVO:
+            return tokens.attendance_a_bg, tokens.attendance_a_text, tokens.attendance_a_solid
+        return tokens.bg_page, tokens.text_muted, tokens.border_color
     if t == COMPORTAMIENTO_POSITIVO:
         return COLOR_POS_BG, COLOR_POS_TEXT, COLOR_POS_SOLID
     elif t == COMPORTAMIENTO_REGULAR:
@@ -82,6 +94,7 @@ class ComportamientoDialog(ft.AlertDialog):
         curso: str | None = None,
         on_close: Callable[[], None] | None = None,
         page: ft.Page | None = None,
+        tokens: ThemeTokens | None = None,
     ):
         self.state = state
         self.id_alumno = str(id_alumno)
@@ -90,6 +103,8 @@ class ComportamientoDialog(ft.AlertDialog):
         self.curso = curso or self.state.selected_curso or ""
         self.on_close_cb = on_close
         self.app_page = page
+        self.tokens = tokens or getattr(state, "tokens", None) or get_tokens("dark" if getattr(page, "theme_mode", None) == ft.ThemeMode.DARK else "light")
+        tok = self.tokens
 
         # Fecha de observación activa (por defecto hoy)
         self.fecha_activa = datetime.now().strftime(FORMATO_FECHA)
@@ -120,10 +135,11 @@ class ComportamientoDialog(ft.AlertDialog):
             max_lines=4,
             dense=True,
             border_radius=10,
-            bgcolor=SURFACE_WHITE,
-            border_color=BORDER_COLOR,
-            focused_border_color=PRIMARY,
+            bgcolor=tok.bg_page,
+            border_color=tok.border_color,
+            focused_border_color=tok.primary,
             text_size=12,
+            color=tok.text_main,
             on_change=self._al_cambiar_observacion_texto,
         )
 
@@ -137,6 +153,7 @@ class ComportamientoDialog(ft.AlertDialog):
 
         super().__init__(
             modal=True,
+            bgcolor=tok.surface,
             content=dialog_content,
             actions=[],  # Cero botones de guardar manuales en actions
             actions_alignment=ft.MainAxisAlignment.END,
@@ -149,12 +166,13 @@ class ComportamientoDialog(ft.AlertDialog):
 
     def _crear_boton_categoria(self, label: str, tipo: str, color_solido: str) -> ft.Container:
         """Crea un botón estilizado para seleccionar la categoría de comportamiento."""
+        tok = self.tokens
         return ft.Container(
             expand=True,
             height=40,
             border_radius=10,
-            bgcolor="#F8FAFC",
-            border=ft.Border.all(1.5, BORDER_COLOR),
+            bgcolor=tok.surface_variant,
+            border=ft.Border.all(1.5, tok.border_color),
             alignment=ft.Alignment.CENTER,
             ink=True,
             on_click=lambda _: self._seleccionar_categoria(tipo),
@@ -162,14 +180,15 @@ class ComportamientoDialog(ft.AlertDialog):
                 label,
                 size=12,
                 weight=ft.FontWeight.BOLD,
-                color=TEXT_MAIN,
+                color=tok.text_main,
             ),
         )
 
     def _construir_contenido(self) -> ft.Container:
         """Construye el layout desplazable del diálogo."""
+        tok = self.tokens
         num_id = int(self.id_alumno) if self.id_alumno.isdigit() else 0
-        avatar_bg, avatar_fg = get_avatar_palette(num_id)
+        avatar_bg, avatar_fg = get_avatar_palette(num_id, is_dark=(tok == DARK_TOKENS))
         iniciales = extract_initials(self.nombre_alumno)
 
         # 1. Cabecera con avatar, alumno y botón de cierre
@@ -198,14 +217,14 @@ class ComportamientoDialog(ft.AlertDialog):
                                     f"#{self.id_alumno} {self.nombre_alumno}",
                                     size=14,
                                     weight=ft.FontWeight.BOLD,
-                                    color=TEXT_MAIN,
+                                    color=tok.text_main,
                                     max_lines=1,
                                     overflow=ft.TextOverflow.ELLIPSIS,
                                 ),
                                 ft.Text(
                                     f"Comportamiento · {self.fecha_activa}",
                                     size=11,
-                                    color=TEXT_MUTED,
+                                    color=tok.text_muted,
                                 ),
                             ],
                         ),
@@ -213,7 +232,7 @@ class ComportamientoDialog(ft.AlertDialog):
                 ),
                 ft.IconButton(
                     icon=ft.Icons.CLOSE,
-                    icon_color=TEXT_MUTED,
+                    icon_color=tok.text_muted,
                     icon_size=20,
                     tooltip="Cerrar",
                     on_click=lambda _: self._cerrar_dialogo(),
@@ -253,9 +272,9 @@ class ComportamientoDialog(ft.AlertDialog):
                             "Historial de observaciones",
                             size=12,
                             weight=ft.FontWeight.BOLD,
-                            color=TEXT_MAIN,
+                            color=tok.text_main,
                         ),
-                        ft.Icon(ft.Icons.HISTORY, size=16, color=TEXT_MUTED),
+                        ft.Icon(ft.Icons.HISTORY, size=16, color=tok.text_muted),
                     ],
                 ),
                 self.historial_container,
@@ -268,15 +287,16 @@ class ComportamientoDialog(ft.AlertDialog):
             scroll=ft.ScrollMode.AUTO,
             controls=[
                 header,
-                ft.Divider(height=1, color=BORDER_COLOR),
-                ft.Text("Calificar comportamiento:", size=12, weight=ft.FontWeight.BOLD, color=TEXT_MAIN),
+                ft.Divider(height=1, color=tok.border_color),
+                ft.Text("Calificar comportamiento:", size=12, weight=ft.FontWeight.BOLD, color=tok.text_main),
                 categorias_row,
                 self.subtipos_container,
                 self.observacion_input_container,
-                ft.Divider(height=1, color=BORDER_COLOR),
+                ft.Divider(height=1, color=tok.border_color),
                 seccion_historial,
             ],
         )
+
 
         return ft.Container(
             content=scroll_content,
@@ -353,6 +373,7 @@ class ComportamientoDialog(ft.AlertDialog):
         text_col: str,
     ) -> ft.Container:
         """Construye la fila de botones de subtipos seleccionables."""
+        tok = self.tokens
         botones = []
         for st in subtipos:
             is_sel = (self.subtipo_seleccionado == st)
@@ -360,8 +381,8 @@ class ComportamientoDialog(ft.AlertDialog):
                 expand=True,
                 height=36,
                 border_radius=8,
-                bgcolor=bg_suave if is_sel else "#F8FAFC",
-                border=ft.Border.all(1.5, color_solido if is_sel else BORDER_COLOR),
+                bgcolor=bg_suave if is_sel else tok.surface_variant,
+                border=ft.Border.all(1.5, color_solido if is_sel else tok.border_color),
                 alignment=ft.Alignment.CENTER,
                 ink=True,
                 on_click=lambda _, val=st: self._seleccionar_subtipo(val),
@@ -369,7 +390,7 @@ class ComportamientoDialog(ft.AlertDialog):
                     val_label := st,
                     size=12,
                     weight=ft.FontWeight.BOLD if is_sel else ft.FontWeight.W_500,
-                    color=text_col if is_sel else TEXT_MAIN,
+                    color=text_col if is_sel else tok.text_main,
                 ),
             )
             botones.append(btn)
@@ -461,6 +482,7 @@ class ComportamientoDialog(ft.AlertDialog):
 
     def _refrescar_historial_ui(self):
         """Actualiza la lista visual del historial de observaciones del alumno."""
+        tok = self.tokens
         observaciones = self.state.get_comportamientos_alumno(
             id_al=self.id_alumno,
             colegio=self.colegio,
@@ -514,13 +536,13 @@ class ComportamientoDialog(ft.AlertDialog):
                         tight=True,
                         controls=[
                             badge,
-                            ft.Text(formatear_fecha(fecha), size=11, color=TEXT_MUTED),
+                            ft.Text(formatear_fecha(fecha), size=11, color=tok.text_muted),
                         ],
                     ),
                     ft.IconButton(
                         icon=ft.Icons.DELETE_OUTLINE,
                         icon_size=16,
-                        icon_color=TEXT_MUTED,
+                        icon_color=tok.text_muted,
                         tooltip="Eliminar observación",
                         on_click=lambda _, comp_id=c_id: self._eliminar_observacion(comp_id),
                     ),
@@ -531,12 +553,12 @@ class ComportamientoDialog(ft.AlertDialog):
             # Si el profesor añadió texto opcional, mostrarlo; si no, solo se muestra la opción
             if texto:
                 controles_tarjeta.append(
-                    ft.Text(texto, size=11, color=TEXT_MAIN)
+                    ft.Text(texto, size=11, color=tok.text_main)
                 )
 
             tarjeta_obs = ft.Container(
-                bgcolor="#F8FAFC",
-                border=ft.Border.all(1, BORDER_COLOR),
+                bgcolor=tok.surface_variant,
+                border=ft.Border.all(1, tok.border_color),
                 border_radius=8,
                 padding=ft.Padding(left=10, right=6, top=6, bottom=6),
                 content=ft.Column(spacing=4, tight=True, controls=controles_tarjeta),

@@ -18,6 +18,9 @@ from mobile.theme import (
     ATTENDANCE_P_BG,
     ATTENDANCE_P_TEXT,
     ATTENDANCE_P_SOLID,
+    LIGHT_TOKENS,
+    ThemeTokens,
+    get_tokens,
 )
 
 MESES = [
@@ -35,10 +38,13 @@ class DatePickerDialog(ft.AlertDialog):
         fechas_con_asistencia: list[str],
         on_date_selected: Callable[[str], None],
         page: ft.Page | None = None,
+        tokens: ThemeTokens | None = None,
     ):
         self.on_date_selected = on_date_selected
         self.fechas_con_asistencia = set(fechas_con_asistencia)
         self.app_page = page
+        self.tokens = tokens or (get_tokens("dark") if getattr(page, "theme_mode", None) == ft.ThemeMode.DARK else LIGHT_TOKENS)
+        tok = self.tokens
 
         # Parsear fecha inicial
         try:
@@ -62,8 +68,9 @@ class DatePickerDialog(ft.AlertDialog):
             dense=True,
             expand=True,
             border_radius=10,
-            bgcolor=BG_PAGE,
-            border_color=BORDER_COLOR,
+            bgcolor=tok.bg_page,
+            border_color=tok.border_color,
+            color=tok.text_main,
             on_submit=lambda e: self._confirmar_manual(),
         )
         self.lbl_error = ft.Text("", color=ft.Colors.ERROR, size=12, visible=False)
@@ -76,13 +83,13 @@ class DatePickerDialog(ft.AlertDialog):
                 [
                     self._build_header_controls(),
                     self.calendar_body,
-                    ft.Divider(height=1, color=BORDER_COLOR),
+                    ft.Divider(height=1, color=tok.border_color),
                     ft.Row(
                         [
                             self.txt_manual,
                             ft.IconButton(
                                 icon=ft.Icons.CHECK,
-                                icon_color=PRIMARY,
+                                icon_color=tok.primary,
                                 tooltip="Aplicar fecha escrita",
                                 on_click=lambda e: self._confirmar_manual(),
                             ),
@@ -100,10 +107,11 @@ class DatePickerDialog(ft.AlertDialog):
         )
 
         super().__init__(
+            bgcolor=tok.surface,
             title=ft.Row(
                 [
-                    ft.Icon(ft.Icons.EVENT, color=PRIMARY),
-                    ft.Text("Seleccionar Fecha", weight=ft.FontWeight.BOLD, size=18, color=TEXT_MAIN),
+                    ft.Icon(ft.Icons.EVENT, color=tok.primary),
+                    ft.Text("Seleccionar Fecha", weight=ft.FontWeight.BOLD, size=18, color=tok.text_main),
                 ],
                 spacing=8,
             ),
@@ -111,7 +119,7 @@ class DatePickerDialog(ft.AlertDialog):
             actions=[
                 ft.TextButton(
                     "Cancelar",
-                    style=ft.ButtonStyle(color=TEXT_MUTED, shape=ft.RoundedRectangleBorder(radius=8)),
+                    style=ft.ButtonStyle(color=tok.text_muted, shape=ft.RoundedRectangleBorder(radius=8)),
                     on_click=lambda e: self._cerrar(),
                 ),
             ],

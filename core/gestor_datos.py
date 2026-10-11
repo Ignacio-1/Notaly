@@ -80,6 +80,7 @@ def _get_config_dir() -> Path:
 # Archivo de configuración que guarda la RUTA de la base de datos.
 # Se almacena en una ubicación estándar del sistema operativo.
 CONFIG_FILE = _get_config_dir() / "config_path.json"
+PREFERENCIAS_FILE = _get_config_dir() / "preferencias.json"
 
 
 def obtener_ruta_datos_por_defecto() -> str:
@@ -582,3 +583,53 @@ def buscar_entidad_global(
                         return resultados
 
     return resultados
+
+
+def leer_preferencia_tema() -> str:
+    """
+    Lee la preferencia de tema visual almacenada en preferencias.json.
+    Retorna 'dark' si está configurado explícitamente; en cualquier otro caso
+    (archivo ausente, corrupto o clave inválida), retorna 'light'.
+    """
+    if not PREFERENCIAS_FILE.exists():
+        return "light"
+
+    try:
+        with open(PREFERENCIAS_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data, dict) and data.get("tema") == "dark":
+            return "dark"
+    except Exception as e:
+        logger.warning("Error al leer preferencia de tema: %s. Aplicando modo claro por defecto.", e)
+
+    return "light"
+
+
+def guardar_preferencia_tema(tema: str) -> bool:
+    """
+    Persiste la preferencia de tema ('light' o 'dark') en preferencias.json
+    mediante escritura atómica segura. Retorna True si tuvo éxito, False si falló o el valor es inválido.
+    """
+    if tema not in ("light", "dark"):
+        logger.error("Valor de tema inválido: %r. Debe ser 'light' o 'dark'.", tema)
+        return False
+
+    try:
+        data = {}
+        if PREFERENCIAS_FILE.exists():
+            try:
+                with open(PREFERENCIAS_FILE, "r", encoding="utf-8") as f:
+                    contenido_actual = json.load(f)
+                if isinstance(contenido_actual, dict):
+                    data = contenido_actual
+            except Exception:
+                data = {}
+
+        data["tema"] = tema
+        contenido = json.dumps(data, indent=2, ensure_ascii=False)
+        _escribir_archivo_seguro(PREFERENCIAS_FILE, contenido)
+        logger.info("Preferencia de tema '%s' guardada exitosamente.", tema)
+        return True
+    except Exception as e:
+        logger.error("Error al guardar preferencia de tema: %s", e)
+        return False

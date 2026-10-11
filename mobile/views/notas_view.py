@@ -5,6 +5,7 @@ Cumple con las especificaciones de diseño Slate 50 / Indigo 600 y Material Desi
 """
 
 import math
+from typing import Callable
 import flet as ft
 from mobile.state import AppState
 from mobile.components.grade_editor import GradeEditorDialog
@@ -39,6 +40,9 @@ from mobile.theme import (
     GRADE_FAIL_TEXT,
     GRADE_EMPTY_BG,
     GRADE_EMPTY_TEXT,
+    ThemeTokens,
+    LIGHT_TOKENS,
+    DARK_TOKENS,
     get_grade_tone,
     get_avatar_palette,
     extract_initials,
@@ -54,8 +58,15 @@ from core.constants import (
 from core.calculos import procesar_calificaciones_alumno
 
 
-def build_grade_pill(label: str, value: float | int | str | None) -> ft.Container:
+def build_grade_pill(
+    label: str,
+    value: float | int | str | None,
+    is_dark: bool = False,
+    tokens: ThemeTokens | None = None,
+) -> ft.Container:
     """Construye una píldora visual de calificación para un trimestre (.grade-pill)."""
+    tok = tokens or (DARK_TOKENS if is_dark else LIGHT_TOKENS)
+    is_dark_eff = is_dark or (tok == DARK_TOKENS)
     if value is None or value == "" or value == "--":
         val_str = "--"
     else:
@@ -63,7 +74,7 @@ def build_grade_pill(label: str, value: float | int | str | None) -> ft.Containe
             val_str = str(int(math.floor(float(str(value).replace(",", ".")) + 0.5)))
         except (ValueError, TypeError):
             val_str = str(value)
-    bg, fg = get_grade_tone(value)
+    bg, fg = get_grade_tone(value, is_dark=is_dark_eff)
     return ft.Container(
         data="grade-pill",
         bgcolor=bg,
@@ -73,7 +84,7 @@ def build_grade_pill(label: str, value: float | int | str | None) -> ft.Containe
             spacing=2,
             tight=True,
             controls=[
-                ft.Text(f"{label}:", size=10, color=TEXT_MUTED),
+                ft.Text(f"{label}:", size=10, color=tok.text_muted),
                 ft.Text(val_str, size=11, weight=ft.FontWeight.BOLD, color=fg),
             ],
         ),
@@ -83,23 +94,25 @@ def build_grade_pill(label: str, value: float | int | str | None) -> ft.Containe
 def build_key_button(
     text: str | None = None,
     icon: str | None = None,
-    on_click: callable = None,
+    on_click: Callable | None = None,
     is_primary: bool = False,
     expand: bool = True,
     height: int = 42,
+    tokens: ThemeTokens | None = None,
 ) -> ft.Container:
     """Construye un botón táctil para el teclado numérico anclado al pie (.key-button)."""
+    tok = tokens or LIGHT_TOKENS
     if is_primary:
-        bg = PRIMARY
+        bg = tok.primary
         fg = ft.Colors.WHITE
         border = None
     else:
-        bg = "#F8FAFC"
-        fg = TEXT_MAIN
-        border = ft.Border.all(1, BORDER_COLOR)
+        bg = tok.surface_variant
+        fg = tok.text_main
+        border = ft.Border.all(1, tok.border_color)
 
     if icon:
-        content = ft.Icon(icon, size=16, color=TEXT_MUTED if not is_primary else ft.Colors.WHITE)
+        content = ft.Icon(icon, size=16, color=tok.text_muted if not is_primary else ft.Colors.WHITE)
     else:
         content = ft.Text(text or "", size=14 if len(text or "") <= 2 else 12, weight=ft.FontWeight.BOLD, color=fg)
 
@@ -118,8 +131,8 @@ def build_key_button(
 
 
 class NotasView(ft.Container):
-    def __init__(self, state: AppState, page: ft.Page, on_navigate: callable):
-        super().__init__(expand=True, bgcolor=BG_PAGE)
+    def __init__(self, state: AppState, page: ft.Page, on_navigate: Callable):
+        super().__init__(expand=True, bgcolor=state.tokens.bg_page)
         self.state = state
         self.app_page = page
         self.on_navigate = on_navigate
@@ -149,7 +162,7 @@ class NotasView(ft.Container):
         self.btn_guardar: ft.FilledButton | None = None
 
         # Indicador de estado de auto-guardado
-        self.save_indicator = SaveStatusIndicator(status=self.state.save_status)
+        self.save_indicator = SaveStatusIndicator(status=self.state.save_status, tokens=self.state.tokens)
         self.state.on_save_status_change = self._on_save_status_change
 
         self._build_ui()
@@ -166,7 +179,7 @@ class NotasView(ft.Container):
 
     def _color_por_nota(self, nota: int | float | None) -> tuple[str, str]:
         """Retorna (color_fondo, color_texto) según la calificación."""
-        return get_grade_tone(nota)
+        return get_grade_tone(nota, is_dark=self.state.is_dark_mode)
 
     def _get_slot_meta(self, slot_idx: int, nombres_cols: list[str]) -> tuple[str, int, str, str]:
         """Retorna (tipo, sub_index, nombre_columna, cell_key)."""
@@ -182,6 +195,8 @@ class NotasView(ft.Container):
             return "R", 0, "Recup", "R0"
 
     def _build_ui(self):
+        tok = self.state.tokens
+        self.bgcolor = tok.bg_page
         colegio = self.state.selected_colegio or ""
         curso = self.state.selected_curso or ""
         alumnos = self.state.get_alumnos(colegio, curso)
@@ -202,6 +217,7 @@ class NotasView(ft.Container):
             title=curso,
             on_back=self._accion_volver,
             status_indicator=self.save_indicator,
+            tokens=tok,
             trailing=ft.Row(
                 spacing=4,
                 tight=True,
@@ -209,14 +225,14 @@ class NotasView(ft.Container):
                     ft.IconButton(
                         icon=ft.Icons.EDIT_CALENDAR,
                         tooltip="Planificación de Clases",
-                        icon_color=PRIMARY,
+                        icon_color=tok.primary,
                         icon_size=20,
                         on_click=lambda _: self._abrir_planificacion_curso(),
                     ),
                     ft.IconButton(
                         icon=ft.Icons.INSIGHTS,
                         tooltip="Estadísticas del Curso",
-                        icon_color=PRIMARY,
+                        icon_color=tok.primary,
                         icon_size=20,
                         on_click=lambda _: self._abrir_estadisticas_curso(),
                     ),
@@ -227,7 +243,7 @@ class NotasView(ft.Container):
         # 2. Selector de módulo (Notas / Asistencias)
         module_tabs = ft.Container(
             padding=ft.Padding(left=16, right=16, top=6, bottom=4),
-            content=build_module_tabs(active_tab="notas", on_change=lambda dest: self._cambiar_pestana([dest])),
+            content=build_module_tabs(active_tab="notas", on_change=lambda dest: self._cambiar_pestana([dest]), tokens=tok),
         )
 
         # 3. Selector superior de trimestre (1°, 2°, 3°, Anual)
@@ -240,7 +256,7 @@ class NotasView(ft.Container):
                     expand=True,
                     height=32,
                     border_radius=8,
-                    bgcolor=SURFACE_WHITE if is_active else ft.Colors.TRANSPARENT,
+                    bgcolor=tok.surface if is_active else ft.Colors.TRANSPARENT,
                     alignment=ft.Alignment.CENTER,
                     ink=True,
                     on_click=lambda e, t_idx=idx: self._seleccionar_trimestre(t_idx),
@@ -249,14 +265,14 @@ class NotasView(ft.Container):
                         spacing=4,
                         tight=True,
                         controls=[
-                            ft.Icon(ft.Icons.ANALYTICS, size=13, color=PRIMARY if is_active else TEXT_MUTED)
+                            ft.Icon(ft.Icons.ANALYTICS, size=13, color=tok.primary if is_active else tok.text_muted)
                             if idx == 3
                             else ft.Container(),
                             ft.Text(
                                 lbl,
                                 size=11,
                                 weight=ft.FontWeight.BOLD,
-                                color=PRIMARY if is_active else TEXT_MUTED,
+                                color=tok.primary if is_active else tok.text_muted,
                             ),
                         ],
                     ),
@@ -266,7 +282,7 @@ class NotasView(ft.Container):
         trim_selector_bar = ft.Container(
             padding=ft.Padding(left=16, right=16, top=2, bottom=4),
             content=ft.Container(
-                bgcolor="#F1F5F9",
+                bgcolor=tok.surface_variant,
                 border_radius=10,
                 padding=2,
                 content=ft.Row(spacing=2, controls=self.top_trimester_tabs),
@@ -284,8 +300,8 @@ class NotasView(ft.Container):
                         icon=ft.Icons.PERSON_ADD,
                         height=34,
                         style=ft.ButtonStyle(
-                            color=PRIMARY,
-                            side=ft.BorderSide(1, PRIMARY),
+                            color=tok.primary,
+                            side=ft.BorderSide(1, tok.primary),
                             shape=ft.RoundedRectangleBorder(radius=8),
                             padding=ft.Padding(left=10, right=10, top=0, bottom=0),
                         ),
@@ -298,21 +314,21 @@ class NotasView(ft.Container):
                             ft.IconButton(
                                 icon=ft.Icons.TUNE,
                                 icon_size=18,
-                                icon_color=TEXT_MUTED,
+                                icon_color=tok.text_muted,
                                 tooltip="Personalizar Columnas",
                                 on_click=lambda e: self._abrir_modal_columnas(),
                             ),
                             ft.IconButton(
                                 icon=ft.Icons.SORT_BY_ALPHA,
                                 icon_size=18,
-                                icon_color=TEXT_MUTED,
+                                icon_color=tok.text_muted,
                                 tooltip="Ordenar Alumnos (A-Z)",
                                 on_click=lambda e: self._ordenar_alumnos_az(),
                             ),
                             ft.IconButton(
                                 icon=ft.Icons.SHARE,
                                 icon_size=18,
-                                icon_color=TEXT_MUTED,
+                                icon_color=tok.text_muted,
                                 tooltip="Exportar Planilla (PDF/CSV/TXT)",
                                 on_click=lambda e: self._abrir_modal_exportar(),
                             ),
@@ -349,8 +365,9 @@ class NotasView(ft.Container):
 
     def _actualizar_boton_guardar(self):
         if self.btn_guardar:
+            tok = self.state.tokens
             self.btn_guardar.style = ft.ButtonStyle(
-                bgcolor=WARNING_AMBER if self.state.has_unsaved_changes else PRIMARY,
+                bgcolor=tok.warning_amber if self.state.has_unsaved_changes else tok.primary,
                 color=ft.Colors.WHITE,
                 shape=ft.RoundedRectangleBorder(radius=8),
                 padding=ft.Padding(left=12, right=12, top=0, bottom=0),
@@ -358,6 +375,8 @@ class NotasView(ft.Container):
 
     def _construir_panel_anual_alumno(self, id_str: str, calcs: dict) -> tuple[ft.Container, dict]:
         """Construye el panel informativo de solo lectura para la pestaña 'Anual'."""
+        tok = self.state.tokens
+        is_dark = self.state.is_dark_mode
         t1 = calcs["notas_finales_redondeadas"][0]
         t2 = calcs["notas_finales_redondeadas"][1]
         t3 = calcs["notas_finales_redondeadas"][2]
@@ -369,23 +388,23 @@ class NotasView(ft.Container):
         if promedio_crudo_total is not None:
             if promedio_crudo_total >= 5.50:
                 estado_str = "Aprobado"
-                estado_bg = GRADE_PASS_BG
-                estado_fg = GRADE_PASS_TEXT
+                estado_bg = tok.grade_pass_bg
+                estado_fg = tok.grade_pass_text
                 estado_icon = ft.Icons.CHECK_CIRCLE_OUTLINE
             else:
                 estado_str = "Desaprobado"
-                estado_bg = GRADE_FAIL_BG
-                estado_fg = GRADE_FAIL_TEXT
+                estado_bg = tok.grade_fail_bg
+                estado_fg = tok.grade_fail_text
                 estado_icon = ft.Icons.CANCEL_OUTLINED
         else:
             estado_str = "--"
-            estado_bg = GRADE_EMPTY_BG
-            estado_fg = GRADE_EMPTY_TEXT
+            estado_bg = tok.grade_empty_bg
+            estado_fg = tok.grade_empty_text
             estado_icon = ft.Icons.REMOVE_CIRCLE_OUTLINE
 
         # 1. Bloque T1
         t1_str = str(t1) if t1 is not None else "--"
-        bg1, fg1 = get_grade_tone(t1)
+        bg1, fg1 = get_grade_tone(t1, is_dark=is_dark)
         t1_text = ft.Text(t1_str, size=13, weight=ft.FontWeight.BOLD, color=fg1)
         t1_cont = ft.Container(
             bgcolor=bg1,
@@ -396,15 +415,15 @@ class NotasView(ft.Container):
         )
         box_t1 = ft.Container(
             expand=True,
-            bgcolor="#F8FAFC",
-            border=ft.Border.all(1, BORDER_COLOR),
+            bgcolor=tok.surface_variant,
+            border=ft.Border.all(1, tok.border_color),
             border_radius=8,
             padding=ft.Padding(left=6, right=6, top=6, bottom=6),
             content=ft.Column(
                 horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                 spacing=3,
                 controls=[
-                    ft.Text("1° Trim (T1)", size=10, weight=ft.FontWeight.W_500, color=TEXT_MUTED),
+                    ft.Text("1° Trim (T1)", size=10, weight=ft.FontWeight.W_500, color=tok.text_muted),
                     t1_cont,
                 ],
             ),
@@ -412,7 +431,7 @@ class NotasView(ft.Container):
 
         # 2. Bloque T2
         t2_str = str(t2) if t2 is not None else "--"
-        bg2, fg2 = get_grade_tone(t2)
+        bg2, fg2 = get_grade_tone(t2, is_dark=is_dark)
         t2_text = ft.Text(t2_str, size=13, weight=ft.FontWeight.BOLD, color=fg2)
         t2_cont = ft.Container(
             bgcolor=bg2,
@@ -423,15 +442,15 @@ class NotasView(ft.Container):
         )
         box_t2 = ft.Container(
             expand=True,
-            bgcolor="#F8FAFC",
-            border=ft.Border.all(1, BORDER_COLOR),
+            bgcolor=tok.surface_variant,
+            border=ft.Border.all(1, tok.border_color),
             border_radius=8,
             padding=ft.Padding(left=6, right=6, top=6, bottom=6),
             content=ft.Column(
                 horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                 spacing=3,
                 controls=[
-                    ft.Text("2° Trim (T2)", size=10, weight=ft.FontWeight.W_500, color=TEXT_MUTED),
+                    ft.Text("2° Trim (T2)", size=10, weight=ft.FontWeight.W_500, color=tok.text_muted),
                     t2_cont,
                 ],
             ),
@@ -439,7 +458,7 @@ class NotasView(ft.Container):
 
         # 3. Bloque T3
         t3_str = str(t3) if t3 is not None else "--"
-        bg3, fg3 = get_grade_tone(t3)
+        bg3, fg3 = get_grade_tone(t3, is_dark=is_dark)
         t3_text = ft.Text(t3_str, size=13, weight=ft.FontWeight.BOLD, color=fg3)
         t3_cont = ft.Container(
             bgcolor=bg3,
@@ -450,15 +469,15 @@ class NotasView(ft.Container):
         )
         box_t3 = ft.Container(
             expand=True,
-            bgcolor="#F8FAFC",
-            border=ft.Border.all(1, BORDER_COLOR),
+            bgcolor=tok.surface_variant,
+            border=ft.Border.all(1, tok.border_color),
             border_radius=8,
             padding=ft.Padding(left=6, right=6, top=6, bottom=6),
             content=ft.Column(
                 horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                 spacing=3,
                 controls=[
-                    ft.Text("3° Trim (T3)", size=10, weight=ft.FontWeight.W_500, color=TEXT_MUTED),
+                    ft.Text("3° Trim (T3)", size=10, weight=ft.FontWeight.W_500, color=tok.text_muted),
                     t3_cont,
                 ],
             ),
@@ -466,7 +485,7 @@ class NotasView(ft.Container):
 
         # 4. Fila Resumen Anual (Calificación Anual / Promedio Final y Estado)
         total_str = str(total) if total is not None else "--"
-        bg_tot, fg_tot = get_grade_tone(total)
+        bg_tot, fg_tot = get_grade_tone(total, is_dark=is_dark)
         promedio_anual_text = ft.Text(total_str, size=13, weight=ft.FontWeight.BOLD, color=fg_tot)
         promedio_anual_cont = ft.Container(
             bgcolor=bg_tot,
@@ -493,8 +512,8 @@ class NotasView(ft.Container):
         )
 
         resumen_anual_row = ft.Container(
-            bgcolor="#F8FAFC",
-            border=ft.Border.all(1, BORDER_COLOR),
+            bgcolor=tok.surface_variant,
+            border=ft.Border.all(1, tok.border_color),
             border_radius=8,
             padding=ft.Padding(left=10, right=10, top=6, bottom=6),
             content=ft.Row(
@@ -506,7 +525,7 @@ class NotasView(ft.Container):
                         tight=True,
                         vertical_alignment=ft.CrossAxisAlignment.CENTER,
                         controls=[
-                            ft.Text("Calificación Anual:", size=11, weight=ft.FontWeight.W_500, color=TEXT_MUTED),
+                            ft.Text("Calificación Anual:", size=11, weight=ft.FontWeight.W_500, color=tok.text_muted),
                             promedio_anual_cont,
                         ],
                     ),
@@ -518,7 +537,7 @@ class NotasView(ft.Container):
         panel_container = ft.Container(
             visible=(self.state.active_trimestre == 3),
             padding=ft.Padding(left=12, right=12, top=6, bottom=12),
-            border=ft.Border.only(top=ft.BorderSide(1, "#F1F5F9")),
+            border=ft.Border.only(top=ft.BorderSide(1, tok.border_color)),
             content=ft.Column(
                 spacing=8,
                 controls=[
@@ -559,6 +578,8 @@ class NotasView(ft.Container):
         if not al_data:
             return
 
+        tok = self.state.tokens
+        is_dark = self.state.is_dark_mode
         trimestres = al_data.get("trimestres", {})
         calcs = procesar_calificaciones_alumno(trimestres)
         t1 = calcs["notas_finales_redondeadas"][0]
@@ -572,44 +593,44 @@ class NotasView(ft.Container):
         if promedio_crudo_total is not None:
             if promedio_crudo_total >= 5.50:
                 estado_str = "Aprobado"
-                estado_bg = GRADE_PASS_BG
-                estado_fg = GRADE_PASS_TEXT
+                estado_bg = tok.grade_pass_bg
+                estado_fg = tok.grade_pass_text
                 estado_icon = ft.Icons.CHECK_CIRCLE_OUTLINE
             else:
                 estado_str = "Desaprobado"
-                estado_bg = GRADE_FAIL_BG
-                estado_fg = GRADE_FAIL_TEXT
+                estado_bg = tok.grade_fail_bg
+                estado_fg = tok.grade_fail_text
                 estado_icon = ft.Icons.CANCEL_OUTLINED
         else:
             estado_str = "--"
-            estado_bg = GRADE_EMPTY_BG
-            estado_fg = GRADE_EMPTY_TEXT
+            estado_bg = tok.grade_empty_bg
+            estado_fg = tok.grade_empty_text
             estado_icon = ft.Icons.REMOVE_CIRCLE_OUTLINE
 
         # Actualizar T1
         t1_str = str(t1) if t1 is not None else "--"
-        bg1, fg1 = get_grade_tone(t1)
+        bg1, fg1 = get_grade_tone(t1, is_dark=is_dark)
         ref_anual["t1_text"].value = t1_str
         ref_anual["t1_text"].color = fg1
         ref_anual["t1_container"].bgcolor = bg1
 
         # Actualizar T2
         t2_str = str(t2) if t2 is not None else "--"
-        bg2, fg2 = get_grade_tone(t2)
+        bg2, fg2 = get_grade_tone(t2, is_dark=is_dark)
         ref_anual["t2_text"].value = t2_str
         ref_anual["t2_text"].color = fg2
         ref_anual["t2_container"].bgcolor = bg2
 
         # Actualizar T3
         t3_str = str(t3) if t3 is not None else "--"
-        bg3, fg3 = get_grade_tone(t3)
+        bg3, fg3 = get_grade_tone(t3, is_dark=is_dark)
         ref_anual["t3_text"].value = t3_str
         ref_anual["t3_text"].color = fg3
         ref_anual["t3_container"].bgcolor = bg3
 
         # Actualizar Promedio Final / Calificación Anual
         total_str = str(total) if total is not None else "--"
-        bg_tot, fg_tot = get_grade_tone(total)
+        bg_tot, fg_tot = get_grade_tone(total, is_dark=is_dark)
         ref_anual["promedio_anual_text"].value = total_str
         ref_anual["promedio_anual_text"].color = fg_tot
         ref_anual["promedio_anual_container"].bgcolor = bg_tot
@@ -625,6 +646,7 @@ class NotasView(ft.Container):
     def _seleccionar_trimestre(self, trim_idx: int):
         self.state.active_trimestre = trim_idx
         self.active_grade_index = 0
+        tok = self.state.tokens
 
         # Si no tenemos tarjetas montadas, construir UI
         if not hasattr(self, "tarjetas_alumnos") or not self.tarjetas_alumnos:
@@ -636,13 +658,13 @@ class NotasView(ft.Container):
         if hasattr(self, "top_trimester_tabs"):
             for idx, tab in enumerate(self.top_trimester_tabs):
                 is_act = (idx == trim_idx)
-                tab.bgcolor = SURFACE_WHITE if is_act else ft.Colors.TRANSPARENT
+                tab.bgcolor = tok.surface if is_act else ft.Colors.TRANSPARENT
                 if hasattr(tab, "content") and hasattr(tab.content, "controls"):
                     controls = tab.content.controls
                     if len(controls) > 0 and isinstance(controls[0], ft.Icon):
-                        controls[0].color = PRIMARY if is_act else TEXT_MUTED
+                        controls[0].color = tok.primary if is_act else tok.text_muted
                     if len(controls) > 1 and isinstance(controls[1], ft.Text):
-                        controls[1].color = PRIMARY if is_act else TEXT_MUTED
+                        controls[1].color = tok.primary if is_act else tok.text_muted
 
         # Caso A: Conmutar a pestaña 'Anual' (vista informativa de solo lectura)
         if trim_idx >= 3:
@@ -662,7 +684,7 @@ class NotasView(ft.Container):
                     if sid in self.header_pills_containers:
                         self.header_pills_containers[sid].visible = False
 
-                    self.tarjetas_alumnos[sid].border = ft.Border.all(1.5, BORDER_COLOR)
+                    self.tarjetas_alumnos[sid].border = ft.Border.all(1.5, tok.border_color)
                     self.tarjetas_alumnos[sid].shadow = ft.BoxShadow(spread_radius=0, blur_radius=8, color=ft.Colors.TRANSPARENT)
                     self._actualizar_panel_anual_ui(sid)
 
@@ -687,9 +709,9 @@ class NotasView(ft.Container):
                     self.expanded_containers[sid].visible = is_exp
                 if sid in self.chevron_icons:
                     self.chevron_icons[sid].name = ft.Icons.EXPAND_LESS if is_exp else ft.Icons.EXPAND_MORE
-                    self.chevron_icons[sid].color = PRIMARY if is_exp else TEXT_MUTED
+                    self.chevron_icons[sid].color = tok.primary if is_exp else tok.text_muted
 
-                self.tarjetas_alumnos[sid].border = ft.Border.all(1.5, PRIMARY if is_exp else BORDER_COLOR)
+                self.tarjetas_alumnos[sid].border = ft.Border.all(1.5, tok.primary if is_exp else tok.border_color)
                 self.tarjetas_alumnos[sid].shadow = ft.BoxShadow(spread_radius=0, blur_radius=8, color="#0F172A0D" if is_exp else ft.Colors.TRANSPARENT)
 
         # 2. Actualización quirúrgica in-place de botones de trimestre locales en cada tarjeta
@@ -697,9 +719,9 @@ class NotasView(ft.Container):
             for sid, btns in self.local_trim_buttons.items():
                 for t_idx, btn in enumerate(btns):
                     is_sel = (t_idx == trim_idx)
-                    btn.bgcolor = SURFACE_WHITE if is_sel else ft.Colors.TRANSPARENT
+                    btn.bgcolor = tok.surface if is_sel else ft.Colors.TRANSPARENT
                     if hasattr(btn, "content") and isinstance(btn.content, ft.Text):
-                        btn.content.color = PRIMARY if is_sel else TEXT_MUTED
+                        btn.content.color = tok.primary if is_sel else tok.text_muted
 
         # 3. Actualizar metadatos y etiquetas de columnas para los 5 slots por alumno
         colegio = self.state.selected_colegio or ""
@@ -734,6 +756,8 @@ class NotasView(ft.Container):
         self.app_page.update()
 
     def _construir_lista_tarjetas(self, alumnos: dict, trim_idx: int, nombres_cols: list[str]) -> ft.Control:
+        tok = self.state.tokens
+        is_dark = self.state.is_dark_mode
         self.alumnos_celdas = {}
         self.tarjetas_alumnos = {}
         self.pills_alumnos = {}
@@ -752,13 +776,13 @@ class NotasView(ft.Container):
                         ft.Container(
                             width=56,
                             height=56,
-                            bgcolor=PRIMARY_LIGHT,
+                            bgcolor=tok.primary_light,
                             border_radius=16,
                             alignment=ft.Alignment.CENTER,
-                            content=ft.Icon(ft.Icons.GROUP_OUTLINED, size=28, color=PRIMARY),
+                            content=ft.Icon(ft.Icons.GROUP_OUTLINED, size=28, color=tok.primary),
                         ),
-                        ft.Text("No hay alumnos en este curso", size=15, weight=ft.FontWeight.BOLD, color=TEXT_MAIN),
-                        ft.Text("Toca '+ Alumno' para cargar los estudiantes a la planilla.", size=12, color=TEXT_MUTED),
+                        ft.Text("No hay alumnos en este curso", size=15, weight=ft.FontWeight.BOLD, color=tok.text_main),
+                        ft.Text("Toca '+ Alumno' para cargar los estudiantes a la planilla.", size=12, color=tok.text_muted),
                     ],
                     horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                     alignment=ft.MainAxisAlignment.CENTER,
@@ -794,22 +818,22 @@ class NotasView(ft.Container):
             self.paneles_anuales[id_str] = ref_anual
 
             # Píldoras de trimestres (.grade-pill)
-            pill1 = build_grade_pill("1ºT", t1)
-            pill2 = build_grade_pill("2ºT", t2)
-            pill3 = build_grade_pill("3ºT", t3)
+            pill1 = build_grade_pill("1ºT", t1, is_dark=is_dark, tokens=tok)
+            pill2 = build_grade_pill("2ºT", t2, is_dark=is_dark, tokens=tok)
+            pill3 = build_grade_pill("3ºT", t3, is_dark=is_dark, tokens=tok)
             self.pills_alumnos[id_str] = [pill1, pill2, pill3]
 
             is_open = (str(self.expanded_student_id) == id_str)
 
             # Avatar y colores
             num_id = int(id_str) if id_str.isdigit() else 0
-            avatar_bg, avatar_fg = get_avatar_palette(num_id)
+            avatar_bg, avatar_fg = get_avatar_palette(num_id, is_dark=is_dark)
             iniciales = extract_initials(nombre_al)
 
             prom_anual_txt = ft.Text(
                 f"Promedio anual: {total if total is not None else '--'}",
                 size=11,
-                color=TEXT_MUTED,
+                color=tok.text_muted,
             )
             self.promedio_anual_labels[id_str] = prom_anual_txt
 
@@ -912,7 +936,7 @@ class NotasView(ft.Container):
                         expand=True,
                         height=32,
                         border_radius=8,
-                        bgcolor=SURFACE_WHITE if is_sel_t else ft.Colors.TRANSPARENT,
+                        bgcolor=tok.surface if is_sel_t else ft.Colors.TRANSPARENT,
                         alignment=ft.Alignment.CENTER,
                         ink=True,
                         on_click=lambda _, val=t_idx_btn: self._seleccionar_trimestre(val),
@@ -920,14 +944,14 @@ class NotasView(ft.Container):
                             f"Trimestre {t}",
                             size=11,
                             weight=ft.FontWeight.BOLD,
-                            color=PRIMARY if is_sel_t else TEXT_MUTED,
+                            color=tok.primary if is_sel_t else tok.text_muted,
                         ),
                     )
                 )
             self.local_trim_buttons[id_str] = trim_buttons
 
             selector_trim_local = ft.Container(
-                bgcolor="#F1F5F9",
+                bgcolor=tok.surface_variant,
                 border_radius=10,
                 padding=2,
                 content=ft.Row(spacing=2, controls=trim_buttons),
@@ -954,7 +978,7 @@ class NotasView(ft.Container):
             edicion_alumno_row = ft.Column(
                 spacing=6,
                 controls=[
-                    ft.Text("Editar datos del alumno", size=12, weight=ft.FontWeight.BOLD, color=TEXT_MAIN),
+                    ft.Text("Editar datos del alumno", size=12, weight=ft.FontWeight.BOLD, color=tok.text_main),
                     ft.Row(spacing=8, controls=[ft.Container(expand=True, content=txt_edit_apellido), ft.Container(expand=True, content=txt_edit_nombre)]),
                 ],
             )
@@ -967,7 +991,7 @@ class NotasView(ft.Container):
                         spacing=6,
                         tight=True,
                         controls=[
-                            ft.Text("Promedio Trimestre:", size=11, color=TEXT_MUTED),
+                            ft.Text("Promedio Trimestre:", size=11, color=tok.text_muted),
                             prom_container,
                         ],
                     ),
@@ -975,7 +999,7 @@ class NotasView(ft.Container):
                         spacing=6,
                         tight=True,
                         controls=[
-                            ft.Text("Nota Final:", size=11, color=TEXT_MUTED),
+                            ft.Text("Nota Final:", size=11, color=tok.text_muted),
                             fin_container,
                         ],
                     ),
@@ -988,13 +1012,13 @@ class NotasView(ft.Container):
             comps_alumno = self.state.get_comportamientos_alumno(id_str, colegio_activo, curso_activo)
             cant_comps = len(comps_alumno)
             texto_resumen_comp = f"{cant_comps} observación{'es' if cant_comps != 1 else ''}" if cant_comps > 0 else "Sin observaciones"
-            lbl_resumen_comp = ft.Text(texto_resumen_comp, size=11, color=TEXT_MUTED)
+            lbl_resumen_comp = ft.Text(texto_resumen_comp, size=11, color=tok.text_muted)
 
             btn_comportamiento = ft.OutlinedButton(
                 icon=ft.Icons.RULE,
                 content=ft.Text("Comportamiento", size=12, weight=ft.FontWeight.BOLD),
                 style=ft.ButtonStyle(
-                    color=PRIMARY,
+                    color=tok.primary,
                     shape=ft.RoundedRectangleBorder(radius=8),
                     padding=ft.Padding(left=12, right=12, top=6, bottom=6),
                 ),
@@ -1002,8 +1026,8 @@ class NotasView(ft.Container):
             )
 
             fila_comportamiento = ft.Container(
-                bgcolor="#F8FAFC",
-                border=ft.Border.all(1, BORDER_COLOR),
+                bgcolor=tok.surface_variant,
+                border=ft.Border.all(1, tok.border_color),
                 border_radius=8,
                 padding=ft.Padding(left=10, right=10, top=6, bottom=6),
                 content=ft.Row(
@@ -1021,7 +1045,7 @@ class NotasView(ft.Container):
             expanded_content = ft.Container(
                 visible=(is_open and not es_modo_anual),
                 padding=ft.Padding(left=12, right=12, top=10, bottom=12),
-                border=ft.Border.only(top=ft.BorderSide(1, "#F1F5F9")),
+                border=ft.Border.only(top=ft.BorderSide(1, tok.border_color)),
                 content=ft.Column(
                     spacing=12,
                     controls=[
@@ -1038,7 +1062,7 @@ class NotasView(ft.Container):
             chevron_icon = ft.Icon(
                 ft.Icons.EXPAND_LESS if is_open else ft.Icons.EXPAND_MORE,
                 size=18,
-                color=PRIMARY if is_open else TEXT_MUTED,
+                color=tok.primary if is_open else tok.text_muted,
                 visible=(not es_modo_anual),
             )
             self.chevron_icons[id_str] = chevron_icon
@@ -1051,9 +1075,9 @@ class NotasView(ft.Container):
 
             # Tarjeta completa
             card_container = ft.Container(
-                bgcolor=SURFACE_WHITE,
+                bgcolor=tok.surface,
                 border_radius=16,
-                border=ft.Border.all(1.5, PRIMARY if (is_open and not es_modo_anual) else BORDER_COLOR),
+                border=ft.Border.all(1.5, tok.primary if (is_open and not es_modo_anual) else tok.border_color),
                 shadow=ft.BoxShadow(spread_radius=0, blur_radius=8, color="#0F172A0D" if (is_open and not es_modo_anual) else ft.Colors.TRANSPARENT),
                 content=ft.Column(
                     spacing=0,
@@ -1079,7 +1103,7 @@ class NotasView(ft.Container):
                                         expand=True,
                                         spacing=1,
                                         controls=[
-                                            ft.Text(f"#{id_str} {nombre_al}", size=13, weight=ft.FontWeight.BOLD, color=TEXT_MAIN, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS),
+                                            ft.Text(f"#{id_str} {nombre_al}", size=13, weight=ft.FontWeight.BOLD, color=tok.text_main, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS),
                                             prom_anual_txt,
                                         ],
                                     ),
@@ -1088,7 +1112,7 @@ class NotasView(ft.Container):
                                     ft.PopupMenuButton(
                                         icon=ft.Icons.MORE_VERT,
                                         icon_size=18,
-                                        icon_color=TEXT_MUTED,
+                                        icon_color=tok.text_muted,
                                         items=[
                                             ft.PopupMenuItem(
                                                 icon=ft.Icons.EDIT_OUTLINED,
@@ -1135,6 +1159,7 @@ class NotasView(ft.Container):
         deshabilitado: bool = False,
     ) -> tuple[ft.Control, dict]:
         """Crea el slot visual de nota interactivo para un alumno."""
+        tok = self.state.tokens
         if val_actual is None or deshabilitado:
             val_str = "-"
         else:
@@ -1142,26 +1167,26 @@ class NotasView(ft.Container):
                 val_str = str(int(math.floor(float(str(val_actual).replace(",", ".")) + 0.5)))
             except (ValueError, TypeError):
                 val_str = str(val_actual)
-        bg_color, text_color = self._color_por_nota(val_actual) if not deshabilitado else (ft.Colors.TRANSPARENT, TEXT_SUBTLE)
+        bg_color, text_color = self._color_por_nota(val_actual) if not deshabilitado else (ft.Colors.TRANSPARENT, tok.text_subtle)
 
         txt_widget = ft.Text(
             val_str,
             size=14 if not deshabilitado else 12,
             weight=ft.FontWeight.BOLD if not deshabilitado else ft.FontWeight.NORMAL,
-            color=PRIMARY if (is_active and not deshabilitado) else text_color,
+            color=tok.primary if (is_active and not deshabilitado) else text_color,
         )
 
         container = ft.Container(
             height=44,
             border_radius=10,
-            border=ft.Border.all(2 if is_active else 1, PRIMARY if is_active else BORDER_COLOR),
-            bgcolor=PRIMARY_LIGHT if is_active else bg_color,
+            border=ft.Border.all(2 if is_active else 1, tok.primary if is_active else tok.border_color),
+            bgcolor=tok.primary_light if is_active else bg_color,
             alignment=ft.Alignment.CENTER,
             ink=not deshabilitado,
             content=txt_widget,
         )
 
-        label_text_widget = ft.Text(col_name, size=9, weight=ft.FontWeight.W_500, color=PRIMARY if is_active else TEXT_MUTED)
+        label_text_widget = ft.Text(col_name, size=9, weight=ft.FontWeight.W_500, color=tok.primary if is_active else tok.text_muted)
 
         ref_dict = {
             "container": container,
@@ -1198,6 +1223,7 @@ class NotasView(ft.Container):
                 valor_actual=ref_dict.get("valor"),
                 on_save=guardar_desde_dialogo,
                 page=self.app_page,
+                tokens=self.state.tokens,
             )
             self._mostrar_dialogo_con_dock_oculto(dlg)
 
@@ -1217,6 +1243,7 @@ class NotasView(ft.Container):
 
     def _construir_dock_teclado(self, alumnos: dict, trim_idx: int, nombres_cols: list[str]) -> ft.Control:
         """Construye el dock flotante inferior con el teclado numérico anclado al pie (.key-button)."""
+        tok = self.state.tokens
         active_nombre = ""
         active_id = self.expanded_student_id
         if active_id and active_id in alumnos:
@@ -1229,7 +1256,7 @@ class NotasView(ft.Container):
             f"Ingresar {slot_col_name} · #{active_id} {nombre_corto}" if active_id else "Selecciona un alumno para calificar",
             size=12,
             weight=ft.FontWeight.BOLD,
-            color=TEXT_MAIN,
+            color=tok.text_main,
             no_wrap=True,
             max_lines=1,
             overflow=ft.TextOverflow.ELLIPSIS,
@@ -1239,7 +1266,7 @@ class NotasView(ft.Container):
             f"T{trim_idx + 1}" if trim_idx < 3 else "Anual",
             size=11,
             weight=ft.FontWeight.BOLD,
-            color=PRIMARY,
+            color=tok.primary,
         )
 
         # Fila 1 de números: [1] a [5]
@@ -1248,6 +1275,7 @@ class NotasView(ft.Container):
             btn = build_key_button(
                 text=str(n),
                 on_click=lambda e, val=n: self._aplicar_nota_dock(val),
+                tokens=tok,
             )
             numpad_row1_controls.append(btn)
 
@@ -1257,12 +1285,14 @@ class NotasView(ft.Container):
             btn = build_key_button(
                 text=str(n),
                 on_click=lambda e, val=n: self._aplicar_nota_dock(val),
+                tokens=tok,
             )
             numpad_row2_controls.append(btn)
 
         btn_clear = build_key_button(
             icon=ft.Icons.BACKSPACE_OUTLINED,
             on_click=lambda e: self._limpiar_nota_dock(),
+            tokens=tok,
         )
         numpad_row2_controls.append(btn_clear)
 
@@ -1270,12 +1300,13 @@ class NotasView(ft.Container):
             text="Sig.",
             is_primary=True,
             on_click=lambda e: self._avanzar_slot_dock(),
+            tokens=tok,
         )
         numpad_row2_controls.append(btn_sig)
 
         return ft.Container(
-            bgcolor=SURFACE_WHITE,
-            border=ft.Border.only(top=ft.BorderSide(1, BORDER_COLOR)),
+            bgcolor=tok.surface,
+            border=ft.Border.only(top=ft.BorderSide(1, tok.border_color)),
             padding=ft.Padding(left=16, right=16, top=10, bottom=16),
             shadow=ft.BoxShadow(blur_radius=16, color="#0F172A14", offset=ft.Offset(0, -4)),
             content=ft.Column(
@@ -1287,7 +1318,7 @@ class NotasView(ft.Container):
                         controls=[
                             self.dock_label_active,
                             ft.Container(
-                                bgcolor=PRIMARY_LIGHT,
+                                bgcolor=tok.primary_light,
                                 border_radius=6,
                                 padding=ft.Padding(left=8, right=8, top=2, bottom=2),
                                 content=self.dock_badge_trimestre,
@@ -1402,6 +1433,7 @@ class NotasView(ft.Container):
         if id_al not in self.slots_controls_by_student:
             return
 
+        tok = self.state.tokens
         slots_dict = self.slots_controls_by_student[id_al]
         for key, ref in slots_dict.items():
             s_idx = ref.get("slot_index", 0)
@@ -1409,12 +1441,12 @@ class NotasView(ft.Container):
             val = ref.get("valor")
             desh = ref.get("deshabilitado", False)
 
-            bg, fg = self._color_por_nota(val) if not desh else (ft.Colors.TRANSPARENT, TEXT_SUBTLE)
-            ref["container"].border = ft.Border.all(2 if is_active else 1, PRIMARY if is_active else BORDER_COLOR)
-            ref["container"].bgcolor = PRIMARY_LIGHT if is_active else bg
-            ref["text_widget"].color = PRIMARY if (is_active and not desh) else fg
+            bg, fg = self._color_por_nota(val) if not desh else (ft.Colors.TRANSPARENT, tok.text_subtle)
+            ref["container"].border = ft.Border.all(2 if is_active else 1, tok.primary if is_active else tok.border_color)
+            ref["container"].bgcolor = tok.primary_light if is_active else bg
+            ref["text_widget"].color = tok.primary if (is_active and not desh) else fg
             if "label_widget" in ref and ref["label_widget"] is not None:
-                ref["label_widget"].color = PRIMARY if is_active else TEXT_MUTED
+                ref["label_widget"].color = tok.primary if is_active else tok.text_muted
 
     def _actualizar_fila_alumno_ui(self, id_al: str):
         """Actualiza in-place las celdas, cálculos, píldoras y promedios del alumno sin recargar la lista."""
@@ -1430,6 +1462,7 @@ class NotasView(ft.Container):
         if not al_data:
             return
 
+        tok = self.state.tokens
         trim_idx = self.state.active_trimestre if 0 <= self.state.active_trimestre < 3 else 0
         nombre_trim = NOMBRES_TRIMESTRES[trim_idx]
         trim_data = al_data.get("trimestres", {}).get(nombre_trim, {})
@@ -1474,9 +1507,9 @@ class NotasView(ft.Container):
             ref_r["container"].ink = not deshabilitado
             if deshabilitado:
                 ref_r["text_widget"].value = "-"
-                ref_r["text_widget"].color = TEXT_SUBTLE
+                ref_r["text_widget"].color = tok.text_subtle
                 ref_r["container"].bgcolor = ft.Colors.TRANSPARENT
-                ref_r["container"].border = ft.Border.all(1, BORDER_COLOR)
+                ref_r["container"].border = ft.Border.all(1, tok.border_color)
             else:
                 if recuperatorio is None:
                     val_str = "-"
@@ -1489,18 +1522,13 @@ class NotasView(ft.Container):
                 ref_r["text_widget"].value = val_str
                 ref_r["text_widget"].color = fg
                 ref_r["container"].bgcolor = bg
-                ref_r["container"].border = ft.Border.all(1, BORDER_COLOR)
+                ref_r["container"].border = ft.Border.all(1, tok.border_color)
 
         # Actualizar promedios y final del trimestre
         bg_prom, fg_prom = self._color_por_nota(prom_crudo_red)
         celdas["prom_text"].value = str(prom_crudo_red) if prom_crudo_red is not None else "-"
         celdas["prom_text"].color = fg_prom
         celdas["prom_container"].bgcolor = bg_prom
-
-        bg_fin, fg_fin = self._color_por_nota(nota_final_red)
-        celdas["fin_text"].value = str(nota_final_red) if nota_final_red is not None else "-"
-        celdas["fin_text"].color = fg_fin
-        celdas["fin_container"].bgcolor = bg_fin
 
         # Actualizar píldoras de trimestres (.grade-pill)
         if id_str in self.pills_alumnos:
@@ -1518,6 +1546,7 @@ class NotasView(ft.Container):
                 p_ctrl.bgcolor = bg_p
                 # Actualizar el texto del contenido
                 if hasattr(p_ctrl, "content") and hasattr(p_ctrl.content, "controls") and len(p_ctrl.content.controls) > 1:
+                    p_ctrl.content.controls[0].color = tok.text_muted
                     p_ctrl.content.controls[1].value = t_str
                     p_ctrl.content.controls[1].color = fg_p
 
@@ -1543,6 +1572,7 @@ class NotasView(ft.Container):
             # En modo Anual la vista es puramente informativa de solo lectura sin edición
             return
 
+        tok = self.state.tokens
         prev_id = self.expanded_student_id
         sid_str = str(sid)
 
@@ -1561,32 +1591,32 @@ class NotasView(ft.Container):
             # Colapsar el alumno actual
             self.expanded_student_id = None
             self.expanded_containers[sid_str].visible = False
-            self.tarjetas_alumnos[sid_str].border = ft.Border.all(1.5, BORDER_COLOR)
+            self.tarjetas_alumnos[sid_str].border = ft.Border.all(1.5, tok.border_color)
             self.tarjetas_alumnos[sid_str].shadow = ft.BoxShadow(spread_radius=0, blur_radius=8, color=ft.Colors.TRANSPARENT)
             if sid_str in self.chevron_icons:
                 self.chevron_icons[sid_str].name = ft.Icons.EXPAND_MORE
-                self.chevron_icons[sid_str].color = TEXT_MUTED
+                self.chevron_icons[sid_str].color = tok.text_muted
         else:
             # Colapsar el alumno previo si existe
             if prev_id and str(prev_id) in self.expanded_containers:
                 prev_str = str(prev_id)
                 self.expanded_containers[prev_str].visible = False
                 if prev_str in self.tarjetas_alumnos:
-                    self.tarjetas_alumnos[prev_str].border = ft.Border.all(1.5, BORDER_COLOR)
+                    self.tarjetas_alumnos[prev_str].border = ft.Border.all(1.5, tok.border_color)
                     self.tarjetas_alumnos[prev_str].shadow = ft.BoxShadow(spread_radius=0, blur_radius=8, color=ft.Colors.TRANSPARENT)
                 if prev_str in self.chevron_icons:
                     self.chevron_icons[prev_str].name = ft.Icons.EXPAND_MORE
-                    self.chevron_icons[prev_str].color = TEXT_MUTED
+                    self.chevron_icons[prev_str].color = tok.text_muted
 
             # Expandir el nuevo alumno
             self.expanded_student_id = sid_str
             self.active_grade_index = 0
             self.expanded_containers[sid_str].visible = True
-            self.tarjetas_alumnos[sid_str].border = ft.Border.all(1.5, PRIMARY)
+            self.tarjetas_alumnos[sid_str].border = ft.Border.all(1.5, tok.primary)
             self.tarjetas_alumnos[sid_str].shadow = ft.BoxShadow(spread_radius=0, blur_radius=8, color="#0F172A0D")
             if sid_str in self.chevron_icons:
                 self.chevron_icons[sid_str].name = ft.Icons.EXPAND_LESS
-                self.chevron_icons[sid_str].color = PRIMARY
+                self.chevron_icons[sid_str].color = tok.primary
             self._actualizar_slots_ui(sid_str)
 
         self._actualizar_dock_labels()
@@ -1713,13 +1743,15 @@ class NotasView(ft.Container):
             self.state.load_data()
             self.on_navigate(destino)
 
+        tok = self.state.tokens
         dlg = ft.AlertDialog(
-            title=ft.Text("Cambios sin guardar", weight=ft.FontWeight.BOLD, color=TEXT_MAIN),
-            content=ft.Text("Tienes calificaciones modificadas sin guardar.\n¿Deseas guardarlas antes de continuar?", color=TEXT_MUTED),
+            bgcolor=tok.surface,
+            title=ft.Text("Cambios sin guardar", weight=ft.FontWeight.BOLD, color=tok.text_main),
+            content=ft.Text("Tienes calificaciones modificadas sin guardar.\n¿Deseas guardarlas antes de continuar?", color=tok.text_muted),
             actions=[
                 ft.TextButton(
                     "Cancelar",
-                    style=ft.ButtonStyle(color=TEXT_MUTED, shape=ft.RoundedRectangleBorder(radius=8)),
+                    style=ft.ButtonStyle(color=tok.text_muted, shape=ft.RoundedRectangleBorder(radius=8)),
                     on_click=lambda e: cerrar_dialogo(),
                 ),
                 ft.TextButton(
@@ -1729,7 +1761,7 @@ class NotasView(ft.Container):
                 ),
                 ft.FilledButton(
                     "Guardar y Salir",
-                    style=ft.ButtonStyle(bgcolor=PRIMARY, color=ft.Colors.WHITE, shape=ft.RoundedRectangleBorder(radius=8)),
+                    style=ft.ButtonStyle(bgcolor=tok.primary, color=ft.Colors.WHITE, shape=ft.RoundedRectangleBorder(radius=8)),
                     on_click=lambda e: guardar_y_salir(),
                 ),
             ],
@@ -1764,6 +1796,7 @@ class NotasView(ft.Container):
             on_confirm=confirmar,
             modo_continuo=True,
             page=self.app_page,
+            tokens=self.state.tokens,
         )
         self._mostrar_dialogo_con_dock_oculto(dlg)
 
@@ -1788,6 +1821,7 @@ class NotasView(ft.Container):
             modo_continuo=False,
             on_confirm=confirmar,
             page=self.app_page,
+            tokens=self.state.tokens,
         )
         self._mostrar_dialogo_con_dock_oculto(dlg)
 
@@ -1806,6 +1840,7 @@ class NotasView(ft.Container):
             mensaje=f"¿Estás seguro de que deseas eliminar al alumno '{nombre}' (N° {id_al}) y todas sus notas y asistencias?",
             on_confirm=confirmar,
             page=self.app_page,
+            tokens=self.state.tokens,
         )
         self._mostrar_dialogo_con_dock_oculto(dlg)
 
@@ -1823,6 +1858,7 @@ class NotasView(ft.Container):
             nombres_actuales=nombres_actuales,
             on_save=guardar_cols,
             page=self.app_page,
+            tokens=self.state.tokens,
         )
         self._mostrar_dialogo_con_dock_oculto(dlg)
 
@@ -1857,6 +1893,7 @@ class NotasView(ft.Container):
             on_success=resultado_exportacion,
             page=self.app_page,
             periodo_activo=self.state.active_trimestre,
+            tokens=self.state.tokens,
         )
         self._mostrar_dialogo_con_dock_oculto(dlg)
 

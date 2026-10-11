@@ -13,22 +13,6 @@ import flet.canvas as cv
 from mobile.state import AppState
 from mobile.components.ui_header import build_app_header
 from mobile.theme import (
-    BG_PAGE,
-    SURFACE_WHITE,
-    BORDER_COLOR,
-    BORDER_ACTIVE,
-    PRIMARY,
-    PRIMARY_LIGHT,
-    PRIMARY_HOVER,
-    TEXT_MAIN,
-    TEXT_MUTED,
-    TEXT_SUBTLE,
-    GRADE_PASS_BG,
-    GRADE_PASS_TEXT,
-    GRADE_FAIL_BG,
-    GRADE_FAIL_TEXT,
-    GRADE_EMPTY_BG,
-    GRADE_EMPTY_TEXT,
     get_avatar_palette,
     extract_initials,
 )
@@ -66,7 +50,7 @@ class EstadisticasView(ft.Container):
     """
 
     def __init__(self, state: AppState, page: ft.Page, on_navigate: Callable[[str], None]):
-        super().__init__(expand=True, bgcolor=BG_PAGE, padding=0)
+        super().__init__(expand=True, bgcolor=state.tokens.bg_page, padding=0)
         self.state = state
         self.app_page = page
         self.on_navigate = on_navigate
@@ -150,6 +134,7 @@ class EstadisticasView(ft.Container):
             eyebrow=eyebrow,
             title=titulo,
             on_back=self._al_volver,
+            tokens=self.state.tokens,
         )
 
         # 2. Selector de Nivel (Institucional vs Curso)
@@ -255,6 +240,7 @@ class EstadisticasView(ft.Container):
         colegio = self.state.selected_colegio
         cursos = self.state.get_cursos(colegio) if colegio else []
         nivel = self.state.estadisticas_nivel
+        tok = self.state.tokens
 
         tabs = [
             ft.Container(
@@ -263,21 +249,21 @@ class EstadisticasView(ft.Container):
                         ft.Icon(
                             ft.Icons.SCHOOL,
                             size=16,
-                            color=PRIMARY if nivel == "colegio" else TEXT_MUTED,
+                            color=tok.primary if nivel == "colegio" else tok.text_muted,
                         ),
                         ft.Text(
                             "Institucional (Colegio)",
                             size=12,
                             weight=ft.FontWeight.BOLD if nivel == "colegio" else ft.FontWeight.W_500,
-                            color=PRIMARY if nivel == "colegio" else TEXT_MUTED,
+                            color=tok.primary if nivel == "colegio" else tok.text_muted,
                         ),
                     ],
                     spacing=6,
                     alignment=ft.MainAxisAlignment.CENTER,
                 ),
                 padding=ft.Padding(left=12, right=12, top=8, bottom=8),
-                bgcolor=PRIMARY_LIGHT if nivel == "colegio" else SURFACE_WHITE,
-                border=ft.Border.all(1, PRIMARY if nivel == "colegio" else BORDER_COLOR),
+                bgcolor=tok.primary_light if nivel == "colegio" else tok.surface,
+                border=ft.Border.all(1, tok.primary if nivel == "colegio" else tok.border_color),
                 border_radius=8,
                 on_click=lambda _: self._conmutar_nivel("colegio"),
             )
@@ -292,21 +278,21 @@ class EstadisticasView(ft.Container):
                             ft.Icon(
                                 ft.Icons.CLASS_,
                                 size=16,
-                                color=PRIMARY if nivel == "curso" else TEXT_MUTED,
+                                color=tok.primary if nivel == "curso" else tok.text_muted,
                             ),
                             ft.Text(
                                 f"Curso: {cur_activo}",
                                 size=12,
                                 weight=ft.FontWeight.BOLD if nivel == "curso" else ft.FontWeight.W_500,
-                                color=PRIMARY if nivel == "curso" else TEXT_MUTED,
+                                color=tok.primary if nivel == "curso" else tok.text_muted,
                             ),
                         ],
                         spacing=6,
                         alignment=ft.MainAxisAlignment.CENTER,
                     ),
                     padding=ft.Padding(left=12, right=12, top=8, bottom=8),
-                    bgcolor=PRIMARY_LIGHT if nivel == "curso" else SURFACE_WHITE,
-                    border=ft.Border.all(1, PRIMARY if nivel == "curso" else BORDER_COLOR),
+                    bgcolor=tok.primary_light if nivel == "curso" else tok.surface,
+                    border=ft.Border.all(1, tok.primary if nivel == "curso" else tok.border_color),
                     border_radius=8,
                     on_click=lambda _: self._conmutar_nivel("curso", cur_activo),
                 )
@@ -321,13 +307,14 @@ class EstadisticasView(ft.Container):
         """Selector de dos pestañas: Calificaciones vs Comportamiento."""
         is_rend = (self.seccion_activa == "rendimiento")
         is_comp = (self.seccion_activa == "comportamiento")
+        tok = self.state.tokens
 
         tab_rend = ft.Container(
             expand=True,
             height=36,
             border_radius=8,
-            bgcolor=PRIMARY_LIGHT if is_rend else SURFACE_WHITE,
-            border=ft.Border.all(1.5 if is_rend else 1, PRIMARY if is_rend else BORDER_COLOR),
+            bgcolor=tok.primary_light if is_rend else tok.surface,
+            border=ft.Border.all(1.5 if is_rend else 1, tok.primary if is_rend else tok.border_color),
             alignment=ft.Alignment.CENTER,
             ink=True,
             on_click=lambda _: self._conmutar_seccion("rendimiento"),
@@ -336,12 +323,12 @@ class EstadisticasView(ft.Container):
                 spacing=6,
                 tight=True,
                 controls=[
-                    ft.Icon(ft.Icons.BAR_CHART, size=16, color=PRIMARY if is_rend else TEXT_MUTED),
+                    ft.Icon(ft.Icons.BAR_CHART, size=16, color=tok.primary if is_rend else tok.text_muted),
                     ft.Text(
                         "Calificaciones",
                         size=12,
                         weight=ft.FontWeight.BOLD if is_rend else ft.FontWeight.W_500,
-                        color=PRIMARY if is_rend else TEXT_MUTED,
+                        color=tok.primary if is_rend else tok.text_muted,
                     ),
                 ],
             ),
@@ -351,8 +338,8 @@ class EstadisticasView(ft.Container):
             expand=True,
             height=36,
             border_radius=8,
-            bgcolor=PRIMARY_LIGHT if is_comp else SURFACE_WHITE,
-            border=ft.Border.all(1.5 if is_comp else 1, PRIMARY if is_comp else BORDER_COLOR),
+            bgcolor=tok.primary_light if is_comp else tok.surface,
+            border=ft.Border.all(1.5 if is_comp else 1, tok.primary if is_comp else tok.border_color),
             alignment=ft.Alignment.CENTER,
             ink=True,
             on_click=lambda _: self._conmutar_seccion("comportamiento"),
@@ -361,12 +348,12 @@ class EstadisticasView(ft.Container):
                 spacing=6,
                 tight=True,
                 controls=[
-                    ft.Icon(ft.Icons.RULE, size=16, color=PRIMARY if is_comp else TEXT_MUTED),
+                    ft.Icon(ft.Icons.RULE, size=16, color=tok.primary if is_comp else tok.text_muted),
                     ft.Text(
                         "Comportamiento",
                         size=12,
                         weight=ft.FontWeight.BOLD if is_comp else ft.FontWeight.W_500,
-                        color=PRIMARY if is_comp else TEXT_MUTED,
+                        color=tok.primary if is_comp else tok.text_muted,
                     ),
                 ],
             ),
@@ -380,6 +367,7 @@ class EstadisticasView(ft.Container):
     def _build_period_selector(self) -> ft.Container:
         """Selector horizontal estilizado de períodos (1° Trim, 2° Trim, 3° Trim, Anual)."""
         periodo_actual = self._get_active_periodo()
+        tok = self.state.tokens
         chips = []
 
         for idx, nombre in enumerate(NOMBRES_PERIODOS):
@@ -390,10 +378,10 @@ class EstadisticasView(ft.Container):
                         nombre,
                         size=12,
                         weight=ft.FontWeight.BOLD if es_activo else ft.FontWeight.W_500,
-                        color=ft.Colors.WHITE if es_activo else TEXT_MUTED,
+                        color=ft.Colors.WHITE if es_activo else tok.text_muted,
                     ),
-                    bgcolor=PRIMARY if es_activo else SURFACE_WHITE,
-                    border=ft.Border.all(1, PRIMARY if es_activo else BORDER_COLOR),
+                    bgcolor=tok.primary if es_activo else tok.surface,
+                    border=ft.Border.all(1, tok.primary if es_activo else tok.border_color),
                     border_radius=18,
                     padding=ft.Padding(left=14, right=14, top=7, bottom=7),
                     on_click=lambda _, i=idx: self._conmutar_periodo(i),
@@ -408,6 +396,7 @@ class EstadisticasView(ft.Container):
 
     def _build_kpi_row(self, stats: dict) -> ft.Container:
         """Tarjetas KPI compactas: Aprobados, Desaprobados, Sin Calificar y Promedio General."""
+        tok = self.state.tokens
         tot = stats.get("total_alumnos", 0)
         ap_c = stats.get("aprobados_cant", 0)
         ap_p = stats.get("aprobados_pct", 0.0)
@@ -440,16 +429,16 @@ class EstadisticasView(ft.Container):
         row_1 = ft.Row(
             spacing=8,
             controls=[
-                _kpi_card("Aprobados", f"{ap_c}", f"{ap_p}%", GRADE_PASS_BG, GRADE_PASS_TEXT, "#BBF7D0"),
-                _kpi_card("Desaprobados", f"{des_c}", f"{des_p}%", GRADE_FAIL_BG, GRADE_FAIL_TEXT, "#FECACA"),
+                _kpi_card("Aprobados", f"{ap_c}", f"{ap_p}%", tok.grade_pass_bg, tok.grade_pass_text, tok.grade_pass_text),
+                _kpi_card("Desaprobados", f"{des_c}", f"{des_p}%", tok.grade_fail_bg, tok.grade_fail_text, tok.grade_fail_text),
             ],
         )
 
         row_2 = ft.Row(
             spacing=8,
             controls=[
-                _kpi_card("Sin Calificar", f"{pen_c}", f"{pen_p}%", GRADE_EMPTY_BG, GRADE_EMPTY_TEXT, BORDER_COLOR),
-                _kpi_card("Promedio", prom_str, f"Total: {tot}", PRIMARY_LIGHT, PRIMARY, "#C7D2FE"),
+                _kpi_card("Sin Calificar", f"{pen_c}", f"{pen_p}%", tok.grade_empty_bg, tok.grade_empty_text, tok.border_color),
+                _kpi_card("Promedio", prom_str, f"Total: {tot}", tok.primary_light, tok.primary, tok.border_color),
             ],
         )
 
@@ -459,6 +448,7 @@ class EstadisticasView(ft.Container):
         """
         Gráfico circular tipo dona nativo dibujado con flet.canvas y tarjeta de métricas.
         """
+        tok = self.state.tokens
         total = stats.get("total_alumnos", 0)
         ap_c = stats.get("aprobados_cant", 0)
         ap_p = stats.get("aprobados_pct", 0.0)
@@ -474,7 +464,7 @@ class EstadisticasView(ft.Container):
 
         if total == 0:
             # Estado vacío: anillo neutro completo
-            p_empty = ft.Paint(style=ft.PaintingStyle.STROKE, stroke_width=stroke_w, color=COLOR_VACIO)
+            p_empty = ft.Paint(style=ft.PaintingStyle.STROKE, stroke_width=stroke_w, color=tok.border_color)
             shapes.append(cv.Arc(cx, cy, size, size, 0, 2 * math.pi, paint=p_empty))
             centro_txt = "0"
             centro_sub = "alumnos"
@@ -484,7 +474,7 @@ class EstadisticasView(ft.Container):
             items = [
                 (ap_c, COLOR_APROBADO),
                 (des_c, COLOR_DESAPROBADO),
-                (pen_c, COLOR_PENDIENTE),
+                (pen_c, tok.text_muted),
             ]
 
             for cant, color in items:
@@ -518,8 +508,8 @@ class EstadisticasView(ft.Container):
                         horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                         spacing=0,
                         controls=[
-                            ft.Text(centro_txt, size=18, weight=ft.FontWeight.BOLD, color=TEXT_MAIN),
-                            ft.Text(centro_sub, size=10, color=TEXT_MUTED),
+                            ft.Text(centro_txt, size=18, weight=ft.FontWeight.BOLD, color=tok.text_main),
+                            ft.Text(centro_sub, size=10, color=tok.text_muted),
                         ],
                     ),
                 ),
@@ -532,8 +522,8 @@ class EstadisticasView(ft.Container):
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
                 controls=[
                     ft.Container(width=10, height=10, border_radius=5, bgcolor=color),
-                    ft.Text(etiqueta, size=12, color=TEXT_MAIN, expand=True),
-                    ft.Text(f"{cant} ({pct}%)", size=12, weight=ft.FontWeight.BOLD, color=TEXT_MAIN),
+                    ft.Text(etiqueta, size=12, color=tok.text_main, expand=True),
+                    ft.Text(f"{cant} ({pct}%)", size=12, weight=ft.FontWeight.BOLD, color=tok.text_main),
                 ],
             )
 
@@ -543,19 +533,19 @@ class EstadisticasView(ft.Container):
             controls=[
                 _legend_item(COLOR_APROBADO, "Aprobados", ap_c, ap_p),
                 _legend_item(COLOR_DESAPROBADO, "Desaprobados", des_c, des_p),
-                _legend_item(COLOR_PENDIENTE, "Sin Calificar", pen_c, pen_p),
+                _legend_item(tok.text_muted, "Sin Calificar", pen_c, pen_p),
             ],
         )
 
         return ft.Container(
-            bgcolor=SURFACE_WHITE,
-            border=ft.Border.all(1, BORDER_COLOR),
+            bgcolor=tok.surface,
+            border=ft.Border.all(1, tok.border_color),
             border_radius=14,
             padding=ft.Padding(left=14, right=14, top=14, bottom=14),
             content=ft.Column(
                 spacing=10,
                 controls=[
-                    ft.Text("Distribución General", size=14, weight=ft.FontWeight.BOLD, color=TEXT_MAIN),
+                    ft.Text("Distribución General", size=14, weight=ft.FontWeight.BOLD, color=tok.text_main),
                     ft.Row(
                         alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                         vertical_alignment=ft.CrossAxisAlignment.CENTER,
@@ -571,13 +561,14 @@ class EstadisticasView(ft.Container):
         Nivel Colegio: Barras comparativas horizontales por curso para contrastar
         el porcentaje de aprobación entre divisiones sin truncar nombres.
         """
+        tok = self.state.tokens
         por_curso = stats.get("por_curso", {})
         total_cursos = len(por_curso)
 
         if total_cursos == 0:
             return ft.Container(
-                bgcolor=SURFACE_WHITE,
-                border=ft.Border.all(1, BORDER_COLOR),
+                bgcolor=tok.surface,
+                border=ft.Border.all(1, tok.border_color),
                 border_radius=14,
                 padding=20,
                 alignment=ft.Alignment.CENTER,
@@ -585,9 +576,9 @@ class EstadisticasView(ft.Container):
                     spacing=8,
                     horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                     controls=[
-                        ft.Icon(ft.Icons.CLASS_OUTLINED, size=32, color=TEXT_SUBTLE),
-                        ft.Text("No hay cursos registrados", size=14, weight=ft.FontWeight.BOLD, color=TEXT_MAIN),
-                        ft.Text("Agrega cursos en este colegio para ver estadísticas.", size=12, color=TEXT_MUTED),
+                        ft.Icon(ft.Icons.CLASS_OUTLINED, size=32, color=tok.text_subtle),
+                        ft.Text("No hay cursos registrados", size=14, weight=ft.FontWeight.BOLD, color=tok.text_main),
+                        ft.Text("Agrega cursos en este colegio para ver estadísticas.", size=12, color=tok.text_muted),
                     ],
                 ),
             )
@@ -603,8 +594,8 @@ class EstadisticasView(ft.Container):
 
             rows.append(
                 ft.Container(
-                    bgcolor=BG_PAGE,
-                    border=ft.Border.all(1, BORDER_COLOR),
+                    bgcolor=tok.bg_page,
+                    border=ft.Border.all(1, tok.border_color),
                     border_radius=10,
                     padding=ft.Padding(left=12, right=12, top=10, bottom=10),
                     on_click=lambda _, cur=nombre_curso: self._conmutar_nivel("curso", cur),
@@ -617,19 +608,19 @@ class EstadisticasView(ft.Container):
                                     ft.Row(
                                         spacing=6,
                                         controls=[
-                                            ft.Icon(ft.Icons.CLASS_, size=15, color=PRIMARY),
-                                            ft.Text(nombre_curso, size=13, weight=ft.FontWeight.BOLD, color=TEXT_MAIN),
+                                            ft.Icon(ft.Icons.CLASS_, size=15, color=tok.primary),
+                                            ft.Text(nombre_curso, size=13, weight=ft.FontWeight.BOLD, color=tok.text_main),
                                         ],
                                     ),
                                     ft.Container(
-                                        bgcolor=GRADE_PASS_BG if c_ap_p >= 50 else GRADE_FAIL_BG,
+                                        bgcolor=tok.grade_pass_bg if c_ap_p >= 50 else tok.grade_fail_bg,
                                         border_radius=8,
                                         padding=ft.Padding(left=6, right=6, top=2, bottom=2),
                                         content=ft.Text(
                                             f"{c_ap_p}% ({c_ap_c}/{c_tot})",
                                             size=11,
                                             weight=ft.FontWeight.BOLD,
-                                            color=GRADE_PASS_TEXT if c_ap_p >= 50 else GRADE_FAIL_TEXT,
+                                            color=tok.grade_pass_text if c_ap_p >= 50 else tok.grade_fail_text,
                                         ),
                                     ),
                                 ],
@@ -637,7 +628,7 @@ class EstadisticasView(ft.Container):
                             ft.ProgressBar(
                                 value=valor_progreso,
                                 color=COLOR_APROBADO,
-                                bgcolor="#E2E8F0",
+                                bgcolor=tok.border_color,
                                 height=8,
                                 border_radius=4,
                             ),
@@ -651,25 +642,25 @@ class EstadisticasView(ft.Container):
             aviso_curso_unico = ft.Row(
                 spacing=6,
                 controls=[
-                    ft.Icon(ft.Icons.INFO_OUTLINE, size=14, color=TEXT_MUTED),
+                    ft.Icon(ft.Icons.INFO_OUTLINE, size=14, color=tok.text_muted),
                     ft.Text(
                         "Agrega más cursos para ver comparativas grupales.",
                         size=11,
-                        color=TEXT_MUTED,
+                        color=tok.text_muted,
                     ),
                 ],
             )
 
         header_controles = [
-            ft.Text("Rendimiento por Curso", size=14, weight=ft.FontWeight.BOLD, color=TEXT_MAIN),
-            ft.Text("Toca un curso para ver su desglose nominal", size=11, color=TEXT_MUTED),
+            ft.Text("Rendimiento por Curso", size=14, weight=ft.FontWeight.BOLD, color=tok.text_main),
+            ft.Text("Toca un curso para ver su desglose nominal", size=11, color=tok.text_muted),
         ]
         if aviso_curso_unico:
             header_controles.append(aviso_curso_unico)
 
         return ft.Container(
-            bgcolor=SURFACE_WHITE,
-            border=ft.Border.all(1, BORDER_COLOR),
+            bgcolor=tok.surface,
+            border=ft.Border.all(1, tok.border_color),
             border_radius=14,
             padding=ft.Padding(left=14, right=14, top=14, bottom=14),
             content=ft.Column(
@@ -686,11 +677,13 @@ class EstadisticasView(ft.Container):
         Nivel Curso: Desglose nominal de alumnos clasificados en Aprobados,
         Desaprobados y Sin Calificar con avatar de iniciales y nota final.
         """
+        tok = self.state.tokens
+        is_dark = self.state.is_dark_mode
         alumnos = stats.get("alumnos_detalle", [])
         if not alumnos:
             return ft.Container(
-                bgcolor=SURFACE_WHITE,
-                border=ft.Border.all(1, BORDER_COLOR),
+                bgcolor=tok.surface,
+                border=ft.Border.all(1, tok.border_color),
                 border_radius=14,
                 padding=20,
                 alignment=ft.Alignment.CENTER,
@@ -698,9 +691,9 @@ class EstadisticasView(ft.Container):
                     spacing=8,
                     horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                     controls=[
-                        ft.Icon(ft.Icons.PEOPLE_OUTLINE, size=32, color=TEXT_SUBTLE),
-                        ft.Text("No hay alumnos cargados", size=14, weight=ft.FontWeight.BOLD, color=TEXT_MAIN),
-                        ft.Text("Agrega alumnos a este curso desde la planilla.", size=12, color=TEXT_MUTED),
+                        ft.Icon(ft.Icons.PEOPLE_OUTLINE, size=32, color=tok.text_subtle),
+                        ft.Text("No hay alumnos cargados", size=14, weight=ft.FontWeight.BOLD, color=tok.text_main),
+                        ft.Text("Agrega alumnos a este curso desde la planilla.", size=12, color=tok.text_muted),
                     ],
                 ),
             )
@@ -710,11 +703,11 @@ class EstadisticasView(ft.Container):
         pendientes = [a for a in alumnos if a["condicion"] == "pendiente"]
 
         def _fila_alumno(al: dict, idx: int, bg_pill: str, text_pill: str):
-            bg_avatar, text_avatar = get_avatar_palette(idx)
+            bg_avatar, text_avatar = get_avatar_palette(idx, is_dark=is_dark)
             nota_str = str(al["nota_final"]) if al["nota_final"] is not None else "--"
             return ft.Container(
                 padding=ft.Padding(left=8, right=8, top=6, bottom=6),
-                border=ft.Border(bottom=ft.BorderSide(1, BORDER_COLOR)),
+                border=ft.Border(bottom=ft.BorderSide(1, tok.border_color)),
                 content=ft.Row(
                     alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                     controls=[
@@ -734,7 +727,7 @@ class EstadisticasView(ft.Container):
                                         color=text_avatar,
                                     ),
                                 ),
-                                ft.Text(al["nombre"], size=13, weight=ft.FontWeight.W_500, color=TEXT_MAIN),
+                                ft.Text(al["nombre"], size=13, weight=ft.FontWeight.W_500, color=tok.text_main),
                             ],
                         ),
                         ft.Container(
@@ -758,13 +751,13 @@ class EstadisticasView(ft.Container):
                             ft.Row(
                                 [
                                     ft.Icon(ft.Icons.CHECK_CIRCLE, size=16, color=COLOR_APROBADO),
-                                    ft.Text(f"Aprobados ({len(aprobados)})", size=13, weight=ft.FontWeight.BOLD, color=TEXT_MAIN),
+                                    ft.Text(f"Aprobados ({len(aprobados)})", size=13, weight=ft.FontWeight.BOLD, color=tok.text_main),
                                 ],
                                 spacing=6,
                             ),
                             ft.Column(
                                 spacing=0,
-                                controls=[_fila_alumno(al, i, GRADE_PASS_BG, GRADE_PASS_TEXT) for i, al in enumerate(aprobados)],
+                                controls=[_fila_alumno(al, i, tok.grade_pass_bg, tok.grade_pass_text) for i, al in enumerate(aprobados)],
                             ),
                         ],
                     ),
@@ -781,13 +774,13 @@ class EstadisticasView(ft.Container):
                             ft.Row(
                                 [
                                     ft.Icon(ft.Icons.CANCEL, size=16, color=COLOR_DESAPROBADO),
-                                    ft.Text(f"Desaprobados ({len(desaprobados)})", size=13, weight=ft.FontWeight.BOLD, color=TEXT_MAIN),
+                                    ft.Text(f"Desaprobados ({len(desaprobados)})", size=13, weight=ft.FontWeight.BOLD, color=tok.text_main),
                                 ],
                                 spacing=6,
                             ),
                             ft.Column(
                                 spacing=0,
-                                controls=[_fila_alumno(al, i, GRADE_FAIL_BG, GRADE_FAIL_TEXT) for i, al in enumerate(desaprobados)],
+                                controls=[_fila_alumno(al, i, tok.grade_fail_bg, tok.grade_fail_text) for i, al in enumerate(desaprobados)],
                             ),
                         ],
                     ),
@@ -804,13 +797,13 @@ class EstadisticasView(ft.Container):
                             ft.Row(
                                 [
                                     ft.Icon(ft.Icons.HELP_OUTLINE, size=16, color=COLOR_PENDIENTE),
-                                    ft.Text(f"Sin Calificar ({len(pendientes)})", size=13, weight=ft.FontWeight.BOLD, color=TEXT_MAIN),
+                                    ft.Text(f"Sin Calificar ({len(pendientes)})", size=13, weight=ft.FontWeight.BOLD, color=tok.text_main),
                                 ],
                                 spacing=6,
                             ),
                             ft.Column(
                                 spacing=0,
-                                controls=[_fila_alumno(al, i, GRADE_EMPTY_BG, GRADE_EMPTY_TEXT) for i, al in enumerate(pendientes)],
+                                controls=[_fila_alumno(al, i, tok.grade_empty_bg, tok.grade_empty_text) for i, al in enumerate(pendientes)],
                             ),
                         ],
                     ),
@@ -819,14 +812,14 @@ class EstadisticasView(ft.Container):
             )
 
         return ft.Container(
-            bgcolor=SURFACE_WHITE,
-            border=ft.Border.all(1, BORDER_COLOR),
+            bgcolor=tok.surface,
+            border=ft.Border.all(1, tok.border_color),
             border_radius=14,
             padding=ft.Padding(left=14, right=14, top=14, bottom=14),
             content=ft.Column(
                 spacing=12,
                 controls=[
-                    ft.Text("Desglose Nominal de Alumnos", size=14, weight=ft.FontWeight.BOLD, color=TEXT_MAIN),
+                    ft.Text("Desglose Nominal de Alumnos", size=14, weight=ft.FontWeight.BOLD, color=tok.text_main),
                     ft.Column(spacing=8, controls=grupos),
                 ],
             ),
@@ -838,6 +831,7 @@ class EstadisticasView(ft.Container):
 
     def _build_comportamiento_section(self) -> ft.Container:
         """Construye el contenido completo del apartado Comportamiento."""
+        tok = self.state.tokens
         nivel = self.state.estadisticas_nivel
         curso = self.state.selected_curso if nivel == "curso" else None
         colegio = self.state.selected_colegio
@@ -857,9 +851,9 @@ class EstadisticasView(ft.Container):
         kpis_row = ft.Row(
             spacing=8,
             controls=[
-                self._build_kpi_comp_card("Positivo", tot_pos, pct_pos, "#10B981", "#DCFCE7", "#166534", ft.Icons.THUMB_UP_OUTLINED),
-                self._build_kpi_comp_card("Regular", tot_reg, pct_reg, "#F59E0B", "#FEF3C7", "#B45309", ft.Icons.INFO_OUTLINE),
-                self._build_kpi_comp_card("Negativo", tot_neg, pct_neg, "#EF4444", "#FEE2E2", "#991B1B", ft.Icons.REPORT_PROBLEM_OUTLINED),
+                self._build_kpi_comp_card("Positivo", tot_pos, pct_pos, tok.attendance_p_solid, tok.attendance_p_bg, tok.attendance_p_text, ft.Icons.THUMB_UP_OUTLINED),
+                self._build_kpi_comp_card("Regular", tot_reg, pct_reg, tok.attendance_t_solid, tok.attendance_t_bg, tok.attendance_t_text, ft.Icons.INFO_OUTLINE),
+                self._build_kpi_comp_card("Negativo", tot_neg, pct_neg, tok.attendance_a_solid, tok.attendance_a_bg, tok.attendance_a_text, ft.Icons.REPORT_PROBLEM_OUTLINED),
             ],
         )
 
@@ -876,8 +870,8 @@ class EstadisticasView(ft.Container):
             is_active = (self.filtro_comportamiento == f_key)
             chips_controls.append(
                 ft.Container(
-                    bgcolor=PRIMARY_LIGHT if is_active else SURFACE_WHITE,
-                    border=ft.Border.all(1.5, PRIMARY if is_active else BORDER_COLOR),
+                    bgcolor=tok.primary_light if is_active else tok.surface,
+                    border=ft.Border.all(1.5, tok.primary if is_active else tok.border_color),
                     border_radius=20,
                     padding=ft.Padding(left=12, right=12, top=6, bottom=6),
                     ink=True,
@@ -886,7 +880,7 @@ class EstadisticasView(ft.Container):
                         f_lbl,
                         size=11,
                         weight=ft.FontWeight.BOLD if is_active else ft.FontWeight.W_500,
-                        color=PRIMARY if is_active else TEXT_MAIN,
+                        color=tok.primary if is_active else tok.text_main,
                     ),
                 )
             )
@@ -904,8 +898,8 @@ class EstadisticasView(ft.Container):
         if not alumnos_a_mostrar:
             tarjetas_alumnos.append(
                 ft.Container(
-                    bgcolor=SURFACE_WHITE,
-                    border=ft.Border.all(1, BORDER_COLOR),
+                    bgcolor=tok.surface,
+                    border=ft.Border.all(1, tok.border_color),
                     border_radius=12,
                     padding=24,
                     alignment=ft.Alignment.CENTER,
@@ -914,11 +908,11 @@ class EstadisticasView(ft.Container):
                         spacing=6,
                         tight=True,
                         controls=[
-                            ft.Icon(ft.Icons.RULE, size=28, color=TEXT_MUTED),
+                            ft.Icon(ft.Icons.RULE, size=28, color=tok.text_muted),
                             ft.Text(
                                 "No hay alumnos con registros en esta categoría.",
                                 size=13,
-                                color=TEXT_MUTED,
+                                color=tok.text_muted,
                             ),
                         ],
                     ),
@@ -938,7 +932,7 @@ class EstadisticasView(ft.Container):
                 controls=[
                     kpis_row,
                     donut_comp,
-                    ft.Text("Alumnos por comportamiento:", size=13, weight=ft.FontWeight.BOLD, color=TEXT_MAIN),
+                    ft.Text("Alumnos por comportamiento:", size=13, weight=ft.FontWeight.BOLD, color=tok.text_main),
                     selector_filtros,
                     ft.Column(spacing=8, tight=True, controls=tarjetas_alumnos),
                 ],
@@ -950,6 +944,7 @@ class EstadisticasView(ft.Container):
         Gráfico circular tipo dona nativo dibujado con flet.canvas y tarjeta de métricas
         para la distribución de comportamiento (Positivo, Regular, Negativo).
         """
+        tok = self.state.tokens
         total = stats_comp.get("total_observaciones", 0)
         tot_pos = stats_comp["totales_por_tipo"].get(COMPORTAMIENTO_POSITIVO, 0)
         pct_pos = stats_comp["porcentajes_por_tipo"].get(COMPORTAMIENTO_POSITIVO, 0.0)
@@ -966,7 +961,7 @@ class EstadisticasView(ft.Container):
 
         if total == 0:
             # Estado vacío: anillo neutro completo
-            p_empty = ft.Paint(style=ft.PaintingStyle.STROKE, stroke_width=stroke_w, color=COLOR_VACIO)
+            p_empty = ft.Paint(style=ft.PaintingStyle.STROKE, stroke_width=stroke_w, color=tok.border_color)
             shapes.append(cv.Arc(cx, cy, size, size, 0, 2 * math.pi, paint=p_empty))
             centro_txt = "0"
             centro_sub = "registros"
@@ -974,9 +969,9 @@ class EstadisticasView(ft.Container):
             start_ang = -math.pi / 2  # Comienza arriba (12 en punto)
 
             items = [
-                (tot_pos, COLOR_COMP_POS),
-                (tot_reg, COLOR_COMP_REG),
-                (tot_neg, COLOR_COMP_NEG),
+                (tot_pos, tok.attendance_p_solid),
+                (tot_reg, tok.attendance_t_solid),
+                (tot_neg, tok.attendance_a_solid),
             ]
 
             for cant, color in items:
@@ -1010,8 +1005,8 @@ class EstadisticasView(ft.Container):
                         horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                         spacing=0,
                         controls=[
-                            ft.Text(centro_txt, size=18, weight=ft.FontWeight.BOLD, color=TEXT_MAIN),
-                            ft.Text(centro_sub, size=10, color=TEXT_MUTED),
+                            ft.Text(centro_txt, size=18, weight=ft.FontWeight.BOLD, color=tok.text_main),
+                            ft.Text(centro_sub, size=10, color=tok.text_muted),
                         ],
                     ),
                 ),
@@ -1024,8 +1019,8 @@ class EstadisticasView(ft.Container):
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
                 controls=[
                     ft.Container(width=10, height=10, border_radius=5, bgcolor=color),
-                    ft.Text(etiqueta, size=12, color=TEXT_MAIN, expand=True),
-                    ft.Text(f"{cant} ({pct}%)", size=12, weight=ft.FontWeight.BOLD, color=TEXT_MAIN),
+                    ft.Text(etiqueta, size=12, color=tok.text_main, expand=True),
+                    ft.Text(f"{cant} ({pct}%)", size=12, weight=ft.FontWeight.BOLD, color=tok.text_main),
                 ],
             )
 
@@ -1033,21 +1028,21 @@ class EstadisticasView(ft.Container):
             spacing=8,
             expand=True,
             controls=[
-                _legend_item(COLOR_COMP_POS, "Positivo", tot_pos, pct_pos),
-                _legend_item(COLOR_COMP_REG, "Regular", tot_reg, pct_reg),
-                _legend_item(COLOR_COMP_NEG, "Negativo", tot_neg, pct_neg),
+                _legend_item(tok.attendance_p_solid, "Positivo", tot_pos, pct_pos),
+                _legend_item(tok.attendance_t_solid, "Regular", tot_reg, pct_reg),
+                _legend_item(tok.attendance_a_solid, "Negativo", tot_neg, pct_neg),
             ],
         )
 
         return ft.Container(
-            bgcolor=SURFACE_WHITE,
-            border=ft.Border.all(1, BORDER_COLOR),
+            bgcolor=tok.surface,
+            border=ft.Border.all(1, tok.border_color),
             border_radius=14,
             padding=ft.Padding(left=14, right=14, top=14, bottom=14),
             content=ft.Column(
                 spacing=10,
                 controls=[
-                    ft.Text("Distribución de Comportamiento", size=14, weight=ft.FontWeight.BOLD, color=TEXT_MAIN),
+                    ft.Text("Distribución de Comportamiento", size=14, weight=ft.FontWeight.BOLD, color=tok.text_main),
                     ft.Row(
                         alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                         vertical_alignment=ft.CrossAxisAlignment.CENTER,
@@ -1069,10 +1064,11 @@ class EstadisticasView(ft.Container):
         icono: str,
     ) -> ft.Container:
         """Construye una tarjeta KPI para el apartado de comportamiento."""
+        tok = self.state.tokens
         return ft.Container(
             expand=True,
-            bgcolor=SURFACE_WHITE,
-            border=ft.Border.all(1, BORDER_COLOR),
+            bgcolor=tok.surface,
+            border=ft.Border.all(1, tok.border_color),
             border_radius=12,
             padding=ft.Padding(left=10, right=10, top=10, bottom=10),
             content=ft.Column(
@@ -1082,11 +1078,11 @@ class EstadisticasView(ft.Container):
                     ft.Row(
                         alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                         controls=[
-                            ft.Text(titulo, size=11, weight=ft.FontWeight.W_500, color=TEXT_MUTED),
+                            ft.Text(titulo, size=11, weight=ft.FontWeight.W_500, color=tok.text_muted),
                             ft.Icon(icono, size=16, color=color_solido),
                         ],
                     ),
-                    ft.Text(str(cantidad), size=20, weight=ft.FontWeight.BOLD, color=TEXT_MAIN),
+                    ft.Text(str(cantidad), size=20, weight=ft.FontWeight.BOLD, color=tok.text_main),
                     ft.Container(
                         bgcolor=color_bg,
                         border_radius=6,
@@ -1136,6 +1132,8 @@ class EstadisticasView(ft.Container):
 
     def _build_alumno_comportamiento_card(self, al: dict) -> ft.Container:
         """Construye una tarjeta expandible de alumno con su historial de observaciones."""
+        tok = self.state.tokens
+        is_dark = self.state.is_dark_mode
         al_id = str(al.get("id", ""))
         nombre = al.get("nombre", "")
         observaciones = al.get("observaciones", [])
@@ -1145,7 +1143,7 @@ class EstadisticasView(ft.Container):
         is_open = al_id in self.alumnos_expandidos_comp
 
         num_id = int(al_id) if str(al_id).isdigit() else 0
-        avatar_bg, avatar_fg = get_avatar_palette(num_id)
+        avatar_bg, avatar_fg = get_avatar_palette(num_id, is_dark=is_dark)
         iniciales = extract_initials(nombre)
 
         # Badges de conteo por tipo
@@ -1153,35 +1151,35 @@ class EstadisticasView(ft.Container):
         if conteo.get(COMPORTAMIENTO_POSITIVO, 0) > 0:
             badges_conteo.append(
                 ft.Container(
-                    bgcolor="#DCFCE7",
+                    bgcolor=tok.attendance_p_bg,
                     border_radius=6,
                     padding=ft.Padding(left=6, right=6, top=2, bottom=2),
-                    content=ft.Text(f"+{conteo[COMPORTAMIENTO_POSITIVO]}", size=10, weight=ft.FontWeight.BOLD, color="#166534"),
+                    content=ft.Text(f"+{conteo[COMPORTAMIENTO_POSITIVO]}", size=10, weight=ft.FontWeight.BOLD, color=tok.attendance_p_text),
                 )
             )
         if conteo.get(COMPORTAMIENTO_REGULAR, 0) > 0:
             badges_conteo.append(
                 ft.Container(
-                    bgcolor="#FEF3C7",
+                    bgcolor=tok.attendance_t_bg,
                     border_radius=6,
                     padding=ft.Padding(left=6, right=6, top=2, bottom=2),
-                    content=ft.Text(f"~{conteo[COMPORTAMIENTO_REGULAR]}", size=10, weight=ft.FontWeight.BOLD, color="#B45309"),
+                    content=ft.Text(f"~{conteo[COMPORTAMIENTO_REGULAR]}", size=10, weight=ft.FontWeight.BOLD, color=tok.attendance_t_text),
                 )
             )
         if conteo.get(COMPORTAMIENTO_NEGATIVO, 0) > 0:
             badges_conteo.append(
                 ft.Container(
-                    bgcolor="#FEE2E2",
+                    bgcolor=tok.attendance_a_bg,
                     border_radius=6,
                     padding=ft.Padding(left=6, right=6, top=2, bottom=2),
-                    content=ft.Text(f"-{conteo[COMPORTAMIENTO_NEGATIVO]}", size=10, weight=ft.FontWeight.BOLD, color="#991B1B"),
+                    content=ft.Text(f"-{conteo[COMPORTAMIENTO_NEGATIVO]}", size=10, weight=ft.FontWeight.BOLD, color=tok.attendance_a_text),
                 )
             )
 
         chevron = ft.Icon(
             ft.Icons.EXPAND_LESS if is_open else ft.Icons.EXPAND_MORE,
             size=18,
-            color=PRIMARY if is_open else TEXT_MUTED,
+            color=tok.primary if is_open else tok.text_muted,
         )
 
         header_card = ft.Container(
@@ -1209,8 +1207,8 @@ class EstadisticasView(ft.Container):
                                 spacing=1,
                                 tight=True,
                                 controls=[
-                                    ft.Text(f"#{al_id} {nombre}", size=13, weight=ft.FontWeight.BOLD, color=TEXT_MAIN),
-                                    ft.Text(f"{total_obs} observación{'es' if total_obs != 1 else ''}", size=11, color=TEXT_MUTED),
+                                    ft.Text(f"#{al_id} {nombre}", size=13, weight=ft.FontWeight.BOLD, color=tok.text_main),
+                                    ft.Text(f"{total_obs} observación{'es' if total_obs != 1 else ''}", size=11, color=tok.text_muted),
                                 ],
                             ),
                         ],
@@ -1237,7 +1235,7 @@ class EstadisticasView(ft.Container):
                 subtipo = obs.get(K_SUBTIPO, "")
                 texto = obs.get(K_OBSERVACION, "").strip()
 
-                bg_c, text_c, solid_c = get_comportamiento_style(tipo)
+                bg_c, text_c, solid_c = get_comportamiento_style(tipo, tokens=tok)
 
                 badge_subtipo = ft.Container(
                     bgcolor=bg_c,
@@ -1250,7 +1248,7 @@ class EstadisticasView(ft.Container):
                     alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                     controls=[
                         badge_subtipo,
-                        ft.Text(formatear_fecha(fecha), size=11, color=TEXT_MUTED),
+                        ft.Text(formatear_fecha(fecha), size=11, color=tok.text_muted),
                     ],
                 )
 
@@ -1258,12 +1256,12 @@ class EstadisticasView(ft.Container):
                 # Si el profesor añadió texto opcional, mostrarlo; si no, solo se muestra la opción seleccionada
                 if texto:
                     controles_obs.append(
-                        ft.Text(texto, size=11, color=TEXT_MAIN)
+                        ft.Text(texto, size=11, color=tok.text_main)
                     )
 
                 item_obs = ft.Container(
-                    bgcolor="#F8FAFC",
-                    border=ft.Border.all(1, BORDER_COLOR),
+                    bgcolor=tok.bg_page,
+                    border=ft.Border.all(1, tok.border_color),
                     border_radius=8,
                     padding=ft.Padding(left=10, right=10, top=6, bottom=6),
                     content=ft.Column(spacing=4, tight=True, controls=controles_obs),
@@ -1273,13 +1271,13 @@ class EstadisticasView(ft.Container):
         historial_expanded = ft.Container(
             visible=is_open,
             padding=ft.Padding(left=12, right=12, top=4, bottom=12),
-            border=ft.Border.only(top=ft.BorderSide(1, "#F1F5F9")),
+            border=ft.Border.only(top=ft.BorderSide(1, tok.border_color)),
             content=ft.Column(spacing=6, tight=True, controls=detalles_controles),
         )
 
         return ft.Container(
-            bgcolor=SURFACE_WHITE,
-            border=ft.Border.all(1.5, PRIMARY if is_open else BORDER_COLOR),
+            bgcolor=tok.surface,
+            border=ft.Border.all(1.5, tok.primary if is_open else tok.border_color),
             border_radius=12,
             content=ft.Column(
                 spacing=0,
@@ -1293,6 +1291,7 @@ class EstadisticasView(ft.Container):
 
     def _build_empty_state_global(self) -> ft.Container:
         """Estado vacío cuando no existe ningún colegio cargado en la aplicación."""
+        tok = self.state.tokens
         return ft.Container(
             alignment=ft.Alignment.CENTER,
             padding=30,
@@ -1301,18 +1300,18 @@ class EstadisticasView(ft.Container):
                 horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                 alignment=ft.MainAxisAlignment.CENTER,
                 controls=[
-                    ft.Icon(ft.Icons.INSIGHTS, size=54, color=PRIMARY),
-                    ft.Text("No hay instituciones cargadas", size=17, weight=ft.FontWeight.BOLD, color=TEXT_MAIN),
+                    ft.Icon(ft.Icons.INSIGHTS, size=54, color=tok.primary),
+                    ft.Text("No hay instituciones cargadas", size=17, weight=ft.FontWeight.BOLD, color=tok.text_main),
                     ft.Text(
                         "Crea tu primer colegio para comenzar a visualizar estadísticas de rendimiento académico.",
                         size=13,
-                        color=TEXT_MUTED,
+                        color=tok.text_muted,
                         text_align=ft.TextAlign.CENTER,
                     ),
                     ft.FilledButton(
                         "Ir a Colegios",
                         icon=ft.Icons.ARROW_BACK,
-                        style=ft.ButtonStyle(bgcolor=PRIMARY, color=ft.Colors.WHITE),
+                        style=ft.ButtonStyle(bgcolor=tok.primary, color=ft.Colors.WHITE),
                         on_click=lambda _: self.on_navigate("colegios"),
                     ),
                 ],

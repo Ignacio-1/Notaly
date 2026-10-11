@@ -17,6 +17,7 @@ from mobile.theme import (
     BORDER_COLOR,
     BG_PAGE,
     SURFACE_WHITE,
+    ThemeTokens,
 )
 
 logger = logging.getLogger(__name__)
@@ -43,17 +44,23 @@ class GlobalSearchBar(ft.SearchBar):
         self.app_page = page
         self.on_navigate = on_navigate
 
+        tokens = state.tokens if hasattr(state, "tokens") else None
+        bg_col = tokens.surface if tokens else SURFACE_WHITE
+        border_col = tokens.border_color if tokens else BORDER_COLOR
+        primary_col = tokens.primary if tokens else PRIMARY
+        text_muted_col = tokens.text_muted if tokens else TEXT_MUTED
+
         super().__init__(
             bar_hint_text=bar_hint_text,
-            bar_hint_text_style=ft.TextStyle(size=13, color=TEXT_MUTED),
+            bar_hint_text_style=ft.TextStyle(size=13, color=text_muted_col),
             view_hint_text=view_hint_text,
             view_elevation=4,
             divider_color=ft.Colors.OUTLINE_VARIANT,
-            bar_leading=ft.Icon(ft.Icons.SEARCH, color=PRIMARY, size=20),
+            bar_leading=ft.Icon(ft.Icons.SEARCH, color=primary_col, size=20),
             bar_elevation=0,
-            bar_bgcolor=SURFACE_WHITE,
+            bar_bgcolor=bg_col,
             bar_shape=ft.RoundedRectangleBorder(radius=12),
-            bar_border_side=ft.BorderSide(1, BORDER_COLOR),
+            bar_border_side=ft.BorderSide(1, border_col),
             full_screen=False,
             height=42,
             width=width,
@@ -86,6 +93,20 @@ class GlobalSearchBar(ft.SearchBar):
                 subtitle=ft.Text("Busca alumnos, cursos o colegios en toda la app.", size=12, color=ft.Colors.GREY_500),
             )
         ]
+
+    def actualizar_tema(self, tokens: ThemeTokens):
+        """Actualiza los estilos visuales de la barra omnibox según los tokens activos."""
+        self.bar_bgcolor = tokens.surface
+        self.bar_border_side = ft.BorderSide(1, tokens.border_color)
+        if self.bar_hint_text_style:
+            self.bar_hint_text_style.color = tokens.text_muted
+        if self.bar_leading and isinstance(self.bar_leading, ft.Icon):
+            self.bar_leading.color = tokens.primary
+        if self.app_page:
+            try:
+                self.update()
+            except Exception:
+                pass
 
     async def _handle_tap(self, e):
         """Manejador táctil asíncrono para abrir la vista de búsqueda."""

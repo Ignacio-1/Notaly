@@ -11,6 +11,7 @@ from typing import Callable
 import flet as ft
 
 from mobile.theme import (
+    ThemeTokens,
     PRIMARY,
     PRIMARY_LIGHT,
     TEXT_MAIN,
@@ -55,12 +56,15 @@ class PlanificacionCursoDialog(ft.AlertDialog):
         curso: str,
         on_close: Callable[[], None] | None = None,
         page: ft.Page | None = None,
+        tokens: ThemeTokens | None = None,
     ):
         self.state = state
         self.colegio = colegio
         self.curso = curso
         self.on_close_cb = on_close
         self.app_page = page
+        self.tokens = tokens or (state.tokens if state else ThemeTokens())
+        tok = self.tokens
 
         # Diccionarios de referencia a controles para foco y navegación
         self.tema_inputs: dict[str, ft.TextField] = {}
@@ -74,11 +78,11 @@ class PlanificacionCursoDialog(ft.AlertDialog):
         # Encabezado con título y subtítulo de contexto
         title = ft.Row(
             [
-                ft.Icon(ft.Icons.EVENT_NOTE, color=PRIMARY, size=22),
+                ft.Icon(ft.Icons.EVENT_NOTE, color=tok.primary, size=22),
                 ft.Column(
                     [
-                        ft.Text("Planificación de Clases", weight=ft.FontWeight.BOLD, size=16, color=TEXT_MAIN),
-                        ft.Text(f"{curso} · {colegio}", size=12, color=TEXT_MUTED),
+                        ft.Text("Planificación de Clases", weight=ft.FontWeight.BOLD, size=16, color=tok.text_main),
+                        ft.Text(f"{curso} · {colegio}", size=12, color=tok.text_muted),
                     ],
                     spacing=1,
                     tight=True,
@@ -99,8 +103,9 @@ class PlanificacionCursoDialog(ft.AlertDialog):
             dense=True,
             text_size=13,
             border_radius=10,
-            border_color=BORDER_COLOR,
-            bgcolor=BG_PAGE,
+            border_color=tok.border_color,
+            bgcolor=tok.bg_page,
+            color=tok.text_main,
             on_change=lambda e: self._on_horario_change(e.control.value),
         )
 
@@ -111,7 +116,7 @@ class PlanificacionCursoDialog(ft.AlertDialog):
             size=14,
             expand=True,
             text_align=ft.TextAlign.CENTER,
-            color=TEXT_MAIN,
+            color=tok.text_main,
         )
 
         header_nav_calendario = ft.Row(
@@ -120,6 +125,7 @@ class PlanificacionCursoDialog(ft.AlertDialog):
                     icon=ft.Icons.CHEVRON_LEFT,
                     tooltip="Mes anterior",
                     icon_size=20,
+                    icon_color=tok.text_muted,
                     on_click=lambda e: self._cambiar_mes(-1),
                 ),
                 self.lbl_mes_anio,
@@ -127,6 +133,7 @@ class PlanificacionCursoDialog(ft.AlertDialog):
                     icon=ft.Icons.CHEVRON_RIGHT,
                     tooltip="Mes siguiente",
                     icon_size=20,
+                    icon_color=tok.text_muted,
                     on_click=lambda e: self._cambiar_mes(1),
                 ),
             ],
@@ -139,7 +146,7 @@ class PlanificacionCursoDialog(ft.AlertDialog):
 
         seccion_calendario = ft.Column(
             [
-                ft.Text("Calendario de Clases", weight=ft.FontWeight.BOLD, size=13, color=TEXT_MAIN),
+                ft.Text("Calendario de Clases", weight=ft.FontWeight.BOLD, size=13, color=tok.text_main),
                 header_nav_calendario,
                 self.calendar_body,
             ],
@@ -148,7 +155,7 @@ class PlanificacionCursoDialog(ft.AlertDialog):
         )
 
         # 3. Sección Lista Acumulada de Clases
-        self.lbl_clases_header = ft.Text("Clases Planificadas", weight=ft.FontWeight.BOLD, size=13, color=TEXT_MAIN)
+        self.lbl_clases_header = ft.Text("Clases Planificadas", weight=ft.FontWeight.BOLD, size=13, color=tok.text_main)
         self.lista_clases_col = ft.Column(spacing=8, tight=True)
         self._render_clases_list()
 
@@ -165,9 +172,9 @@ class PlanificacionCursoDialog(ft.AlertDialog):
         self.scroll_column = ft.Column(
             [
                 self.txt_horario,
-                ft.Divider(height=1, color=BORDER_COLOR),
+                ft.Divider(height=1, color=tok.border_color),
                 seccion_calendario,
-                ft.Divider(height=1, color=BORDER_COLOR),
+                ft.Divider(height=1, color=tok.border_color),
                 seccion_lista,
             ],
             scroll=ft.ScrollMode.AUTO,
@@ -186,7 +193,7 @@ class PlanificacionCursoDialog(ft.AlertDialog):
             ft.FilledButton(
                 "Listo",
                 style=ft.ButtonStyle(
-                    bgcolor=PRIMARY,
+                    bgcolor=tok.primary,
                     color=ft.Colors.WHITE,
                     shape=ft.RoundedRectangleBorder(radius=8),
                 ),
@@ -200,6 +207,7 @@ class PlanificacionCursoDialog(ft.AlertDialog):
             actions=actions,
             actions_alignment=ft.MainAxisAlignment.END,
             modal=True,
+            bgcolor=tok.surface,
         )
 
     def _focus_control(self, control):
@@ -246,6 +254,7 @@ class PlanificacionCursoDialog(ft.AlertDialog):
 
     def _render_calendar(self):
         """Renderiza la matriz de días del mes en curso."""
+        tok = self.tokens
         clases = self.state.get_clases_curso(self.colegio, self.curso)
         fechas_planificadas = set(clases.keys())
 
@@ -256,7 +265,7 @@ class PlanificacionCursoDialog(ft.AlertDialog):
         header_days = ft.Row(
             [
                 ft.Container(
-                    content=ft.Text(d, weight=ft.FontWeight.BOLD, size=11, color=TEXT_MUTED, text_align=ft.TextAlign.CENTER),
+                    content=ft.Text(d, weight=ft.FontWeight.BOLD, size=11, color=tok.text_muted, text_align=ft.TextAlign.CENTER),
                     width=40,
                     alignment=ft.Alignment.CENTER,
                 )
@@ -282,18 +291,18 @@ class PlanificacionCursoDialog(ft.AlertDialog):
                     )
 
                     if has_class:
-                        bgcolor = PRIMARY
+                        bgcolor = tok.primary
                         text_color = ft.Colors.WHITE
                         font_weight = ft.FontWeight.BOLD
                         border = None
                     elif is_today:
                         bgcolor = ft.Colors.TRANSPARENT
-                        text_color = PRIMARY
+                        text_color = tok.primary
                         font_weight = ft.FontWeight.BOLD
-                        border = ft.Border.all(1.5, PRIMARY)
+                        border = ft.Border.all(1.5, tok.primary)
                     else:
                         bgcolor = ft.Colors.TRANSPARENT
-                        text_color = TEXT_MAIN
+                        text_color = tok.text_main
                         font_weight = ft.FontWeight.NORMAL
                         border = None
 
@@ -344,6 +353,7 @@ class PlanificacionCursoDialog(ft.AlertDialog):
 
     def _render_clases_list(self):
         """Renderiza las tarjetas acumuladas de clases ordenadas cronológicamente."""
+        tok = self.tokens
         clases = self.state.get_clases_curso(self.colegio, self.curso)
         num_clases = len(clases)
         self.lbl_clases_header.value = f"Clases Planificadas ({num_clases})"
@@ -358,7 +368,7 @@ class PlanificacionCursoDialog(ft.AlertDialog):
                     content=ft.Text(
                         "No hay clases planificadas. Toca los días en el calendario para agregarlas.",
                         size=12,
-                        color=TEXT_MUTED,
+                        color=tok.text_muted,
                         text_align=ft.TextAlign.CENTER,
                         italic=True,
                     ),
@@ -376,9 +386,9 @@ class PlanificacionCursoDialog(ft.AlertDialog):
                     format_fecha_badge(fecha_iso),
                     size=11,
                     weight=ft.FontWeight.BOLD,
-                    color=PRIMARY,
+                    color=tok.primary,
                 ),
-                bgcolor=PRIMARY_LIGHT,
+                bgcolor=tok.primary_light,
                 border_radius=6,
                 padding=ft.Padding(left=6, right=6, top=3, bottom=3),
             )
@@ -389,8 +399,9 @@ class PlanificacionCursoDialog(ft.AlertDialog):
                 dense=True,
                 text_size=12,
                 border_radius=8,
-                bgcolor=BG_PAGE,
-                border_color=BORDER_COLOR,
+                bgcolor=tok.bg_page,
+                border_color=tok.border_color,
+                color=tok.text_main,
                 expand=True,
                 on_change=lambda e, f=fecha_iso: self._on_tema_change(f, e.control.value),
             )
@@ -398,7 +409,7 @@ class PlanificacionCursoDialog(ft.AlertDialog):
 
             btn_del = ft.IconButton(
                 icon=ft.Icons.DELETE_OUTLINE,
-                icon_color="#94A3B8",
+                icon_color=tok.text_muted,
                 icon_size=18,
                 tooltip="Eliminar clase",
                 on_click=lambda e, f=fecha_iso: self._on_delete_clase(f),
@@ -411,8 +422,8 @@ class PlanificacionCursoDialog(ft.AlertDialog):
                     spacing=8,
                 ),
                 key=f"card_{fecha_iso}",
-                bgcolor=SURFACE_WHITE,
-                border=ft.Border.all(1, BORDER_COLOR),
+                bgcolor=tok.surface,
+                border=ft.Border.all(1, tok.border_color),
                 border_radius=10,
                 padding=ft.Padding(left=8, right=6, top=6, bottom=6),
             )

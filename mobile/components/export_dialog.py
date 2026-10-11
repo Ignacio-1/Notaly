@@ -9,6 +9,7 @@ import sys
 import tempfile
 from pathlib import Path
 from datetime import datetime
+from typing import Callable, Any
 import flet as ft
 
 from core.exportador import (
@@ -22,7 +23,23 @@ from core.exportador import (
 )
 from core.constants import K_ALUMNOS
 from core import gestor_datos
-from mobile.theme import PRIMARY, TEXT_MAIN, TEXT_MUTED, BORDER_COLOR
+from mobile.theme import (
+    PRIMARY,
+    TEXT_MAIN,
+    TEXT_MUTED,
+    BORDER_COLOR,
+    LIGHT_TOKENS,
+    ThemeTokens,
+    get_tokens,
+)
+
+
+def _resolve_tokens(tokens: ThemeTokens | None = None, page: ft.Page | None = None) -> ThemeTokens:
+    if tokens is not None:
+        return tokens
+    if page is not None and getattr(page, "theme_mode", None) == ft.ThemeMode.DARK:
+        return get_tokens("dark")
+    return LIGHT_TOKENS
 
 
 class ExportDialog(ft.AlertDialog):
@@ -30,20 +47,24 @@ class ExportDialog(ft.AlertDialog):
 
     def __init__(
         self,
-        tipo_exportacion: str,  # "notas" o "asistencias"
-        colegio_nombre: str,
-        curso_nombre: str,
-        curso_data: dict,
-        on_success: callable,
+        tipo_exportacion: str = "notas",
+        colegio_nombre: str = "",
+        curso_nombre: str = "",
+        curso_data: dict | None = None,
+        on_success: Callable | None = None,
         page: ft.Page | None = None,
         periodo_activo: int = 0,
+        tokens: ThemeTokens | None = None,
+        **kwargs,
     ):
         self.tipo_exportacion = tipo_exportacion
         self.colegio_nombre = colegio_nombre
         self.curso_nombre = curso_nombre
-        self.curso_data = curso_data
-        self.on_success = on_success
+        self.curso_data = curso_data or {}
+        self.on_success = on_success or kwargs.get("on_exportar")
         self.app_page = page
+        self.tokens = _resolve_tokens(tokens, page)
+        tok = self.tokens
         self.periodo_activo = int(periodo_activo) if str(periodo_activo).isdigit() else 0
 
         radios = [
@@ -80,8 +101,8 @@ class ExportDialog(ft.AlertDialog):
                 visible=False,
                 content=ft.Column(
                     [
-                        ft.Divider(height=12, color=BORDER_COLOR),
-                        ft.Text("Selecciona el período a copiar:", size=13, weight=ft.FontWeight.BOLD, color=TEXT_MAIN),
+                        ft.Divider(height=12, color=tok.border_color),
+                        ft.Text("Selecciona el período a copiar:", size=13, weight=ft.FontWeight.BOLD, color=tok.text_main),
                         self.periodo_selector,
                     ],
                     spacing=6,
@@ -93,10 +114,10 @@ class ExportDialog(ft.AlertDialog):
         titulo_str = "Exportar Planilla de Notas" if tipo_exportacion == "notas" else "Exportar Asistencias"
 
         controls_col = [
-            ft.Text(f"Colegio: {colegio_nombre}", size=13, weight=ft.FontWeight.W_500, color=TEXT_MAIN),
-            ft.Text(f"Curso: {curso_nombre}", size=13, color=TEXT_MUTED),
-            ft.Divider(height=16, color=BORDER_COLOR),
-            ft.Text("Selecciona el formato de exportación:", size=13, weight=ft.FontWeight.BOLD, color=TEXT_MAIN),
+            ft.Text(f"Colegio: {colegio_nombre}", size=13, weight=ft.FontWeight.W_500, color=tok.text_main),
+            ft.Text(f"Curso: {curso_nombre}", size=13, color=tok.text_muted),
+            ft.Divider(height=16, color=tok.border_color),
+            ft.Text("Selecciona el formato de exportación:", size=13, weight=ft.FontWeight.BOLD, color=tok.text_main),
             self.formato_selector,
         ]
         if self.periodo_container:
@@ -105,7 +126,7 @@ class ExportDialog(ft.AlertDialog):
         self.btn_exportar = ft.FilledButton(
             "Generar y Exportar",
             icon=ft.Icons.DOWNLOAD,
-            style=ft.ButtonStyle(bgcolor=PRIMARY, color=ft.Colors.WHITE, shape=ft.RoundedRectangleBorder(radius=8)),
+            style=ft.ButtonStyle(bgcolor=tok.primary, color=ft.Colors.WHITE, shape=ft.RoundedRectangleBorder(radius=8)),
             on_click=lambda e: self._exportar(),
         )
 
@@ -116,8 +137,8 @@ class ExportDialog(ft.AlertDialog):
         super().__init__(
             title=ft.Row(
                 [
-                    ft.Icon(ft.Icons.SCHOOL, color=PRIMARY, size=24),
-                    ft.Text(titulo_str, weight=ft.FontWeight.BOLD, size=16, color=TEXT_MAIN),
+                    ft.Icon(ft.Icons.SCHOOL, color=tok.primary, size=24),
+                    ft.Text(titulo_str, weight=ft.FontWeight.BOLD, size=16, color=tok.text_main),
                 ],
                 spacing=8,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
@@ -133,14 +154,16 @@ class ExportDialog(ft.AlertDialog):
             actions=[
                 ft.TextButton(
                     "Cancelar",
-                    style=ft.ButtonStyle(color=TEXT_MUTED, shape=ft.RoundedRectangleBorder(radius=8)),
+                    style=ft.ButtonStyle(color=tok.text_muted, shape=ft.RoundedRectangleBorder(radius=8)),
                     on_click=lambda e: self._cerrar(),
                 ),
                 self.btn_exportar,
             ],
             actions_alignment=ft.MainAxisAlignment.END,
+            bgcolor=tok.surface,
             modal=True,
         )
+
 
     def _al_cambiar_formato(self, e):
         es_wa = (self.formato_selector.value == "whatsapp")

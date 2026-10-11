@@ -4,15 +4,34 @@ Modales de diálogo para la gestión de entidades: Alumnos, Cursos, Colegios y C
 
 import flet as ft
 from typing import Callable
-from mobile.theme import PRIMARY, TEXT_MAIN, TEXT_MUTED, BORDER_COLOR, BG_PAGE, SURFACE_WHITE
+from mobile.theme import (
+    PRIMARY,
+    TEXT_MAIN,
+    TEXT_MUTED,
+    BORDER_COLOR,
+    BG_PAGE,
+    SURFACE_WHITE,
+    LIGHT_TOKENS,
+    ThemeTokens,
+    get_tokens,
+)
 
 
-def logo_dialog_title(texto: str, color_texto=None, icon_color=None) -> ft.Row:
+def _resolve_tokens(tokens: ThemeTokens | None = None, page: ft.Page | None = None) -> ThemeTokens:
+    if tokens is not None:
+        return tokens
+    if page is not None and getattr(page, "theme_mode", None) == ft.ThemeMode.DARK:
+        return get_tokens("dark")
+    return LIGHT_TOKENS
+
+
+def logo_dialog_title(texto: str, color_texto=None, icon_color=None, tokens: ThemeTokens | None = None) -> ft.Row:
     """Crea una cabecera con el logo de la aplicación para ventanas de diálogo."""
+    tok = tokens or LIGHT_TOKENS
     return ft.Row(
         [
-            ft.Icon(ft.Icons.SCHOOL, color=icon_color or PRIMARY, size=24),
-            ft.Text(texto, weight=ft.FontWeight.BOLD, size=16, color=color_texto or TEXT_MAIN),
+            ft.Icon(ft.Icons.SCHOOL, color=icon_color or tok.primary, size=24),
+            ft.Text(texto, weight=ft.FontWeight.BOLD, size=16, color=color_texto or tok.text_main),
         ],
         spacing=8,
         vertical_alignment=ft.CrossAxisAlignment.CENTER,
@@ -34,11 +53,14 @@ class StudentFormDialog(ft.AlertDialog):
         modo_continuo: bool = True,
         on_close: Callable[[], None] | None = None,
         page: ft.Page | None = None,
+        tokens: ThemeTokens | None = None,
     ):
         self.on_confirm = on_confirm
         self.modo_continuo = modo_continuo
         self.on_close_cb = on_close
         self.app_page = page
+        self.tokens = _resolve_tokens(tokens, page)
+        tok = self.tokens
         self.contador_cargados = 0
 
         self.txt_apellido = ft.TextField(
@@ -49,8 +71,9 @@ class StudentFormDialog(ft.AlertDialog):
             capitalization=ft.TextCapitalization.WORDS,
             dense=True,
             border_radius=10,
-            bgcolor=BG_PAGE,
-            border_color=BORDER_COLOR,
+            bgcolor=tok.bg_page,
+            border_color=tok.border_color,
+            color=tok.text_main,
             on_submit=lambda e: self._focus_control(self.txt_nombre),
         )
 
@@ -61,15 +84,16 @@ class StudentFormDialog(ft.AlertDialog):
             capitalization=ft.TextCapitalization.WORDS,
             dense=True,
             border_radius=10,
-            bgcolor=BG_PAGE,
-            border_color=BORDER_COLOR,
+            bgcolor=tok.bg_page,
+            border_color=tok.border_color,
+            color=tok.text_main,
             on_submit=lambda e: self._guardar_alumno(continuar=self.modo_continuo),
         )
 
         self.lbl_error = ft.Text("", color=ft.Colors.ERROR, size=12, visible=False)
         self.lbl_info = ft.Text(
             "Tip: Presiona Enter o 'Siguiente' para seguir cargando alumnos sin cerrar esta ventana." if modo_continuo else "",
-            color=TEXT_MUTED,
+            color=tok.text_muted,
             size=11,
             italic=True,
         )
@@ -89,7 +113,7 @@ class StudentFormDialog(ft.AlertDialog):
         actions = [
             ft.TextButton(
                 "Listo / Cerrar",
-                style=ft.ButtonStyle(color=TEXT_MUTED, shape=ft.RoundedRectangleBorder(radius=8)),
+                style=ft.ButtonStyle(color=tok.text_muted, shape=ft.RoundedRectangleBorder(radius=8)),
                 on_click=lambda e: self._cerrar(),
             ),
         ]
@@ -99,8 +123,8 @@ class StudentFormDialog(ft.AlertDialog):
                 ft.OutlinedButton(
                     "Guardar y salir",
                     style=ft.ButtonStyle(
-                        color=PRIMARY,
-                        side=ft.BorderSide(1, PRIMARY),
+                        color=tok.primary,
+                        side=ft.BorderSide(1, tok.primary),
                         shape=ft.RoundedRectangleBorder(radius=8),
                     ),
                     on_click=lambda e: self._guardar_alumno(continuar=False),
@@ -110,7 +134,7 @@ class StudentFormDialog(ft.AlertDialog):
                 ft.FilledButton(
                     "Siguiente Alumno ➔",
                     style=ft.ButtonStyle(
-                        bgcolor=PRIMARY,
+                        bgcolor=tok.primary,
                         color=ft.Colors.WHITE,
                         shape=ft.RoundedRectangleBorder(radius=8),
                     ),
@@ -122,7 +146,7 @@ class StudentFormDialog(ft.AlertDialog):
                 ft.FilledButton(
                     "Guardar",
                     style=ft.ButtonStyle(
-                        bgcolor=PRIMARY,
+                        bgcolor=tok.primary,
                         color=ft.Colors.WHITE,
                         shape=ft.RoundedRectangleBorder(radius=8),
                     ),
@@ -131,10 +155,11 @@ class StudentFormDialog(ft.AlertDialog):
             )
 
         super().__init__(
-            title=logo_dialog_title(titulo),
+            title=logo_dialog_title(titulo, tokens=tok),
             content=content,
             actions=actions,
             actions_alignment=ft.MainAxisAlignment.END,
+            bgcolor=tok.surface,
             modal=True,
         )
 
@@ -211,33 +236,37 @@ class CreateEntityDialog(ft.AlertDialog):
         on_confirm: Callable[[str], None],
         hint: str = "",
         page: ft.Page | None = None,
+        tokens: ThemeTokens | None = None,
     ):
         self.on_confirm = on_confirm
         self.app_page = page
+        self.tokens = _resolve_tokens(tokens, page)
+        tok = self.tokens
         self.txt_nombre = ft.TextField(
             label=label_campo,
             hint_text=hint,
             autofocus=True,
             capitalization=ft.TextCapitalization.WORDS,
             border_radius=10,
-            bgcolor=BG_PAGE,
-            border_color=BORDER_COLOR,
+            bgcolor=tok.bg_page,
+            border_color=tok.border_color,
+            color=tok.text_main,
         )
         self.lbl_error = ft.Text("", color=ft.Colors.ERROR, size=12, visible=False)
 
         super().__init__(
-            title=logo_dialog_title(titulo),
+            title=logo_dialog_title(titulo, tokens=tok),
             content=ft.Column([self.txt_nombre, self.lbl_error], tight=True, width=320),
             actions=[
                 ft.TextButton(
                     "Cancelar",
-                    style=ft.ButtonStyle(color=TEXT_MUTED, shape=ft.RoundedRectangleBorder(radius=8)),
+                    style=ft.ButtonStyle(color=tok.text_muted, shape=ft.RoundedRectangleBorder(radius=8)),
                     on_click=lambda e: self._cerrar(),
                 ),
                 ft.FilledButton(
                     "Crear",
                     style=ft.ButtonStyle(
-                        bgcolor=PRIMARY,
+                        bgcolor=tok.primary,
                         color=ft.Colors.WHITE,
                         shape=ft.RoundedRectangleBorder(radius=8),
                     ),
@@ -245,6 +274,7 @@ class CreateEntityDialog(ft.AlertDialog):
                 ),
             ],
             actions_alignment=ft.MainAxisAlignment.END,
+            bgcolor=tok.surface,
             modal=True,
         )
 
@@ -283,10 +313,13 @@ class ColegioFormDialog(ft.AlertDialog):
         horarios_actual: str = "",
         modo_edicion: bool = False,
         page: ft.Page | None = None,
+        tokens: ThemeTokens | None = None,
     ):
         self.on_confirm = on_confirm
         self.app_page = page
         self.modo_edicion = modo_edicion
+        self.tokens = _resolve_tokens(tokens, page)
+        tok = self.tokens
 
         self.txt_nombre = ft.TextField(
             label="Nombre del Colegio *",
@@ -296,8 +329,9 @@ class ColegioFormDialog(ft.AlertDialog):
             capitalization=ft.TextCapitalization.WORDS,
             dense=True,
             border_radius=10,
-            bgcolor=BG_PAGE,
-            border_color=BORDER_COLOR,
+            bgcolor=tok.bg_page,
+            border_color=tok.border_color,
+            color=tok.text_main,
             on_submit=lambda e: self._focus_control(self.txt_direccion),
         )
 
@@ -309,8 +343,9 @@ class ColegioFormDialog(ft.AlertDialog):
             capitalization=ft.TextCapitalization.WORDS,
             dense=True,
             border_radius=10,
-            bgcolor=BG_PAGE,
-            border_color=BORDER_COLOR,
+            bgcolor=tok.bg_page,
+            border_color=tok.border_color,
+            color=tok.text_main,
             on_submit=lambda e: self._focus_control(self.txt_horarios),
         )
 
@@ -321,8 +356,9 @@ class ColegioFormDialog(ft.AlertDialog):
             prefix_icon=ft.Icons.ACCESS_TIME_ROUNDED,
             dense=True,
             border_radius=10,
-            bgcolor=BG_PAGE,
-            border_color=BORDER_COLOR,
+            bgcolor=tok.bg_page,
+            border_color=tok.border_color,
+            color=tok.text_main,
             on_submit=lambda e: self._confirmar(),
         )
 
@@ -331,7 +367,7 @@ class ColegioFormDialog(ft.AlertDialog):
         texto_boton = "Guardar Cambios" if modo_edicion else "Crear Colegio"
 
         super().__init__(
-            title=logo_dialog_title(titulo),
+            title=logo_dialog_title(titulo, tokens=tok),
             content=ft.Column(
                 [
                     self.txt_nombre,
@@ -346,13 +382,13 @@ class ColegioFormDialog(ft.AlertDialog):
             actions=[
                 ft.TextButton(
                     "Cancelar",
-                    style=ft.ButtonStyle(color=TEXT_MUTED, shape=ft.RoundedRectangleBorder(radius=8)),
+                    style=ft.ButtonStyle(color=tok.text_muted, shape=ft.RoundedRectangleBorder(radius=8)),
                     on_click=lambda e: self._cerrar(),
                 ),
                 ft.FilledButton(
                     texto_boton,
                     style=ft.ButtonStyle(
-                        bgcolor=PRIMARY,
+                        bgcolor=tok.primary,
                         color=ft.Colors.WHITE,
                         shape=ft.RoundedRectangleBorder(radius=8),
                     ),
@@ -360,8 +396,10 @@ class ColegioFormDialog(ft.AlertDialog):
                 ),
             ],
             actions_alignment=ft.MainAxisAlignment.END,
+            bgcolor=tok.surface,
             modal=True,
         )
+
 
     def _focus_control(self, control):
         if not control:
@@ -427,17 +465,21 @@ class CreateCursoDialog(ft.AlertDialog):
         on_confirm: Callable[[str, int], None],
         hint: str = "",
         page: ft.Page | None = None,
+        tokens: ThemeTokens | None = None,
     ):
         self.on_confirm = on_confirm
         self.app_page = page
+        self.tokens = _resolve_tokens(tokens, page)
+        tok = self.tokens
         self.txt_nombre = ft.TextField(
             label="Año y División / Nombre",
             hint_text=hint,
             autofocus=True,
             capitalization=ft.TextCapitalization.WORDS,
             border_radius=10,
-            bgcolor=BG_PAGE,
-            border_color=BORDER_COLOR,
+            bgcolor=tok.bg_page,
+            border_color=tok.border_color,
+            color=tok.text_main,
         )
         self.txt_cantidad = ft.TextField(
             label="Cantidad inicial de alumnos",
@@ -446,8 +488,9 @@ class CreateCursoDialog(ft.AlertDialog):
             keyboard_type=ft.KeyboardType.NUMBER,
             input_filter=ft.NumbersOnlyInputFilter(),
             border_radius=10,
-            bgcolor=BG_PAGE,
-            border_color=BORDER_COLOR,
+            bgcolor=tok.bg_page,
+            border_color=tok.border_color,
+            color=tok.text_main,
         )
         self.txt_horario = ft.TextField(
             label="Horario del curso (opcional)",
@@ -455,13 +498,14 @@ class CreateCursoDialog(ft.AlertDialog):
             prefix_icon=ft.Icons.ACCESS_TIME_ROUNDED,
             dense=True,
             border_radius=10,
-            bgcolor=BG_PAGE,
-            border_color=BORDER_COLOR,
+            bgcolor=tok.bg_page,
+            border_color=tok.border_color,
+            color=tok.text_main,
         )
         self.lbl_error = ft.Text("", color=ft.Colors.ERROR, size=12, visible=False)
 
         super().__init__(
-            title=logo_dialog_title(titulo),
+            title=logo_dialog_title(titulo, tokens=tok),
             content=ft.Column(
                 [
                     self.txt_nombre,
@@ -476,13 +520,13 @@ class CreateCursoDialog(ft.AlertDialog):
             actions=[
                 ft.TextButton(
                     "Cancelar",
-                    style=ft.ButtonStyle(color=TEXT_MUTED, shape=ft.RoundedRectangleBorder(radius=8)),
+                    style=ft.ButtonStyle(color=tok.text_muted, shape=ft.RoundedRectangleBorder(radius=8)),
                     on_click=lambda e: self._cerrar(),
                 ),
                 ft.FilledButton(
                     "Crear Curso",
                     style=ft.ButtonStyle(
-                        bgcolor=PRIMARY,
+                        bgcolor=tok.primary,
                         color=ft.Colors.WHITE,
                         shape=ft.RoundedRectangleBorder(radius=8),
                     ),
@@ -490,6 +534,7 @@ class CreateCursoDialog(ft.AlertDialog):
                 ),
             ],
             actions_alignment=ft.MainAxisAlignment.END,
+            bgcolor=tok.surface,
             modal=True,
         )
 
@@ -552,33 +597,37 @@ class RenameDialog(ft.AlertDialog):
         nombre_actual: str,
         on_confirm: Callable[[str], None],
         page: ft.Page | None = None,
+        tokens: ThemeTokens | None = None,
     ):
         self.on_confirm = on_confirm
         self.app_page = page
+        self.tokens = _resolve_tokens(tokens, page)
+        tok = self.tokens
         self.txt_nombre = ft.TextField(
             label="Nuevo nombre",
             value=nombre_actual,
             autofocus=True,
             capitalization=ft.TextCapitalization.WORDS,
             border_radius=10,
-            bgcolor=BG_PAGE,
-            border_color=BORDER_COLOR,
+            bgcolor=tok.bg_page,
+            border_color=tok.border_color,
+            color=tok.text_main,
         )
         self.lbl_error = ft.Text("", color=ft.Colors.ERROR, size=12, visible=False)
 
         super().__init__(
-            title=logo_dialog_title(titulo),
+            title=logo_dialog_title(titulo, tokens=tok),
             content=ft.Column([self.txt_nombre, self.lbl_error], tight=True, width=320),
             actions=[
                 ft.TextButton(
                     "Cancelar",
-                    style=ft.ButtonStyle(color=TEXT_MUTED, shape=ft.RoundedRectangleBorder(radius=8)),
+                    style=ft.ButtonStyle(color=tok.text_muted, shape=ft.RoundedRectangleBorder(radius=8)),
                     on_click=lambda e: self._cerrar(),
                 ),
                 ft.FilledButton(
                     "Renombrar",
                     style=ft.ButtonStyle(
-                        bgcolor=PRIMARY,
+                        bgcolor=tok.primary,
                         color=ft.Colors.WHITE,
                         shape=ft.RoundedRectangleBorder(radius=8),
                     ),
@@ -586,6 +635,7 @@ class RenameDialog(ft.AlertDialog):
                 ),
             ],
             actions_alignment=ft.MainAxisAlignment.END,
+            bgcolor=tok.surface,
             modal=True,
         )
 
@@ -619,17 +669,20 @@ class ConfirmDeleteDialog(ft.AlertDialog):
         mensaje: str,
         on_confirm: Callable[[], None],
         page: ft.Page | None = None,
+        tokens: ThemeTokens | None = None,
     ):
         self.on_confirm = on_confirm
         self.app_page = page
+        self.tokens = _resolve_tokens(tokens, page)
+        tok = self.tokens
 
         super().__init__(
-            title=logo_dialog_title(titulo, color_texto=ft.Colors.RED_600, icon_color=ft.Colors.RED_600),
-            content=ft.Text(mensaje, size=14, color=TEXT_MAIN),
+            title=logo_dialog_title(titulo, color_texto=ft.Colors.RED_600, icon_color=ft.Colors.RED_600, tokens=tok),
+            content=ft.Text(mensaje, size=14, color=tok.text_main),
             actions=[
                 ft.TextButton(
                     "Cancelar",
-                    style=ft.ButtonStyle(color=TEXT_MUTED, shape=ft.RoundedRectangleBorder(radius=8)),
+                    style=ft.ButtonStyle(color=tok.text_muted, shape=ft.RoundedRectangleBorder(radius=8)),
                     on_click=lambda e: self._cerrar(),
                 ),
                 ft.FilledButton(
@@ -643,6 +696,7 @@ class ConfirmDeleteDialog(ft.AlertDialog):
                 ),
             ],
             actions_alignment=ft.MainAxisAlignment.END,
+            bgcolor=tok.surface,
             modal=True,
         )
 
@@ -668,26 +722,30 @@ class CustomizeColumnsDialog(ft.AlertDialog):
         nombres_actuales: list[str],
         on_save: Callable[[list[str]], None],
         page: ft.Page | None = None,
+        tokens: ThemeTokens | None = None,
     ):
         self.on_save = on_save
         self.app_page = page
+        self.tokens = _resolve_tokens(tokens, page)
+        tok = self.tokens
         self.inputs = [
             ft.TextField(
                 label=f"Columna {i+1}",
                 value=nombres_actuales[i] if i < len(nombres_actuales) else f"P{i+1}",
                 dense=True,
                 border_radius=10,
-                bgcolor=BG_PAGE,
-                border_color=BORDER_COLOR,
+                bgcolor=tok.bg_page,
+                border_color=tok.border_color,
+                color=tok.text_main,
             )
             for i in range(4)
         ]
 
         super().__init__(
-            title=logo_dialog_title("Personalizar Columnas de Notas"),
+            title=logo_dialog_title("Personalizar Columnas de Notas", tokens=tok),
             content=ft.Column(
                 [
-                    ft.Text("Define los encabezados para las notas principales y extra:", size=13, color=TEXT_MUTED),
+                    ft.Text("Define los encabezados para las notas principales y extra:", size=13, color=tok.text_muted),
                     *self.inputs,
                 ],
                 tight=True,
@@ -697,13 +755,13 @@ class CustomizeColumnsDialog(ft.AlertDialog):
             actions=[
                 ft.TextButton(
                     "Cancelar",
-                    style=ft.ButtonStyle(color=TEXT_MUTED, shape=ft.RoundedRectangleBorder(radius=8)),
+                    style=ft.ButtonStyle(color=tok.text_muted, shape=ft.RoundedRectangleBorder(radius=8)),
                     on_click=lambda e: self._cerrar(),
                 ),
                 ft.FilledButton(
                     "Guardar",
                     style=ft.ButtonStyle(
-                        bgcolor=PRIMARY,
+                        bgcolor=tok.primary,
                         color=ft.Colors.WHITE,
                         shape=ft.RoundedRectangleBorder(radius=8),
                     ),
@@ -711,8 +769,10 @@ class CustomizeColumnsDialog(ft.AlertDialog):
                 ),
             ],
             actions_alignment=ft.MainAxisAlignment.END,
+            bgcolor=tok.surface,
             modal=True,
         )
+
 
     def _guardar(self):
         nuevos_nombres = [inp.value.strip() or f"P{i+1}" for i, inp in enumerate(self.inputs)]

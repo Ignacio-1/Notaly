@@ -14,6 +14,9 @@ from mobile.theme import (
     TEXT_MAIN,
     TEXT_MUTED,
     TEXT_SUBTLE,
+    LIGHT_TOKENS,
+    ThemeTokens,
+    get_tokens,
 )
 from core.grupos import (
     distribuir_alumnos_en_grupos,
@@ -30,10 +33,13 @@ class SorteadorGruposDialog(ft.AlertDialog):
         state: AppState,
         page: ft.Page,
         on_created: Callable[[dict], Any],
+        tokens: ThemeTokens | None = None,
     ):
         self.app_state = state
         self.app_page = page
         self.on_created = on_created
+        self.tokens = tokens or getattr(state, "tokens", None) or get_tokens("dark" if getattr(page, "theme_mode", None) == ft.ThemeMode.DARK else "light")
+        tok = self.tokens
 
         colegio = state.selected_colegio or ""
         curso = state.selected_curso or ""
@@ -52,9 +58,10 @@ class SorteadorGruposDialog(ft.AlertDialog):
             label="Título del Trabajo",
             value=f"Trabajo Práctico N° {num_nuevo}",
             border_radius=8,
-            border_color=BORDER_COLOR,
+            bgcolor=tok.bg_page,
+            border_color=tok.border_color,
             text_size=13,
-            color=TEXT_MAIN,
+            color=tok.text_main,
             expand=True,
         )
 
@@ -66,7 +73,9 @@ class SorteadorGruposDialog(ft.AlertDialog):
             text_align=ft.TextAlign.CENTER,
             text_size=14,
             border_radius=8,
-            border_color=BORDER_COLOR,
+            bgcolor=tok.bg_page,
+            border_color=tok.border_color,
+            color=tok.text_main,
             input_filter=ft.NumbersOnlyInputFilter(),
             on_change=self._on_valor_text_change,
         )
@@ -74,14 +83,16 @@ class SorteadorGruposDialog(ft.AlertDialog):
         self.preview_text = ft.Text(
             size=12,
             weight=ft.FontWeight.W_500,
-            color="#1E293B",
+            color=tok.text_main,
         )
 
         self.tf_nuevo_tema = ft.TextField(
             hint_text="Escribir tema o consigna...",
             text_size=12,
             border_radius=8,
-            border_color=BORDER_COLOR,
+            bgcolor=tok.bg_page,
+            border_color=tok.border_color,
+            color=tok.text_main,
             expand=True,
             on_submit=lambda _: self._agregar_tema(),
         )
@@ -90,27 +101,32 @@ class SorteadorGruposDialog(ft.AlertDialog):
 
         super().__init__(
             modal=True,
+            bgcolor=tok.surface,
             title=ft.Row(
                 spacing=8,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
                 controls=[
-                    ft.Icon(ft.Icons.CASINO, color=PRIMARY, size=24),
+                    ft.Icon(ft.Icons.CASINO, color=tok.primary, size=24),
                     ft.Column(
                         spacing=1,
                         controls=[
-                            ft.Text("Sortear Grupos de Trabajo", size=16, weight=ft.FontWeight.BOLD, color=TEXT_MAIN),
-                            ft.Text(f"{curso} • {self.total_alumnos} alumnos", size=12, color=TEXT_MUTED),
+                            ft.Text("Sortear Grupos de Trabajo", size=16, weight=ft.FontWeight.BOLD, color=tok.text_main),
+                            ft.Text(f"{curso} • {self.total_alumnos} alumnos", size=12, color=tok.text_muted),
                         ],
                     ),
                 ],
             ),
             content=self._build_content(),
             actions=[
-                ft.TextButton("Cancelar", on_click=lambda _: self._cerrar()),
+                ft.TextButton(
+                    "Cancelar",
+                    style=ft.ButtonStyle(color=tok.text_muted),
+                    on_click=lambda _: self._cerrar(),
+                ),
                 ft.FilledButton(
                     "¡Sortear y Crear!",
                     style=ft.ButtonStyle(
-                        bgcolor=PRIMARY,
+                        bgcolor=tok.primary,
                         color=ft.Colors.WHITE,
                         shape=ft.RoundedRectangleBorder(radius=8),
                     ),
@@ -120,6 +136,7 @@ class SorteadorGruposDialog(ft.AlertDialog):
             actions_alignment=ft.MainAxisAlignment.END,
         )
         self._actualizar_preview()
+
 
     def _actualizar_preview(self):
         prev = calcular_previsualizacion_grupos(self.total_alumnos, self.modo, self.valor)
@@ -234,10 +251,11 @@ class SorteadorGruposDialog(ft.AlertDialog):
             )
 
         is_por_grupos = (self.modo == "por_grupos")
+        tok = self.tokens
 
         # Selector de modo compacto
         modo_tabs = ft.Container(
-            bgcolor="#F1F5F9",
+            bgcolor=tok.surface_variant,
             border_radius=8,
             padding=3,
             content=ft.Row(
@@ -247,7 +265,7 @@ class SorteadorGruposDialog(ft.AlertDialog):
                         expand=True,
                         height=32,
                         border_radius=6,
-                        bgcolor=SURFACE_WHITE if is_por_grupos else ft.Colors.TRANSPARENT,
+                        bgcolor=tok.surface if is_por_grupos else ft.Colors.TRANSPARENT,
                         alignment=ft.Alignment.CENTER,
                         ink=True,
                         on_click=lambda _: self._cambiar_modo("por_grupos"),
@@ -255,14 +273,14 @@ class SorteadorGruposDialog(ft.AlertDialog):
                             "N° de Grupos",
                             size=11,
                             weight=ft.FontWeight.BOLD,
-                            color=PRIMARY if is_por_grupos else TEXT_MUTED,
+                            color=tok.primary if is_por_grupos else tok.text_muted,
                         ),
                     ),
                     ft.Container(
                         expand=True,
                         height=32,
                         border_radius=6,
-                        bgcolor=SURFACE_WHITE if not is_por_grupos else ft.Colors.TRANSPARENT,
+                        bgcolor=tok.surface if not is_por_grupos else ft.Colors.TRANSPARENT,
                         alignment=ft.Alignment.CENTER,
                         ink=True,
                         on_click=lambda _: self._cambiar_modo("por_integrantes"),
@@ -270,7 +288,7 @@ class SorteadorGruposDialog(ft.AlertDialog):
                             "Alumnos x Grupo",
                             size=11,
                             weight=ft.FontWeight.BOLD,
-                            color=PRIMARY if not is_por_grupos else TEXT_MUTED,
+                            color=tok.primary if not is_por_grupos else tok.text_muted,
                         ),
                     ),
                 ],
@@ -283,7 +301,7 @@ class SorteadorGruposDialog(ft.AlertDialog):
             alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
             controls=[
-                ft.Text(stepper_label, size=12, color=TEXT_MAIN, weight=ft.FontWeight.W_500, expand=True, max_lines=2),
+                ft.Text(stepper_label, size=12, color=tok.text_main, weight=ft.FontWeight.W_500, expand=True, max_lines=2),
                 ft.Row(
                     spacing=2,
                     tight=True,
@@ -291,7 +309,7 @@ class SorteadorGruposDialog(ft.AlertDialog):
                         ft.IconButton(
                             icon=ft.Icons.REMOVE,
                             icon_size=16,
-                            icon_color=TEXT_MAIN,
+                            icon_color=tok.text_main,
                             style=ft.ButtonStyle(padding=ft.Padding(4, 4, 4, 4)),
                             on_click=lambda _: self._ajustar_valor(-1),
                         ),
@@ -299,7 +317,7 @@ class SorteadorGruposDialog(ft.AlertDialog):
                         ft.IconButton(
                             icon=ft.Icons.ADD,
                             icon_size=16,
-                            icon_color=TEXT_MAIN,
+                            icon_color=tok.text_main,
                             style=ft.ButtonStyle(padding=ft.Padding(4, 4, 4, 4)),
                             on_click=lambda _: self._ajustar_valor(1),
                         ),
@@ -308,10 +326,10 @@ class SorteadorGruposDialog(ft.AlertDialog):
             ],
         )
 
-        # Previsualización dinámica en caja Slate
+        # Previsualización dinámica en caja
         caja_preview = ft.Container(
-            bgcolor="#F8FAFC",
-            border=ft.Border.all(1, "#E2E8F0"),
+            bgcolor=tok.surface_variant,
+            border=ft.Border.all(1, tok.border_color),
             border_radius=8,
             padding=ft.Padding(left=10, right=10, top=8, bottom=8),
             content=self.preview_text,
@@ -440,6 +458,7 @@ class ReasignarAlumnoDialog(ft.AlertDialog):
         grupo_origen_id: str,
         grupos: list[dict],
         on_moved: Callable[[], Any],
+        tokens: ThemeTokens | None = None,
     ):
         self.app_state = state
         self.app_page = page
@@ -447,6 +466,8 @@ class ReasignarAlumnoDialog(ft.AlertDialog):
         self.alumno_id = alumno_id
         self.grupo_origen_id = grupo_origen_id
         self.on_moved = on_moved
+        self.tokens = tokens or getattr(state, "tokens", None) or get_tokens("dark" if getattr(page, "theme_mode", None) == ft.ThemeMode.DARK else "light")
+        tok = self.tokens
 
         opciones = []
         for g in grupos:
@@ -455,8 +476,8 @@ class ReasignarAlumnoDialog(ft.AlertDialog):
             if gid != grupo_origen_id:
                 opciones.append(
                     ft.ListTile(
-                        leading=ft.Icon(ft.Icons.GROUP_ADD, color=PRIMARY, size=20),
-                        title=ft.Text(f"Mover a {gnom}", size=13, weight=ft.FontWeight.W_500, color=TEXT_MAIN),
+                        leading=ft.Icon(ft.Icons.GROUP_ADD, color=tok.primary, size=20),
+                        title=ft.Text(f"Mover a {gnom}", size=13, weight=ft.FontWeight.W_500, color=tok.text_main),
                         on_click=lambda _, target_id=gid: self._ejecutar_movimiento(target_id),
                     )
                 )
@@ -472,16 +493,17 @@ class ReasignarAlumnoDialog(ft.AlertDialog):
 
         super().__init__(
             modal=True,
+            bgcolor=tok.surface,
             title=ft.Row(
                 spacing=8,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
                 controls=[
-                    ft.Icon(ft.Icons.SWAP_HORIZ, color=PRIMARY, size=22),
+                    ft.Icon(ft.Icons.SWAP_HORIZ, color=tok.primary, size=22),
                     ft.Column(
                         spacing=1,
                         controls=[
-                            ft.Text("Reasignar Alumno", size=15, weight=ft.FontWeight.BOLD, color=TEXT_MAIN),
-                            ft.Text(alumno_nombre, size=12, color=TEXT_MUTED),
+                            ft.Text("Reasignar Alumno", size=15, weight=ft.FontWeight.BOLD, color=tok.text_main),
+                            ft.Text(alumno_nombre, size=12, color=tok.text_muted),
                         ],
                     ),
                 ],
@@ -495,10 +517,15 @@ class ReasignarAlumnoDialog(ft.AlertDialog):
                 ),
             ),
             actions=[
-                ft.TextButton("Cancelar", on_click=lambda _: self._cerrar()),
+                ft.TextButton(
+                    "Cancelar",
+                    style=ft.ButtonStyle(color=tok.text_muted),
+                    on_click=lambda _: self._cerrar(),
+                ),
             ],
             actions_alignment=ft.MainAxisAlignment.END,
         )
+
 
     def _cerrar(self):
         if self.app_page:

@@ -11,18 +11,43 @@ import flet as ft
 
 from core.constants import K_COLEGIOS, K_CURSOS, K_ALUMNOS
 from mobile.state import AppState
-from mobile.theme import PRIMARY, TEXT_MAIN, TEXT_MUTED, BORDER_COLOR, SURFACE_WHITE
+from mobile.theme import (
+    PRIMARY,
+    TEXT_MAIN,
+    TEXT_MUTED,
+    BORDER_COLOR,
+    SURFACE_WHITE,
+    LIGHT_TOKENS,
+    ThemeTokens,
+    get_tokens,
+)
 
 logger = logging.getLogger(__name__)
+
+
+def _resolve_tokens(tokens: ThemeTokens | None = None, page: ft.Page | None = None) -> ThemeTokens:
+    if tokens is not None:
+        return tokens
+    if page is not None and getattr(page, "theme_mode", None) == ft.ThemeMode.DARK:
+        return get_tokens("dark")
+    return LIGHT_TOKENS
 
 
 class LocalBackupDialog(ft.AlertDialog):
     """Diálogo interactivo simple y moderno para guardar y restaurar copias de seguridad locales."""
 
-    def __init__(self, state: AppState, page: ft.Page, file_picker: ft.FilePicker | None = None):
+    def __init__(
+        self,
+        state: AppState,
+        page: ft.Page,
+        file_picker: ft.FilePicker | None = None,
+        tokens: ThemeTokens | None = None,
+    ):
         self.app_state = state
         self.app_page = page
         self.file_picker = file_picker
+        self.tokens = tokens or getattr(state, "tokens", None) or _resolve_tokens(tokens, page)
+        tok = self.tokens
 
         # Contenedor dinámico de la pestaña activa
         self.tabs_content_container = ft.Container(expand=True)
@@ -50,8 +75,8 @@ class LocalBackupDialog(ft.AlertDialog):
         super().__init__(
             title=ft.Row(
                 [
-                    ft.Icon(ft.Icons.SETTINGS_BACKUP_RESTORE_ROUNDED, color=PRIMARY, size=24),
-                    ft.Text("Copia de Seguridad", weight=ft.FontWeight.BOLD, size=16, color=TEXT_MAIN),
+                    ft.Icon(ft.Icons.SETTINGS_BACKUP_RESTORE_ROUNDED, color=tok.primary, size=24),
+                    ft.Text("Copia de Seguridad", weight=ft.FontWeight.BOLD, size=16, color=tok.text_main),
                 ],
                 spacing=8,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
@@ -60,7 +85,7 @@ class LocalBackupDialog(ft.AlertDialog):
                 content=ft.Column(
                     [
                         self.tab_selector,
-                        ft.Divider(height=10, color=BORDER_COLOR),
+                        ft.Divider(height=10, color=tok.border_color),
                         self.tabs_content_container,
                     ],
                     tight=True,
@@ -72,11 +97,12 @@ class LocalBackupDialog(ft.AlertDialog):
             actions=[
                 ft.TextButton(
                     "Cerrar",
-                    style=ft.ButtonStyle(color=TEXT_MUTED, shape=ft.RoundedRectangleBorder(radius=8)),
+                    style=ft.ButtonStyle(color=tok.text_muted, shape=ft.RoundedRectangleBorder(radius=8)),
                     on_click=lambda e: self._cerrar(),
                 ),
             ],
             actions_alignment=ft.MainAxisAlignment.END,
+            bgcolor=tok.surface,
             modal=True,
         )
 
@@ -143,6 +169,7 @@ class LocalBackupDialog(ft.AlertDialog):
 
     def _mostrar_tab_guardar(self):
         summary = self.app_state.get_data_summary()
+        tok = self.tokens
 
         def ejecutar_guardar_copia(e):
             exito, msg, path = self.app_state.create_local_backup()
@@ -155,16 +182,16 @@ class LocalBackupDialog(ft.AlertDialog):
                 self._mostrar_snackbar(msg, error=True)
 
         card_info = ft.Container(
-            bgcolor=SURFACE_WHITE,
-            border=ft.Border.all(1, BORDER_COLOR),
+            bgcolor=tok.surface_variant,
+            border=ft.Border.all(1, tok.border_color),
             border_radius=12,
             padding=14,
             content=ft.Column(
                 [
                     ft.Row(
                         [
-                            ft.Icon(ft.Icons.FOLDER_SPECIAL_OUTLINED, color=PRIMARY, size=22),
-                            ft.Text("Guardar en Descargas", size=14, weight=ft.FontWeight.BOLD, color=TEXT_MAIN),
+                            ft.Icon(ft.Icons.FOLDER_SPECIAL_OUTLINED, color=tok.primary, size=22),
+                            ft.Text("Guardar en Descargas", size=14, weight=ft.FontWeight.BOLD, color=tok.text_main),
                         ],
                         spacing=8,
                         vertical_alignment=ft.CrossAxisAlignment.CENTER,
@@ -172,12 +199,12 @@ class LocalBackupDialog(ft.AlertDialog):
                     ft.Text(
                         "Se creará una copia de respaldo con todos tus colegios, cursos, notas y asistencias directamente en la carpeta Descargas de este equipo.",
                         size=12,
-                        color=TEXT_MUTED,
+                        color=tok.text_muted,
                     ),
-                    ft.Divider(height=12, color=BORDER_COLOR),
-                    ft.Text(f"• Instituciones registradas: {summary['total_colegios']}", size=12, color=TEXT_MAIN),
-                    ft.Text(f"• Cursos registrados: {summary['total_cursos']}", size=12, color=TEXT_MAIN),
-                    ft.Text(f"• Alumnos totales: {summary['total_alumnos']}", size=12, color=TEXT_MAIN),
+                    ft.Divider(height=12, color=tok.border_color),
+                    ft.Text(f"• Instituciones registradas: {summary['total_colegios']}", size=12, color=tok.text_main),
+                    ft.Text(f"• Cursos registrados: {summary['total_cursos']}", size=12, color=tok.text_main),
+                    ft.Text(f"• Alumnos totales: {summary['total_alumnos']}", size=12, color=tok.text_main),
                 ],
                 spacing=6,
             ),
@@ -189,7 +216,7 @@ class LocalBackupDialog(ft.AlertDialog):
             width=350,
             height=44,
             style=ft.ButtonStyle(
-                bgcolor=PRIMARY,
+                bgcolor=tok.primary,
                 color=ft.Colors.WHITE,
                 shape=ft.RoundedRectangleBorder(radius=10),
             ),
@@ -201,7 +228,7 @@ class LocalBackupDialog(ft.AlertDialog):
             content=ft.Text(
                 "La copia se guardará como un archivo .json en tu carpeta Descargas para que puedas conservarla o transferirla fácilmente.",
                 size=11,
-                color=TEXT_MUTED,
+                color=tok.text_muted,
                 italic=True,
             ),
         )
@@ -227,6 +254,7 @@ class LocalBackupDialog(ft.AlertDialog):
 
     def _mostrar_tab_restaurar(self):
         backups = self.app_state.find_local_backups()
+        tok = self.tokens
 
         backup_cards = []
         if not backups:
@@ -236,9 +264,9 @@ class LocalBackupDialog(ft.AlertDialog):
                     alignment=ft.Alignment.CENTER,
                     content=ft.Column(
                         [
-                            ft.Icon(ft.Icons.INBOX_OUTLINED, size=36, color=TEXT_MUTED),
-                            ft.Text("No se encontraron copias en Descargas.", size=12, color=TEXT_MUTED),
-                            ft.Text("Puedes seleccionar una copia manualmente con el botón de abajo.", size=11, color=TEXT_MUTED),
+                            ft.Icon(ft.Icons.INBOX_OUTLINED, size=36, color=tok.text_muted),
+                            ft.Text("No se encontraron copias en Descargas.", size=12, color=tok.text_muted),
+                            ft.Text("Puedes seleccionar una copia manualmente con el botón de abajo.", size=11, color=tok.text_muted),
                         ],
                         horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                         spacing=4,
@@ -255,18 +283,18 @@ class LocalBackupDialog(ft.AlertDialog):
                 sub = f"{fecha} • {size_kb} KB • {cols_count} inst • {alums_count} alum"
 
                 card = ft.Container(
-                    bgcolor=SURFACE_WHITE,
-                    border=ft.Border.all(1, BORDER_COLOR),
+                    bgcolor=tok.surface_variant,
+                    border=ft.Border.all(1, tok.border_color),
                     border_radius=12,
                     margin=ft.Margin(left=0, right=0, top=0, bottom=4),
                     padding=ft.Padding(left=10, right=8, top=8, bottom=8),
                     content=ft.Row(
                         [
-                            ft.Icon(ft.Icons.DESCRIPTION_OUTLINED, color=PRIMARY, size=22),
+                            ft.Icon(ft.Icons.DESCRIPTION_OUTLINED, color=tok.primary, size=22),
                             ft.Column(
                                 [
-                                    ft.Text(nom, size=12, weight=ft.FontWeight.BOLD, color=TEXT_MAIN, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS),
-                                    ft.Text(sub, size=10, color=TEXT_MUTED),
+                                    ft.Text(nom, size=12, weight=ft.FontWeight.BOLD, color=tok.text_main, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS),
+                                    ft.Text(sub, size=10, color=tok.text_muted),
                                 ],
                                 spacing=2,
                                 expand=True,
@@ -275,7 +303,7 @@ class LocalBackupDialog(ft.AlertDialog):
                                 "Restaurar",
                                 height=32,
                                 style=ft.ButtonStyle(
-                                    bgcolor=PRIMARY,
+                                    bgcolor=tok.primary,
                                     color=ft.Colors.WHITE,
                                     shape=ft.RoundedRectangleBorder(radius=8),
                                     padding=ft.Padding(left=10, right=10, top=0, bottom=0),
@@ -316,11 +344,11 @@ class LocalBackupDialog(ft.AlertDialog):
             [
                 ft.Row(
                     [
-                        ft.Text("Copias disponibles en Descargas:", size=13, weight=ft.FontWeight.BOLD, color=TEXT_MAIN),
+                        ft.Text("Copias disponibles en Descargas:", size=13, weight=ft.FontWeight.BOLD, color=tok.text_main),
                         ft.IconButton(
                             icon=ft.Icons.REFRESH,
                             icon_size=18,
-                            icon_color=TEXT_MUTED,
+                            icon_color=tok.text_muted,
                             tooltip="Actualizar lista",
                             on_click=lambda e: self._mostrar_tab_restaurar(),
                         ),
@@ -328,15 +356,15 @@ class LocalBackupDialog(ft.AlertDialog):
                     alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                 ),
                 ft.Container(content=lista_backups, expand=True),
-                ft.Divider(height=6, color=BORDER_COLOR),
+                ft.Divider(height=6, color=tok.border_color),
                 ft.OutlinedButton(
                     "Seleccionar archivo de copia (.json)",
                     icon=ft.Icons.FILE_OPEN_OUTLINED,
                     width=350,
                     height=40,
                     style=ft.ButtonStyle(
-                        color=PRIMARY,
-                        side=ft.BorderSide(1, PRIMARY),
+                        color=tok.primary,
+                        side=ft.BorderSide(1, tok.primary),
                         shape=ft.RoundedRectangleBorder(radius=10),
                     ),
                     on_click=lambda e: self._run_async(abrir_selector_archivo, e),
@@ -391,6 +419,7 @@ class LocalBackupDialog(ft.AlertDialog):
 
     def _mostrar_opciones_restauracion(self, datos_a_importar: dict):
         """Muestra el diálogo de decisión de restauración: Combinar Datos vs Reemplazar Todo."""
+        tok = self.tokens
         colegios = datos_a_importar.get(K_COLEGIOS, {})
         num_colegios = len(colegios)
         num_cursos = sum(len(col.get(K_CURSOS, {})) for col in colegios.values())
@@ -411,25 +440,26 @@ class LocalBackupDialog(ft.AlertDialog):
                 self._mostrar_snackbar(msg, error=True)
 
         dlg_confirm = ft.AlertDialog(
+            bgcolor=tok.surface,
             title=ft.Row(
                 [
-                    ft.Icon(ft.Icons.RESTORE_ROUNDED, color=PRIMARY, size=22),
-                    ft.Text("Confirmar Restauración", weight=ft.FontWeight.BOLD, size=16, color=TEXT_MAIN),
+                    ft.Icon(ft.Icons.RESTORE_ROUNDED, color=tok.primary, size=22),
+                    ft.Text("Confirmar Restauración", weight=ft.FontWeight.BOLD, size=16, color=tok.text_main),
                 ],
                 spacing=8,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
             ),
             content=ft.Column(
                 [
-                    ft.Text("Datos detectados en la copia:", size=13, weight=ft.FontWeight.W_500, color=TEXT_MAIN),
-                    ft.Text(f"• Instituciones: {num_colegios}\n• Cursos: {num_cursos}\n• Alumnos: {num_alumnos}", size=12, color=TEXT_MUTED),
-                    ft.Divider(height=12, color=BORDER_COLOR),
-                    ft.Text("¿Cómo deseas aplicar esta copia?", size=13, weight=ft.FontWeight.BOLD, color=TEXT_MAIN),
+                    ft.Text("Datos detectados en la copia:", size=13, weight=ft.FontWeight.W_500, color=tok.text_main),
+                    ft.Text(f"• Instituciones: {num_colegios}\n• Cursos: {num_cursos}\n• Alumnos: {num_alumnos}", size=12, color=tok.text_muted),
+                    ft.Divider(height=12, color=tok.border_color),
+                    ft.Text("¿Cómo deseas aplicar esta copia?", size=13, weight=ft.FontWeight.BOLD, color=tok.text_main),
                     ft.Text(
                         "• Combinar Datos: Conserva lo que tienes actualmente y añade las instituciones y alumnos de la copia.\n"
                         "• Reemplazar Todo: Reemplaza todos los datos actuales por los de la copia.",
                         size=11,
-                        color=TEXT_MUTED,
+                        color=tok.text_muted,
                     ),
                 ],
                 tight=True,
@@ -439,15 +469,15 @@ class LocalBackupDialog(ft.AlertDialog):
             actions=[
                 ft.TextButton(
                     "Cancelar",
-                    style=ft.ButtonStyle(color=TEXT_MUTED, shape=ft.RoundedRectangleBorder(radius=8)),
+                    style=ft.ButtonStyle(color=tok.text_muted, shape=ft.RoundedRectangleBorder(radius=8)),
                     on_click=lambda e: (self.app_page.pop_dialog(), self.app_page.update()),
                 ),
                 ft.OutlinedButton(
                     "Combinar Datos",
                     icon=ft.Icons.MERGE_TYPE_ROUNDED,
                     style=ft.ButtonStyle(
-                        color=PRIMARY,
-                        side=ft.BorderSide(1, PRIMARY),
+                        color=tok.primary,
+                        side=ft.BorderSide(1, tok.primary),
                         shape=ft.RoundedRectangleBorder(radius=8),
                     ),
                     on_click=lambda e: aplicar_modo("merge"),
@@ -456,7 +486,7 @@ class LocalBackupDialog(ft.AlertDialog):
                     "Reemplazar Todo",
                     icon=ft.Icons.RESTORE_ROUNDED,
                     style=ft.ButtonStyle(
-                        bgcolor=PRIMARY,
+                        bgcolor=tok.primary,
                         color=ft.Colors.WHITE,
                         shape=ft.RoundedRectangleBorder(radius=8),
                     ),
