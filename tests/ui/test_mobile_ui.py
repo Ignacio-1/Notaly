@@ -632,6 +632,72 @@ class TestExportModalIsolation:
         assert "Acceso denegado simulado" in str(args[1])
         assert mock_page_mobile.active_dialog is None
 
+    def test_export_dialog_opcion_whatsapp_solo_en_notas(self):
+        """Verifica RF-01: opción WhatsApp presente solo en notas y ausente en asistencias."""
+        dlg_notas = ExportDialog("notas", "Col", "1A", {}, MagicMock(), periodo_activo=1)
+        valores_notas = [r.value for r in dlg_notas.formato_selector.content.controls]
+        assert "whatsapp" in valores_notas
+        assert dlg_notas.periodo_container is not None
+        assert dlg_notas.periodo_selector.value == "1"
+
+        dlg_asist = ExportDialog("asistencias", "Col", "1A", {}, MagicMock())
+        valores_asist = [r.value for r in dlg_asist.formato_selector.content.controls]
+        assert "whatsapp" not in valores_asist
+        assert dlg_asist.periodo_container is None
+
+    def test_export_dialog_conmutacion_reactiva_whatsapp(self, mock_page_mobile):
+        """Verifica RF-03: visibilidad reactiva de periodo_container y adaptación de texto/icono de botón."""
+        dlg = ExportDialog("notas", "Col", "1A", {}, MagicMock(), page=mock_page_mobile, periodo_activo=2)
+        assert dlg.periodo_container.visible is False
+        assert dlg.btn_exportar.content == "Generar y Exportar"
+        assert dlg.btn_exportar.icon == ft.Icons.DOWNLOAD
+
+        # Seleccionar whatsapp
+        dlg.formato_selector.value = "whatsapp"
+        dlg._al_cambiar_formato(None)
+
+        assert dlg.periodo_container.visible is True
+        assert dlg.btn_exportar.content == "Copiar al Portapapeles"
+        assert dlg.btn_exportar.icon == ft.Icons.COPY_ALL
+
+        # Volver a pdf
+        dlg.formato_selector.value = "pdf"
+        dlg._al_cambiar_formato(None)
+
+        assert dlg.periodo_container.visible is False
+        assert dlg.btn_exportar.content == "Generar y Exportar"
+        assert dlg.btn_exportar.icon == ft.Icons.DOWNLOAD
+
+    def test_export_dialog_copiado_whatsapp_exito(self, mock_page_mobile):
+        """Verifica RF-08 y RF-12: copiado al portapapeles y callback de éxito armonizado."""
+        mock_page_mobile.set_clipboard = MagicMock()
+        curso_data = {
+            "alumnos": {
+                "1": {"nombre": "JUAN PEREZ", "trimestres": {}}
+            }
+        }
+        on_success = MagicMock()
+        dlg = ExportDialog("notas", "Col", "1A", curso_data, on_success, page=mock_page_mobile, periodo_activo=0)
+        dlg.formato_selector.value = "whatsapp"
+        dlg.periodo_selector.value = "0"
+
+        with patch("mobile.components.export_dialog.generar_texto_notas_whatsapp", return_value="TEXTO_WHATSAPP"):
+            dlg._exportar()
+
+        on_success.assert_called_once_with(True, "portapapeles", "1° Trimestre")
+        mock_page_mobile.set_clipboard.assert_called_once_with("TEXTO_WHATSAPP")
+
+    def test_export_dialog_copiado_whatsapp_curso_sin_alumnos(self, mock_page_mobile):
+        """Verifica RF-11: advertencia y cancelación si el curso no tiene alumnos."""
+        on_success = MagicMock()
+        dlg = ExportDialog("notas", "Col", "1A", {"alumnos": {}}, on_success, page=mock_page_mobile)
+        dlg.formato_selector.value = "whatsapp"
+
+        dlg._exportar()
+
+        on_success.assert_called_once_with(False, "El curso no tiene alumnos registrados.")
+
+
 
 class TestScrollPreservationAndInPlaceUpdates:
     def test_attendance_preserves_listview_and_scroll_instance(self, isolated_app_state, mock_page_mobile):
@@ -1405,4 +1471,31 @@ def test_notas_view_boton_comportamiento(isolated_app_state, mock_page_mobile):
     view._abrir_modal_comportamiento("1", "Gómez, Martín")
     assert isinstance(mock_page_mobile.active_dialog, ComportamientoDialog)
     assert mock_page_mobile.active_dialog.id_alumno == "1"
+    mock_page_mobile.pop_dialog()
+
+
+def test_notas_view_exportar_dialog_integracion_whatsapp(isolated_app_state, mock_page_mobile):
+    """Verifica que NotasView._abrir_modal_exportar pase el active_trimestre y maneje feedback de WhatsApp."""
+    from mobile.views.notas_view import NotasView
+
+    isolated_app_state.selected_colegio = "Colegio Nacional"
+    isolated_app_state.selected_curso = "5to A"
+    isolated_app_state.active_trimestre = 2  # 3° Trimestre
+
+    view = NotasView(isolated_app_state, mock_page_mobile, on_navigate=lambda x: None)
+
+    # Abrir modal de exportación
+    view._abrir_modal_exportar()
+    assert isinstance(mock_page_mobile.active_dialog, ExportDialog)
+    assert mock_page_mobile.active_dialog.periodo_activo == 2
+    assert mock_page_mobile.active_dialog.periodo_selector.value == "2"
+
+    # Simular callback de éxito desde WhatsApp
+    callback = mock_page_mobile.active_dialog.on_success
+    callback(True, "portapapeles", "3° Trimestre")
+
+    # Verificar SnackBar en overlay
+    assert len(mock_page_mobile.overlay) > 0
+    ultimo_snack = mock_page_mobile.overlay[-1]
+    assert "📋 Calificaciones de 3° Trimestre copiadas al portapapeles. ¡Listas para pegar en WhatsApp!" in ultimo_snack.content.value
     mock_page_mobile.pop_dialog()

@@ -1608,6 +1608,9 @@ class NotasView(ft.Container):
         if "asistencias" in selected_set:
             self.state.flush_auto_save()
             self.on_navigate("asistencias")
+        elif "grupos" in selected_set:
+            self.state.flush_auto_save()
+            self.on_navigate("grupos")
 
     def _accion_volver(self, e=None):
         self.state.flush_auto_save()
@@ -1816,9 +1819,15 @@ class NotasView(ft.Container):
         curso = self.state.selected_curso or ""
         curso_data = self.state.get_curso_data(colegio, curso)
 
-        def resultado_exportacion(exito, detalle):
+        def resultado_exportacion(exito, detalle, periodo_str=None):
             if exito:
-                self._mostrar_snackbar(f"Exportado correctamente en: {detalle}")
+                if detalle == "portapapeles":
+                    periodo_lbl = periodo_str or "el período seleccionado"
+                    self._mostrar_snackbar(
+                        f"📋 Calificaciones de {periodo_lbl} copiadas al portapapeles. ¡Listas para pegar en WhatsApp!"
+                    )
+                else:
+                    self._mostrar_snackbar(f"Exportado correctamente en: {detalle}")
             else:
                 self._mostrar_snackbar(f"Error al exportar: {detalle}", error=True)
 
@@ -1829,6 +1838,7 @@ class NotasView(ft.Container):
             curso_data=curso_data,
             on_success=resultado_exportacion,
             page=self.app_page,
+            periodo_activo=self.state.active_trimestre,
         )
         self.app_page.show_dialog(dlg)
         self.app_page.update()

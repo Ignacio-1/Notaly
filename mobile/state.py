@@ -60,6 +60,12 @@ from core.constants import (
     FORMATO_FECHA_HORA,
     formatear_fecha,
     parsear_fecha_para_orden,
+    K_TRABAJOS_GRUPO,
+    K_GRUPOS,
+    K_INTEGRANTES,
+    K_NOTA_GRUPO,
+    K_TEMAS,
+    K_CON_TEMAS,
 )
 from core.calculos import (
     procesar_calificaciones_alumno,
@@ -594,6 +600,253 @@ class AppState:
                 self.save_data()
             return True, "Clase eliminada."
         return False, "Clase no encontrada."
+
+    # ==========================================
+    # --- Módulo de Trabajos en Grupo ---
+    # ==========================================
+
+    def get_trabajos_grupo_curso(self, colegio: str | None = None, curso: str | None = None) -> list[dict]:
+        """
+        Retorna la lista de trabajos en grupo del curso.
+        Garantiza que la estructura sea una lista de diccionarios sanitizados.
+        """
+        c_col = colegio or self.selected_colegio
+        c_cur = curso or self.selected_curso
+        curso_dict = self.get_curso_data(c_col, c_cur)
+        if not curso_dict:
+            return []
+        trabajos = curso_dict.setdefault(K_TRABAJOS_GRUPO, [])
+        if not isinstance(trabajos, list):
+            trabajos = []
+            curso_dict[K_TRABAJOS_GRUPO] = trabajos
+        return trabajos
+
+    def get_trabajo_grupo(self, trabajo_id: str, colegio: str | None = None, curso: str | None = None) -> dict | None:
+        """Retorna un trabajo en grupo específico por ID o None si no existe."""
+        trabajos = self.get_trabajos_grupo_curso(colegio, curso)
+        for t in trabajos:
+            if isinstance(t, dict) and str(t.get("id")) == str(trabajo_id):
+                return t
+        return None
+
+    def create_trabajo_grupo(
+        self,
+        titulo: str,
+        grupos_data: list[dict],
+        temas: list[str] | None = None,
+        con_temas: bool = False,
+        colegio: str | None = None,
+        curso: str | None = None,
+        auto_save: bool = True,
+    ) -> tuple[bool, str, dict | None]:
+        """
+        Crea un nuevo trabajo en grupo para el curso.
+        Retorna (True, 'Trabajo en grupo creado.', nuevo_trabajo) o (False, error, None).
+        """
+        c_col = colegio or self.selected_colegio
+        c_cur = curso or self.selected_curso
+        curso_dict = self.get_curso_data(c_col, c_cur)
+        if not curso_dict:
+            return False, "Curso no encontrado.", None
+
+        trabajos = curso_dict.setdefault(K_TRABAJOS_GRUPO, [])
+        if not isinstance(trabajos, list):
+            trabajos = []
+            curso_dict[K_TRABAJOS_GRUPO] = trabajos
+
+        ahora = datetime.now()
+        timestamp_str = ahora.strftime("%Y%m%d_%H%M%S")
+        nuevo_id = f"tg_{timestamp_str}_{len(trabajos) + 1}"
+        fecha_iso = ahora.strftime("%Y-%m-%d")
+
+        nuevo_trabajo = {
+            "id": nuevo_id,
+            "titulo": (titulo or f"Trabajo Grupal N° {len(trabajos) + 1}").strip(),
+            K_FECHA: fecha_iso,
+            K_CON_TEMAS: bool(con_temas),
+            K_TEMAS: list(temas or []),
+            K_GRUPOS: list(grupos_data or []),
+        }
+
+        trabajos.append(nuevo_trabajo)
+
+        if auto_save:
+            self.trigger_auto_save(delay=0.4)
+        else:
+            self.save_data()
+
+        return True, "Trabajo en grupo creado.", nuevo_trabajo
+
+    def update_grupo_trabajo(
+        self,
+        trabajo_id: str,
+        grupo_id: str,
+        nombre: str | None = None,
+        tema: str | None = None,
+        nota: int | float | None = None,
+        observacion: str | None = None,
+        integrantes: list[str] | None = None,
+        colegio: str | None = None,
+        curso: str | None = None,
+        auto_save: bool = True,
+    ) -> tuple[bool, str]:
+        """
+        Actualiza los datos de un grupo específico.
+        REGLA ESTRICTA DE AISLAMIENTO: La nota se guarda únicamente en grupo['nota']
+        y NUNCA modifica 'trimestres' en alumnos.
+        """
+        trabajo = self.get_trabajo_grupo(trabajo_id, colegio, curso)
+        if not trabajo:
+            return False, "Trabajo no encontrado."
+
+        grupos = trabajo.get(K_GRUPOS, [])
+        grupo_target = None
+        for g in grupos:
+            if isinstance(g, dict) and str(g.get("id")) == str(grupo_id):
+                grupo_target = g
+                break
+
+        if not grupo_target:
+            return False, "Grupo no encontrado."
+
+        if nombre is not None:
+            grupo_target["nombre"] = str(nombre).strip()
+        if tema is not None:
+            grupo_target[K_TEMA] = str(tema).strip()
+        if nota is not None:
+            if nota == "" or nota is None:
+                grupo_target[K_NOTA_GRUPO] = None
+            else:
+                try:
+                    grupo_target[K_NOTA_GRUPO] = int(round(float(nota)))
+                except (ValueError, TypeError):
+                    grupo_target[K_NOTA_GRUPO] = None
+        elif nota is None and "nota" in grupo_target and nota == "":
+            grupo_target[K_NOTA_GRUPO] = None
+
+        if observacion is not None:
+            grupo_target[K_OBSERVACION] = str(observacion).strip()
+        if integrantes is not None:
+            grupo_target[K_INTEGRANTES] = [str(i) for i in integrantes]
+
+        if auto_save:
+            self.trigger_auto_save(delay=0.4)
+        else:
+            self.save_data()
+
+        return True, "Grupo actualizado."
+
+    def delete_trabajo_grupo(
+        self,
+        trabajo_id: str,
+        colegio: str | None = None,
+        curso: str | None = None,
+        auto_save: bool = True,
+    ) -> tuple[bool, str]:
+        """Elimina un trabajo en grupo completo por ID."""
+        c_col = colegio or self.selected_colegio
+        c_cur = curso or self.selected_curso
+        curso_dict = self.get_curso_data(c_col, c_cur)
+        if not curso_dict:
+            return False, "Curso no encontrado."
+
+        trabajos = curso_dict.get(K_TRABAJOS_GRUPO, [])
+        idx_eliminar = -1
+        for i, t in enumerate(trabajos):
+            if isinstance(t, dict) and str(t.get("id")) == str(trabajo_id):
+                idx_eliminar = i
+                break
+
+        if idx_eliminar >= 0:
+            trabajos.pop(idx_eliminar)
+            if auto_save:
+                self.trigger_auto_save(delay=0.4)
+            else:
+                self.save_data()
+            return True, "Trabajo en grupo eliminado."
+
+        return False, "Trabajo no encontrado."
+
+    def mover_alumno_grupo(
+        self,
+        trabajo_id: str,
+        alumno_id: str,
+        grupo_destino_id: str,
+        colegio: str | None = None,
+        curso: str | None = None,
+        auto_save: bool = True,
+    ) -> tuple[bool, str]:
+        """
+        Mueve a un alumno de su grupo actual a grupo_destino_id dentro del mismo trabajo.
+        Si grupo_destino_id es 'none' o '', retira al alumno de su grupo actual sin agregarlo a otro.
+        """
+        trabajo = self.get_trabajo_grupo(trabajo_id, colegio, curso)
+        if not trabajo:
+            return False, "Trabajo no encontrado."
+
+        al_str = str(alumno_id)
+        grupos = trabajo.get(K_GRUPOS, [])
+
+        # Remover de grupos existentes
+        for g in grupos:
+            if isinstance(g, dict):
+                ints = g.get(K_INTEGRANTES, [])
+                if al_str in ints:
+                    ints.remove(al_str)
+
+        # Si hay grupo destino, añadirlo
+        if grupo_destino_id and grupo_destino_id != "none":
+            for g in grupos:
+                if isinstance(g, dict) and str(g.get("id")) == str(grupo_destino_id):
+                    ints = g.setdefault(K_INTEGRANTES, [])
+                    if al_str not in ints:
+                        ints.append(al_str)
+                    break
+
+        if auto_save:
+            self.trigger_auto_save(delay=0.4)
+        else:
+            self.save_data()
+
+        return True, "Alumno reasignado."
+
+    def add_grupo_a_trabajo(
+        self,
+        trabajo_id: str,
+        nombre: str = "",
+        tema: str = "",
+        colegio: str | None = None,
+        curso: str | None = None,
+        auto_save: bool = True,
+    ) -> tuple[bool, str, dict | None]:
+        """Añade un nuevo grupo manual a un trabajo en grupo existente."""
+        trabajo = self.get_trabajo_grupo(trabajo_id, colegio, curso)
+        if not trabajo:
+            return False, "Trabajo no encontrado.", None
+
+        grupos = trabajo.setdefault(K_GRUPOS, [])
+        ids_existentes = {str(g.get("id")) for g in grupos if isinstance(g, dict)}
+        num = 1
+        while str(num) in ids_existentes:
+            num += 1
+        nuevo_id = str(num)
+
+        nuevo_grupo = {
+            "id": nuevo_id,
+            "nombre": (nombre or f"Grupo {nuevo_id}").strip(),
+            K_TEMA: (tema or "").strip(),
+            K_INTEGRANTES: [],
+            K_NOTA_GRUPO: None,
+            K_OBSERVACION: "",
+        }
+        grupos.append(nuevo_grupo)
+
+        if auto_save:
+            self.trigger_auto_save(delay=0.4)
+        else:
+            self.save_data()
+
+        return True, "Grupo añadido.", nuevo_grupo
 
     def get_resumen_planificaciones_institucion(self, colegio: str | None = None) -> list[dict]:
         """

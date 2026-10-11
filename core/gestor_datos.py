@@ -35,6 +35,7 @@ from .constants import (
     K_HORARIO,
     K_CLASES,
     K_COMPORTAMIENTOS,
+    K_TRABAJOS_GRUPO,
 )
 
 logger = logging.getLogger(__name__)
@@ -417,6 +418,19 @@ def fusionar_datos(datos_destino: dict, datos_origen: dict) -> dict:
                         for fecha, clase_info in clases_origen.items():
                             if fecha not in clases_destino:
                                 clases_destino[fecha] = clase_info
+
+                    # Fusionar trabajos en grupo de forma no destructiva
+                    trabajos_destino = cursos_destino[nombre_curso].setdefault(K_TRABAJOS_GRUPO, [])
+                    trabajos_origen = curso_data.get(K_TRABAJOS_GRUPO, [])
+                    if isinstance(trabajos_origen, list):
+                        ids_trabajos_existentes = {t.get("id") for t in trabajos_destino if isinstance(t, dict) and "id" in t}
+                        for tr_origen in trabajos_origen:
+                            if isinstance(tr_origen, dict):
+                                tr_id = tr_origen.get("id")
+                                if not tr_id or tr_id not in ids_trabajos_existentes:
+                                    trabajos_destino.append(tr_origen)
+                                    if tr_id:
+                                        ids_trabajos_existentes.add(tr_id)
 
                     # Curso ya existe: fusionar alumnos nuevos
                     alumnos_destino = cursos_destino[nombre_curso].setdefault(K_ALUMNOS, {})

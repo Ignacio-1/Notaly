@@ -16,6 +16,7 @@ from mobile.views.cursos_view import CursosView
 from mobile.views.notas_view import NotasView
 from mobile.views.asistencias_view import AsistenciasView
 from mobile.views.estadisticas_view import EstadisticasView
+from mobile.views.grupos_view import GruposView
 
 # Configurar logging
 logging.basicConfig(
@@ -44,10 +45,12 @@ def main(page: ft.Page):
     page.padding = 0
     page.spacing = 0
 
-    # Inicializar selector de archivos para respaldos / importaciones (servicio Flet)
+    # Inicializar servicios de Flet (archivos y portapapeles)
     file_picker = ft.FilePicker()
+    clipboard = ft.Clipboard()
     if hasattr(page, "services") and isinstance(page.services, list):
         page.services.append(file_picker)
+        page.services.append(clipboard)
 
     # Inicializar estado global
     state = AppState(on_change=lambda: page.update())
@@ -65,6 +68,8 @@ def main(page: ft.Page):
             main_container.content = NotasView(state, page, on_navigate=navigate)
         elif view_name == "asistencias":
             main_container.content = AsistenciasView(state, page, on_navigate=navigate)
+        elif view_name == "grupos":
+            main_container.content = GruposView(state, page, on_navigate=navigate)
         elif view_name == "estadisticas":
             main_container.content = EstadisticasView(state, page, on_navigate=navigate)
         page.update()

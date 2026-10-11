@@ -18,7 +18,9 @@ from core.exportador import (
     exportar_asistencias_a_pdf,
     exportar_asistencias_a_csv,
     exportar_asistencias_a_texto,
+    generar_texto_notas_whatsapp,
 )
+from core.constants import K_ALUMNOS
 from core import gestor_datos
 from mobile.theme import PRIMARY, TEXT_MAIN, TEXT_MUTED, BORDER_COLOR
 
@@ -34,6 +36,7 @@ class ExportDialog(ft.AlertDialog):
         curso_data: dict,
         on_success: callable,
         page: ft.Page | None = None,
+        periodo_activo: int = 0,
     ):
         self.tipo_exportacion = tipo_exportacion
         self.colegio_nombre = colegio_nombre
@@ -41,20 +44,70 @@ class ExportDialog(ft.AlertDialog):
         self.curso_data = curso_data
         self.on_success = on_success
         self.app_page = page
+        self.periodo_activo = int(periodo_activo) if str(periodo_activo).isdigit() else 0
+
+        radios = [
+            ft.Radio(value="pdf", label="Documento PDF (.pdf) - Formato oficial"),
+            ft.Radio(value="csv", label="Hoja de Cálculo CSV (.csv) - Excel / Sheets"),
+            ft.Radio(value="txt", label="Archivo de Texto Plano (.txt)"),
+        ]
+        if tipo_exportacion == "notas":
+            radios.append(
+                ft.Radio(value="whatsapp", label="Texto para WhatsApp (Portapapeles)")
+            )
 
         self.formato_selector = ft.RadioGroup(
-            content=ft.Column(
-                [
-                    ft.Radio(value="pdf", label="Documento PDF (.pdf) - Formato oficial"),
-                    ft.Radio(value="csv", label="Hoja de Cálculo CSV (.csv) - Excel / Sheets"),
-                    ft.Radio(value="txt", label="Archivo de Texto Plano (.txt)"),
-                ],
-                spacing=8,
-            ),
+            content=ft.Column(radios, spacing=8),
             value="pdf",
+            on_change=self._al_cambiar_formato,
         )
 
+        self.periodo_container = None
+        if tipo_exportacion == "notas":
+            nombres_periodos = ["1° Trimestre", "2° Trimestre", "3° Trimestre", "Resumen Anual"]
+            periodo_val_inicial = str(min(3, max(0, self.periodo_activo)))
+            self.periodo_selector = ft.RadioGroup(
+                content=ft.Column(
+                    [
+                        ft.Radio(value=str(i), label=nom)
+                        for i, nom in enumerate(nombres_periodos)
+                    ],
+                    spacing=4,
+                ),
+                value=periodo_val_inicial,
+            )
+            self.periodo_container = ft.Container(
+                visible=False,
+                content=ft.Column(
+                    [
+                        ft.Divider(height=12, color=BORDER_COLOR),
+                        ft.Text("Selecciona el período a copiar:", size=13, weight=ft.FontWeight.BOLD, color=TEXT_MAIN),
+                        self.periodo_selector,
+                    ],
+                    spacing=6,
+                    tight=True,
+                ),
+                padding=ft.Padding(top=4, bottom=4, left=0, right=0),
+            )
+
         titulo_str = "Exportar Planilla de Notas" if tipo_exportacion == "notas" else "Exportar Asistencias"
+
+        controls_col = [
+            ft.Text(f"Colegio: {colegio_nombre}", size=13, weight=ft.FontWeight.W_500, color=TEXT_MAIN),
+            ft.Text(f"Curso: {curso_nombre}", size=13, color=TEXT_MUTED),
+            ft.Divider(height=16, color=BORDER_COLOR),
+            ft.Text("Selecciona el formato de exportación:", size=13, weight=ft.FontWeight.BOLD, color=TEXT_MAIN),
+            self.formato_selector,
+        ]
+        if self.periodo_container:
+            controls_col.append(self.periodo_container)
+
+        self.btn_exportar = ft.FilledButton(
+            "Generar y Exportar",
+            icon=ft.Icons.DOWNLOAD,
+            style=ft.ButtonStyle(bgcolor=PRIMARY, color=ft.Colors.WHITE, shape=ft.RoundedRectangleBorder(radius=8)),
+            on_click=lambda e: self._exportar(),
+        )
 
         super().__init__(
             title=ft.Row(
@@ -66,13 +119,7 @@ class ExportDialog(ft.AlertDialog):
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
             ),
             content=ft.Column(
-                [
-                    ft.Text(f"Colegio: {colegio_nombre}", size=13, weight=ft.FontWeight.W_500, color=TEXT_MAIN),
-                    ft.Text(f"Curso: {curso_nombre}", size=13, color=TEXT_MUTED),
-                    ft.Divider(height=16, color=BORDER_COLOR),
-                    ft.Text("Selecciona el formato de exportación:", size=13, weight=ft.FontWeight.BOLD, color=TEXT_MAIN),
-                    self.formato_selector,
-                ],
+                controls_col,
                 tight=True,
                 width=340,
             ),
@@ -82,16 +129,26 @@ class ExportDialog(ft.AlertDialog):
                     style=ft.ButtonStyle(color=TEXT_MUTED, shape=ft.RoundedRectangleBorder(radius=8)),
                     on_click=lambda e: self._cerrar(),
                 ),
-                ft.FilledButton(
-                    "Generar y Exportar",
-                    icon=ft.Icons.DOWNLOAD,
-                    style=ft.ButtonStyle(bgcolor=PRIMARY, color=ft.Colors.WHITE, shape=ft.RoundedRectangleBorder(radius=8)),
-                    on_click=lambda e: self._exportar(),
-                ),
+                self.btn_exportar,
             ],
             actions_alignment=ft.MainAxisAlignment.END,
             modal=True,
         )
+
+    def _al_cambiar_formato(self, e):
+        es_wa = (self.formato_selector.value == "whatsapp")
+        if self.periodo_container:
+            self.periodo_container.visible = es_wa
+        if es_wa:
+            self.btn_exportar.content = "Copiar al Portapapeles"
+            self.btn_exportar.icon = ft.Icons.COPY_ALL
+        else:
+            self.btn_exportar.content = "Generar y Exportar"
+            self.btn_exportar.icon = ft.Icons.DOWNLOAD
+        try:
+            self.update()
+        except Exception:
+            pass
 
     def _cerrar(self):
         self.open = False
@@ -232,8 +289,69 @@ class ExportDialog(ft.AlertDialog):
             except Exception:
                 pass
 
+    def _copiar_texto_al_portapapeles(self, texto: str) -> bool:
+        copiado = False
+        try:
+            if self.app_page and hasattr(ft, "Clipboard"):
+                cb = getattr(self.app_page, "_clipboard_service", None)
+                if not cb:
+                    cb = ft.Clipboard()
+                    if hasattr(self.app_page, "services") and isinstance(self.app_page.services, list):
+                        self.app_page.services.append(cb)
+                    self.app_page._clipboard_service = cb
+                if hasattr(self.app_page, "run_task"):
+                    self.app_page.run_task(cb.set, texto)
+                    copiado = True
+        except Exception:
+            pass
+
+        if self.app_page and hasattr(self.app_page, "set_clipboard") and callable(self.app_page.set_clipboard):
+            self.app_page.set_clipboard(texto)
+            copiado = True
+
+        return copiado
+
     def _exportar(self):
         formato = self.formato_selector.value or "pdf"
+        if formato == "whatsapp":
+            try:
+                alumnos = self.curso_data.get(K_ALUMNOS, {})
+                if not alumnos:
+                    self._cerrar()
+                    if self.on_success:
+                        self.on_success(False, "El curso no tiene alumnos registrados.")
+                    return
+
+                periodo_val = self.periodo_selector.value if hasattr(self, "periodo_selector") and self.periodo_selector else "0"
+                mapa_periodos = {
+                    "0": "1° Trimestre",
+                    "1": "2° Trimestre",
+                    "2": "3° Trimestre",
+                    "3": "Resumen Anual",
+                }
+                nombre_periodo = mapa_periodos.get(str(periodo_val), "el período seleccionado")
+
+                texto = generar_texto_notas_whatsapp(
+                    curso_data=self.curso_data,
+                    periodo=periodo_val,
+                    nombre_curso=self.curso_nombre,
+                    nombre_colegio=self.colegio_nombre,
+                )
+
+                copiado = self._copiar_texto_al_portapapeles(texto)
+                self._cerrar()
+
+                if self.on_success:
+                    if copiado:
+                        self.on_success(True, "portapapeles", nombre_periodo)
+                    else:
+                        self.on_success(False, "No se pudo acceder al servicio de portapapeles.")
+            except Exception as e:
+                self._cerrar()
+                if self.on_success:
+                    self.on_success(False, str(e))
+            return
+
         try:
             carpeta_destino = self._obtener_carpeta_exportacion()
             carpeta_destino.mkdir(parents=True, exist_ok=True)

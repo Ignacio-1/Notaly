@@ -63,7 +63,7 @@ def get_grade_tone(value: float | int | str | None) -> tuple[str, str]:
         return GRADE_EMPTY_BG, GRADE_EMPTY_TEXT
 
 
-def get_avatar_palette(index: int) -> tuple[str, str]:
+def get_avatar_palette(index: int | str) -> tuple[str, str]:
     """Genera pares armónicos de color para los avatares circulares de alumnos."""
     palettes = [
         ("#EDE9FE", "#6D28D9"),  # Púrpura suave / violeta
@@ -73,7 +73,12 @@ def get_avatar_palette(index: int) -> tuple[str, str]:
         ("#D1FAE5", "#047857"),  # Esmeralda suave / verde oscuro
         ("#F1F5F9", "#475569"),  # Slate neutro
     ]
-    return palettes[index % len(palettes)]
+    try:
+        idx = int(index)
+    except (ValueError, TypeError):
+        idx = sum(ord(c) for c in str(index))
+    return palettes[idx % len(palettes)]
+
 
 
 def extract_initials(nombre_completo: str) -> str:

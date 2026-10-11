@@ -653,6 +653,9 @@ class AsistenciasView(ft.Container):
         if "notas" in selected_set:
             self.state.flush_auto_save()
             self.on_navigate("notas")
+        elif "grupos" in selected_set:
+            self.state.flush_auto_save()
+            self.on_navigate("grupos")
 
     def _accion_volver(self):
         self.state.flush_auto_save()

@@ -28,6 +28,12 @@ K_FECHA = "fecha"
 K_TIPO = "tipo"
 K_SUBTIPO = "subtipo"
 K_OBSERVACION = "observacion"
+K_TRABAJOS_GRUPO = "trabajos_grupo"
+K_GRUPOS = "grupos"
+K_INTEGRANTES = "integrantes"
+K_NOTA_GRUPO = "nota"
+K_TEMAS = "temas"
+K_CON_TEMAS = "con_temas"
 
 # --- Comportamientos de alumnos ---
 COMPORTAMIENTO_POSITIVO = "positivo"

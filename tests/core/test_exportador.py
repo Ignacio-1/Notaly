@@ -118,3 +118,179 @@ def test_exportar_a_pdf_con_datos_decimales_unifica_enteros(tmp_path):
     assert os.path.exists(file_path)
     assert os.path.getsize(file_path) > 0
 
+
+from core.exportador import (
+    formatear_notas_trimestre_whatsapp,
+    formatear_notas_anual_whatsapp,
+    generar_texto_notas_whatsapp,
+)
+
+
+@pytest.fixture
+def sample_curso_whatsapp():
+    """Dataset para pruebas de exportación a WhatsApp cubriendo todas las casuísticas."""
+    return {
+        K_NOMBRES_COLUMNAS: {
+            TRIM_1: ["TP 1", "Evaluación", "Oral", "Extra"],
+            TRIM_2: ["TP 1", "Evaluación", "Oral", "Extra"],
+            TRIM_3: ["TP 1", "Evaluación", "Oral", "Extra"],
+        },
+        K_ALUMNOS: {
+            "2": {
+                K_NOMBRE: "BENITEZ, CARLOS",
+                K_TRIMESTRES: {
+                    TRIM_1: {K_PRINCIPALES: [4, 5, None], K_EXTRAS: [None], K_RECUPERATORIO: None},
+                    TRIM_2: {K_PRINCIPALES: [4, 4, None], K_EXTRAS: [None], K_RECUPERATORIO: None},
+                    TRIM_3: {K_PRINCIPALES: [5, 4, None], K_EXTRAS: [None], K_RECUPERATORIO: None},
+                },
+            },
+            "1": {
+                K_NOMBRE: "ALVAREZ, ANA",
+                K_TRIMESTRES: {
+                    TRIM_1: {K_PRINCIPALES: [8, 7, None], K_EXTRAS: [9], K_RECUPERATORIO: None},
+                    TRIM_2: {K_PRINCIPALES: [7, 8, None], K_EXTRAS: [None], K_RECUPERATORIO: None},
+                    TRIM_3: {K_PRINCIPALES: [9, 9, None], K_EXTRAS: [None], K_RECUPERATORIO: None},
+                },
+            },
+            "10": {
+                K_NOMBRE: "ZAPATA, JUAN",
+                K_TRIMESTRES: {
+                    TRIM_1: {K_PRINCIPALES: [None, None, None], K_EXTRAS: [None], K_RECUPERATORIO: None},
+                    TRIM_2: {K_PRINCIPALES: [None, None, None], K_EXTRAS: [None], K_RECUPERATORIO: None},
+                    TRIM_3: {K_PRINCIPALES: [None, None, None], K_EXTRAS: [None], K_RECUPERATORIO: None},
+                },
+            },
+        },
+    }
+
+
+def test_formatear_notas_trimestre_whatsapp_completo(sample_curso_whatsapp):
+    """Verifica RF-05, RF-07, RF-08, RF-10: estructura, encabezado, columnas, emojis y estadísticas."""
+    texto = formatear_notas_trimestre_whatsapp(
+        curso_data=sample_curso_whatsapp,
+        indice_trimestre=0,
+        nombre_curso="3° A",
+        nombre_colegio="Colegio San Martín",
+    )
+
+    # Encabezado institucional
+    assert "🏫 *COLEGIO SAN MARTÍN*" in texto
+    assert "📚 *Curso:* 3° A" in texto
+    assert "🗓️ *Período:* 1° Trimestre" in texto
+
+    # Orden numérico: 1 antes de 2 antes de 10
+    pos_1 = texto.find("1. *ALVAREZ, ANA*")
+    pos_2 = texto.find("2. *BENITEZ, CARLOS*")
+    pos_10 = texto.find("10. *ZAPATA, JUAN*")
+    assert pos_1 != -1 and pos_2 != -1 and pos_10 != -1
+    assert pos_1 < pos_2 < pos_10
+
+    # Detalle con nombres de columnas configuradas
+    assert "• TP 1: 8 | Evaluación: 7 | Extra: 9 ➔ 🟢 *Final: 8*" in texto
+    assert "• TP 1: 4 | Evaluación: 5 ➔ 🔴 *Final: 5*" in texto
+    assert "• Sin notas cargadas ➔ ⚪ *Final: -*" in texto
+
+    # Estadísticas con porcentajes enteros redondeados
+    assert "📊 *Resumen del Trimestre:*" in texto
+    assert "• Total alumnos: 3" in texto
+    assert "• Aprobados: 1 (33%)" in texto
+    assert "• Desaprobados: 1 (33%)" in texto
+    assert "• Sin calificar: 1 (33%)" in texto
+    assert "• Promedio general: 7" in texto  # (8 + 5) / 2 = 6.5 -> 7
+    assert "_Planilla generada por Notaly_" in texto
+
+
+def test_formatear_notas_trimestre_whatsapp_con_recuperatorio():
+    """Verifica recuperatorio visible y reemplazo de calificación cuando promedio < 5.50."""
+    curso = {
+        K_NOMBRES_COLUMNAS: {TRIM_1: ["TP 1", "Eval", "Oral", "Extra"]},
+        K_ALUMNOS: {
+            "1": {
+                K_NOMBRE: "GOMEZ, LUCIA",
+                K_TRIMESTRES: {
+                    TRIM_1: {K_PRINCIPALES: [4, 5, None], K_EXTRAS: [None], K_RECUPERATORIO: 7},
+                },
+            }
+        },
+    }
+    texto = formatear_notas_trimestre_whatsapp(curso, 0, "1° B")
+    assert "• TP 1: 4 | Eval: 5 | Recup: 7 ➔ 🟢 *Final: 7*" in texto
+    assert "• Aprobados: 1 (100%)" in texto
+
+
+def test_formatear_notas_trimestre_whatsapp_alumnos_vacios_y_cero_division():
+    """Verifica RF-08 y RF-09: división por cero segura y '-' cuando no hay calificaciones."""
+    curso = {
+        K_NOMBRES_COLUMNAS: {TRIM_1: ["TP 1", "Eval", "Oral", "Extra"]},
+        K_ALUMNOS: {
+            "1": {K_NOMBRE: "A", K_TRIMESTRES: {TRIM_1: {K_PRINCIPALES: [], K_EXTRAS: [], K_RECUPERATORIO: None}}},
+            "2": {K_NOMBRE: "B", K_TRIMESTRES: {TRIM_1: {K_PRINCIPALES: [], K_EXTRAS: [], K_RECUPERATORIO: None}}},
+        },
+    }
+    texto = formatear_notas_trimestre_whatsapp(curso, 0, "1° B")
+    assert "• Promedio general: -" in texto
+    assert "• Sin calificar: 2 (100%)" in texto
+    assert "• Aprobados: 0 (0%)" in texto
+
+
+def test_formatear_notas_trimestre_whatsapp_sin_nombre_colegio(sample_curso_whatsapp):
+    """Verifica omisión limpia de la línea de colegio si nombre_colegio está vacío."""
+    texto = formatear_notas_trimestre_whatsapp(sample_curso_whatsapp, 0, "3° A", "")
+    assert not texto.startswith("🏫")
+    assert texto.startswith("📚 *Curso:* 3° A")
+
+
+def test_formatear_notas_anual_whatsapp_completo(sample_curso_whatsapp):
+    """Verifica RF-06: formato anual con T1, T2, T3, Final Total y categorías Aprobados/Desaprobados/En curso."""
+    texto = formatear_notas_anual_whatsapp(
+        curso_data=sample_curso_whatsapp,
+        nombre_curso="3° A",
+        nombre_colegio="Colegio San Martín",
+    )
+
+    assert "🗓️ *Período:* Resumen Anual de Calificaciones" in texto
+
+    # Alumno aprobado completo
+    assert "1. *ALVAREZ, ANA*" in texto
+    assert "• T1: 8 | T2: 8 | T3: 9 ➔ 🟢 *Final: 8* (Aprobado)" in texto
+
+    # Alumno desaprobado completo
+    assert "2. *BENITEZ, CARLOS*" in texto
+    assert "• T1: 5 | T2: 4 | T3: 5 ➔ 🔴 *Final: 5* (Desaprobado)" in texto
+
+    # Alumno sin notas
+    assert "10. *ZAPATA, JUAN*" in texto
+    assert "• T1: -- | T2: -- | T3: -- ➔ ⚪ *Final: -* (En curso)" in texto
+
+    # Resumen anual
+    assert "📊 *Estadísticas Anuales del Curso:*" in texto
+    assert "• Total alumnos: 3" in texto
+    assert "• Aprobados: 1 (33%)" in texto
+    assert "• Desaprobados: 1 (33%)" in texto
+    assert "• En curso: 1 (33%)" in texto
+    assert "• Promedio general del curso: 7" in texto  # (8 + 5) / 2 = 6.5 -> 7
+
+
+def test_generar_texto_notas_whatsapp_despachador(sample_curso_whatsapp):
+    """Verifica delegación unificada del despachador por índice o cadena."""
+    txt_0 = generar_texto_notas_whatsapp(sample_curso_whatsapp, 0, "3° A")
+    assert "1° Trimestre" in txt_0
+
+    txt_1 = generar_texto_notas_whatsapp(sample_curso_whatsapp, "1", "3° A")
+    assert "2° Trimestre" in txt_1
+
+    txt_anual = generar_texto_notas_whatsapp(sample_curso_whatsapp, "anual", "3° A")
+    assert "Resumen Anual de Calificaciones" in txt_anual
+
+    txt_anual_num = generar_texto_notas_whatsapp(sample_curso_whatsapp, 3, "3° A")
+    assert "Resumen Anual de Calificaciones" in txt_anual_num
+
+
+def test_formatear_notas_whatsapp_curso_vacio():
+    """Verifica RF-11 cuando el curso no tiene alumnos registrados."""
+    curso = {K_ALUMNOS: {}}
+    res = formatear_notas_trimestre_whatsapp(curso, 0, "3° A")
+    assert res == "El curso no tiene alumnos registrados."
+    res_anual = formatear_notas_anual_whatsapp(curso, "3° A")
+    assert res_anual == "El curso no tiene alumnos registrados."
+

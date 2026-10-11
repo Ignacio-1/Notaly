@@ -126,13 +126,15 @@ def build_app_header(
 
 
 def build_module_tabs(
-    active_tab: str,  # "notas" | "asistencias"
+    active_tab: str,  # "notas" | "asistencias" | "grupos"
     on_change: Callable[[str], Any],
 ) -> ft.Container:
     """
-    Selector de módulo compacto (Notas / Asistencia) con fondo Slate 100 y pestañas redondeadas.
+    Selector de módulo compacto (Notas / Asistencia / Grupos) con fondo Slate 100 y pestañas redondeadas.
     """
     is_notas = (active_tab == "notas")
+    is_asist = (active_tab == "asistencias")
+    is_grupos = (active_tab == "grupos")
 
     return ft.Container(
         bgcolor="#F1F5F9",
@@ -151,11 +153,11 @@ def build_module_tabs(
                     on_click=lambda _: on_change("notas"),
                     content=ft.Row(
                         alignment=ft.MainAxisAlignment.CENTER,
-                        spacing=6,
+                        spacing=5,
                         tight=True,
                         controls=[
                             ft.Icon(ft.Icons.EDIT_NOTE, size=16, color=PRIMARY if is_notas else TEXT_MUTED),
-                            ft.Text("Notas", size=13, weight=ft.FontWeight.BOLD, color=PRIMARY if is_notas else TEXT_MUTED),
+                            ft.Text("Notas", size=12, weight=ft.FontWeight.BOLD, color=PRIMARY if is_notas else TEXT_MUTED),
                         ],
                     ),
                 ),
@@ -163,17 +165,35 @@ def build_module_tabs(
                     expand=True,
                     height=36,
                     border_radius=10,
-                    bgcolor=SURFACE_WHITE if not is_notas else ft.Colors.TRANSPARENT,
+                    bgcolor=SURFACE_WHITE if is_asist else ft.Colors.TRANSPARENT,
                     alignment=ft.Alignment.CENTER,
                     ink=True,
                     on_click=lambda _: on_change("asistencias"),
                     content=ft.Row(
                         alignment=ft.MainAxisAlignment.CENTER,
-                        spacing=6,
+                        spacing=5,
                         tight=True,
                         controls=[
-                            ft.Icon(ft.Icons.CHECKLIST, size=16, color=PRIMARY if not is_notas else TEXT_MUTED),
-                            ft.Text("Asistencia", size=13, weight=ft.FontWeight.BOLD, color=PRIMARY if not is_notas else TEXT_MUTED),
+                            ft.Icon(ft.Icons.CHECKLIST, size=16, color=PRIMARY if is_asist else TEXT_MUTED),
+                            ft.Text("Asistencia", size=12, weight=ft.FontWeight.BOLD, color=PRIMARY if is_asist else TEXT_MUTED),
+                        ],
+                    ),
+                ),
+                ft.Container(
+                    expand=True,
+                    height=36,
+                    border_radius=10,
+                    bgcolor=SURFACE_WHITE if is_grupos else ft.Colors.TRANSPARENT,
+                    alignment=ft.Alignment.CENTER,
+                    ink=True,
+                    on_click=lambda _: on_change("grupos"),
+                    content=ft.Row(
+                        alignment=ft.MainAxisAlignment.CENTER,
+                        spacing=5,
+                        tight=True,
+                        controls=[
+                            ft.Icon(ft.Icons.GROUPS, size=16, color=PRIMARY if is_grupos else TEXT_MUTED),
+                            ft.Text("Grupos", size=12, weight=ft.FontWeight.BOLD, color=PRIMARY if is_grupos else TEXT_MUTED),
                         ],
                     ),
                 ),

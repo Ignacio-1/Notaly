@@ -20,6 +20,7 @@ from .constants import (
     K_RECUPERATORIO,
     K_TRIMESTRES,
     NOMBRES_TRIMESTRES,
+    NOMBRES_COLUMNAS_DEFAULT,
 )
 
 
@@ -578,3 +579,229 @@ def exportar_asistencias_a_pdf(curso_data: dict, file_path: str, nombre_curso: s
         return True, None
     except Exception as e:
         return False, str(e)
+
+
+def formatear_notas_trimestre_whatsapp(
+    curso_data: dict,
+    indice_trimestre: int,
+    nombre_curso: str,
+    nombre_colegio: str = "",
+) -> str:
+    """
+    Genera el texto plano formateado con sintaxis de WhatsApp para un trimestre (0, 1 o 2).
+    Detalla las columnas configuradas, recuperatorios, calificaciones enteras y resumen estadístico.
+    """
+    alumnos = curso_data.get(K_ALUMNOS, {})
+    if not alumnos:
+        return "El curso no tiene alumnos registrados."
+
+    indice_trimestre = max(0, min(int(indice_trimestre), 2))
+    nombre_trim = NOMBRES_TRIMESTRES[indice_trimestre]
+
+    lineas = []
+    if nombre_colegio and nombre_colegio.strip():
+        lineas.append(f"🏫 *{nombre_colegio.strip().upper()}*")
+    lineas.append(f"📚 *Curso:* {nombre_curso.strip()}")
+    lineas.append(f"🗓️ *Período:* {indice_trimestre + 1}° Trimestre")
+    lineas.append("─────────────────────────")
+    lineas.append("")
+
+    cols_curso = curso_data.get(K_NOMBRES_COLUMNAS, {}).get(nombre_trim, NOMBRES_COLUMNAS_DEFAULT)
+
+    # Orden numérico por int(id_alumno)
+    def _clave_orden(item):
+        id_str = str(item[0])
+        return (0, int(id_str)) if id_str.isdigit() else (1, id_str)
+
+    alumnos_ordenados = sorted(alumnos.items(), key=_clave_orden)
+
+    cant_aprob = 0
+    cant_desap = 0
+    cant_vacios = 0
+    notas_finales_validas = []
+
+    for id_al, datos_al in alumnos_ordenados:
+        nombre = datos_al.get(K_NOMBRE, "").strip() or f"Alumno {id_al}"
+        trimestre_data = datos_al.get(K_TRIMESTRES, {}).get(nombre_trim, {})
+
+        principales = trimestre_data.get(K_PRINCIPALES, [])
+        extras = trimestre_data.get(K_EXTRAS, [])
+        recup = trimestre_data.get(K_RECUPERATORIO)
+
+        partes_notas = []
+        for j, nota in enumerate(principales):
+            if nota is not None:
+                nom_col = cols_curso[j] if j < len(cols_curso) else f"P{j+1}"
+                partes_notas.append(f"{nom_col}: {formatear_nota_entera(nota)}")
+
+        for k, nota_ex in enumerate(extras):
+            if nota_ex is not None:
+                idx_extra = len(principales) + k
+                nom_col = cols_curso[idx_extra] if idx_extra < len(cols_curso) else (cols_curso[-1] if cols_curso else "Extra")
+                partes_notas.append(f"{nom_col}: {formatear_nota_entera(nota_ex)}")
+
+        if recup is not None:
+            partes_notas.append(f"Recup: {formatear_nota_entera(recup)}")
+
+        calcs = procesar_calificaciones_alumno(datos_al.get(K_TRIMESTRES, {}))
+        nota_final = calcs["notas_finales_redondeadas"][indice_trimestre]
+
+        lineas.append(f"{id_al}. *{nombre}*")
+        if not partes_notas:
+            lineas.append("   • Sin notas cargadas ➔ ⚪ *Final: -*")
+            cant_vacios += 1
+        else:
+            detalle = " | ".join(partes_notas)
+            if nota_final is None:
+                emoji = "⚪"
+                cant_vacios += 1
+            elif nota_final >= 6:
+                emoji = "🟢"
+                cant_aprob += 1
+                notas_finales_validas.append(nota_final)
+            else:
+                emoji = "🔴"
+                cant_desap += 1
+                notas_finales_validas.append(nota_final)
+
+            nota_final_str = formatear_nota_entera(nota_final)
+            lineas.append(f"   • {detalle} ➔ {emoji} *Final: {nota_final_str}*")
+        lineas.append("")
+
+    total_alumnos = len(alumnos_ordenados)
+    porc_aprob = math.floor((cant_aprob / total_alumnos) * 100 + 0.5) if total_alumnos > 0 else 0
+    porc_desap = math.floor((cant_desap / total_alumnos) * 100 + 0.5) if total_alumnos > 0 else 0
+    porc_vacios = math.floor((cant_vacios / total_alumnos) * 100 + 0.5) if total_alumnos > 0 else 0
+
+    if notas_finales_validas:
+        prom_num = sum(notas_finales_validas) / len(notas_finales_validas)
+        prom_gen = formatear_nota_entera(prom_num)
+    else:
+        prom_gen = "-"
+
+    lineas.append("─────────────────────────")
+    lineas.append("📊 *Resumen del Trimestre:*")
+    lineas.append(f"• Total alumnos: {total_alumnos}")
+    lineas.append(f"• Aprobados: {cant_aprob} ({porc_aprob}%)")
+    lineas.append(f"• Desaprobados: {cant_desap} ({porc_desap}%)")
+    lineas.append(f"• Sin calificar: {cant_vacios} ({porc_vacios}%)")
+    lineas.append(f"• Promedio general: {prom_gen}")
+    lineas.append("─────────────────────────")
+    lineas.append("_Planilla generada por Notaly_")
+
+    return "\n".join(lineas)
+
+
+def formatear_notas_anual_whatsapp(
+    curso_data: dict,
+    nombre_curso: str,
+    nombre_colegio: str = "",
+) -> str:
+    """
+    Genera el texto plano formateado con sintaxis de WhatsApp para el resumen anual de calificaciones.
+    Detalla T1, T2, T3, Final Total y estadísticas con categorías Aprobados, Desaprobados y En curso.
+    """
+    alumnos = curso_data.get(K_ALUMNOS, {})
+    if not alumnos:
+        return "El curso no tiene alumnos registrados."
+
+    lineas = []
+    if nombre_colegio and nombre_colegio.strip():
+        lineas.append(f"🏫 *{nombre_colegio.strip().upper()}*")
+    lineas.append(f"📚 *Curso:* {nombre_curso.strip()}")
+    lineas.append("🗓️ *Período:* Resumen Anual de Calificaciones")
+    lineas.append("─────────────────────────")
+    lineas.append("")
+
+    def _clave_orden(item):
+        id_str = str(item[0])
+        return (0, int(id_str)) if id_str.isdigit() else (1, id_str)
+
+    alumnos_ordenados = sorted(alumnos.items(), key=_clave_orden)
+
+    cant_aprob = 0
+    cant_desap = 0
+    cant_pend = 0
+    notas_finales_validas = []
+
+    for id_al, datos_al in alumnos_ordenados:
+        nombre = datos_al.get(K_NOMBRE, "").strip() or f"Alumno {id_al}"
+        calcs = procesar_calificaciones_alumno(datos_al.get(K_TRIMESTRES, {}))
+
+        t1, t2, t3 = calcs["notas_finales_redondeadas"]
+        total = calcs["nota_final_total_redondeada"]
+
+        t1_str = formatear_nota_entera(t1, default="--")
+        t2_str = formatear_nota_entera(t2, default="--")
+        t3_str = formatear_nota_entera(t3, default="--")
+
+        if t1 is not None and t2 is not None and t3 is not None and total is not None:
+            if total >= 6:
+                emoji = "🟢"
+                condicion = "(Aprobado)"
+                cant_aprob += 1
+            else:
+                emoji = "🔴"
+                condicion = "(Desaprobado)"
+                cant_desap += 1
+            total_str = formatear_nota_entera(total)
+            estado_al = f"{emoji} *Final: {total_str}* {condicion}"
+            notas_finales_validas.append(total)
+        else:
+            cant_pend += 1
+            if total is not None:
+                total_str = formatear_nota_entera(total)
+                notas_finales_validas.append(total)
+            else:
+                total_str = "-"
+            estado_al = f"⚪ *Final: {total_str}* (En curso)"
+
+        lineas.append(f"{id_al}. *{nombre}*")
+        lineas.append(f"   • T1: {t1_str} | T2: {t2_str} | T3: {t3_str} ➔ {estado_al}")
+        lineas.append("")
+
+    total_alumnos = len(alumnos_ordenados)
+    porc_aprob = math.floor((cant_aprob / total_alumnos) * 100 + 0.5) if total_alumnos > 0 else 0
+    porc_desap = math.floor((cant_desap / total_alumnos) * 100 + 0.5) if total_alumnos > 0 else 0
+    porc_pend = math.floor((cant_pend / total_alumnos) * 100 + 0.5) if total_alumnos > 0 else 0
+
+    if notas_finales_validas:
+        prom_num = sum(notas_finales_validas) / len(notas_finales_validas)
+        prom_gen = formatear_nota_entera(prom_num)
+    else:
+        prom_gen = "-"
+
+    lineas.append("─────────────────────────")
+    lineas.append("📊 *Estadísticas Anuales del Curso:*")
+    lineas.append(f"• Total alumnos: {total_alumnos}")
+    lineas.append(f"• Aprobados: {cant_aprob} ({porc_aprob}%)")
+    lineas.append(f"• Desaprobados: {cant_desap} ({porc_desap}%)")
+    lineas.append(f"• En curso: {cant_pend} ({porc_pend}%)")
+    lineas.append(f"• Promedio general del curso: {prom_gen}")
+    lineas.append("─────────────────────────")
+    lineas.append("_Planilla generada por Notaly_")
+
+    return "\n".join(lineas)
+
+
+def generar_texto_notas_whatsapp(
+    curso_data: dict,
+    periodo: int | str,
+    nombre_curso: str,
+    nombre_colegio: str = "",
+) -> str:
+    """
+    Función despachadora unificada:
+    - 0, 1, 2 (o '0', '1', '2'): formatea trimestre correspondiente.
+    - 3 (o '3', 'anual', 'Anual'): formatea resumen anual.
+    """
+    p_str = str(periodo).strip().lower()
+    if p_str in ("3", "anual"):
+        return formatear_notas_anual_whatsapp(curso_data, nombre_curso, nombre_colegio)
+    try:
+        idx = int(p_str)
+        if idx in (0, 1, 2):
+            return formatear_notas_trimestre_whatsapp(curso_data, idx, nombre_curso, nombre_colegio)
+    except ValueError:
+        pass
+    return formatear_notas_trimestre_whatsapp(curso_data, 0, nombre_curso, nombre_colegio)
