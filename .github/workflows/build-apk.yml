@@ -69,15 +69,37 @@ jobs:
           done
 
           mkdir -p "$ANDROID_HOME/licenses"
-          echo -e "\n24333f8a63b6825ea9c5514f83c2829b004d1fee" > "$ANDROID_HOME/licenses/android-sdk-license"
-          echo -e "\n504667f4c0de7973335447fc6c3b7e40efee42e8" > "$ANDROID_HOME/licenses/android-sdk-preview-license"
-          echo -e "\n1d8aae7e54b3ecb4c15a80bda3a9edbc11a0e30b" > "$ANDROID_HOME/licenses/android-google-chrome-intel-build-tools-license"
+          printf "%s\n" \
+            "24333f8a63b6825ea9c5514f83c2829b004d1fee" \
+            "d56f5187479451eabf01fb78af6dfcb131a6481e" \
+            "84831b9409646a247e4444e66496795d4ba24124" \
+            "893fb8b22d8221007e1488c767e194f47d939f5b" \
+            "7c027e50ab0e962452660e45f642415a832f5313" >> "$ANDROID_HOME/licenses/android-sdk-license"
+          echo -e "\n504667f4c0de7973335447fc6c3b7e40efee42e8" >> "$ANDROID_HOME/licenses/android-sdk-preview-license"
+          echo -e "\n1d8aae7e54b3ecb4c15a80bda3a9edbc11a0e30b" >> "$ANDROID_HOME/licenses/android-google-chrome-intel-build-tools-license"
 
           yes | flutter doctor --android-licenses || true
+
+      - name: Configurar Gradle y optimizaciones JVM
+        run: |
+          mkdir -p ~/.gradle
+          printf "%s\n" \
+            "org.gradle.jvmargs=-Xmx3072m -XX:MaxMetaspaceSize=1024m -XX:+HeapDumpOnOutOfMemoryError" \
+            "org.gradle.parallel=true" \
+            "org.gradle.vfs.watch=false" > ~/.gradle/gradle.properties
+
+      - name: Diagnóstico de entorno Flutter y Android
+        run: |
+          flutter doctor -v
+
+      - name: Limpiar compilación previa
+        run: |
+          rm -rf build/flutter/build 2>/dev/null || true
 
       - name: Compilar AAB para Google Play Store
         env:
           FLET_CLI_NO_RICH_OUTPUT: "true"
+          GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx3072m -Dorg.gradle.parallel=true -Dorg.gradle.vfs.watch=false"
         run: |
           flet build aab . \
             --module-name mobile_app \
@@ -89,11 +111,17 @@ jobs:
             --cleanup-app \
             --yes \
             --no-rich-output \
-            --verbose
+            -vv \
+            --flutter-build-args=--verbose
+
+      - name: Limpiar build intermedio para APK
+        run: |
+          rm -rf build/flutter/build 2>/dev/null || true
 
       - name: Compilar APK para pruebas directas
         env:
           FLET_CLI_NO_RICH_OUTPUT: "true"
+          GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx3072m -Dorg.gradle.parallel=true -Dorg.gradle.vfs.watch=false"
         run: |
           flet build apk . \
             --module-name mobile_app \
@@ -105,7 +133,8 @@ jobs:
             --cleanup-app \
             --yes \
             --no-rich-output \
-            --verbose
+            -vv \
+            --flutter-build-args=--verbose
 
       - name: Verificar binarios generados
         run: |
