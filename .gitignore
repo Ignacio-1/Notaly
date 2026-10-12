@@ -45,6 +45,8 @@ mcp.json
 # Salidas de compilación y binarios móviles
 dist/
 build/
+build_staging/
+release.keystore
 *.apk
 *.aab
 

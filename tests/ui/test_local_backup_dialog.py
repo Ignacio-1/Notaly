@@ -308,3 +308,146 @@ def test_main_appbar_backup_icon_not_in_three_dots():
     assert not any("copia" in t.lower() for t in items_textos)
     assert any("Estadísticas" in t for t in items_textos)
     assert any("Acerca de" in t for t in items_textos)
+
+
+def test_local_backup_dialog_triggers_on_restored_callback(populated_state, mock_page):
+    """Verifica que al confirmar la restauración (Combinar o Reemplazar) se invoque el callback on_restored."""
+    callback_llamado = False
+
+    def mi_callback():
+        nonlocal callback_llamado
+        callback_llamado = True
+
+    dlg = LocalBackupDialog(populated_state, mock_page, on_restored=mi_callback)
+    mock_page.show_dialog(dlg)
+
+    backup_test = {
+        K_COLEGIOS: {
+            "Colegio Inmediato": {
+                K_CURSOS: {}
+            }
+        }
+    }
+
+    dlg._mostrar_opciones_restauracion(backup_test)
+    confirm_dlg = mock_page.active_dialog
+    btn_combinar = next((a for a in confirm_dlg.actions if "Combinar" in _obtener_texto_boton(a)), None)
+    assert btn_combinar is not None
+
+    btn_combinar.on_click(None)
+    assert callback_llamado is True
+    # Diálogo de confirmación debe cerrarse
+    assert confirm_dlg not in mock_page.dialog_stack
+    assert "Colegio Inmediato" in populated_state.get_colegios()
+
+
+def test_local_backup_state_on_backup_restored_and_query_reset(populated_state):
+    """Verifica que import_backup_data ejecute on_backup_restored y limpie los filtros de búsqueda."""
+    called_count = 0
+
+    def on_restored_listener():
+        nonlocal called_count
+        called_count += 1
+
+    populated_state.on_backup_restored = on_restored_listener
+    populated_state.search_query_colegios = "filtro_viejo"
+    populated_state.search_query_cursos = "curso_viejo"
+
+    backup_data = {
+        K_COLEGIOS: {
+            "Colegio Nuevo": {K_CURSOS: {}}
+        }
+    }
+
+    # 1. Probar en modo merge
+    exito, _, _ = populated_state.import_backup_data(backup_data, mode="merge")
+    assert exito is True
+    assert called_count == 1
+    assert populated_state.search_query_colegios == ""
+    assert populated_state.search_query_cursos == ""
+
+    # 2. Probar en modo replace
+    exito, _, _ = populated_state.import_backup_data(backup_data, mode="replace")
+    assert exito is True
+    assert called_count == 2
+
+
+def test_main_app_refreshes_view_immediately_on_restore(tmp_path):
+    """Verifica que en mobile/main.py restaurar una copia actualice la vista al instante sin salir y volver a entrar."""
+    from mobile.main import main
+    from mobile.views.colegios_view import ColegiosView
+
+    test_page = MockMobilePage()
+    temp_data_file = tmp_path / "datos_main_test.json"
+    initial_data = {
+        K_COLEGIOS: {
+            "Colegio Inicial": {
+                K_CURSOS: {}
+            }
+        }
+    }
+    with open(temp_data_file, "w", encoding="utf-8") as f:
+        json.dump(initial_data, f)
+
+    with patch("core.gestor_datos.leer_ruta_config", return_value=str(temp_data_file)):
+        main(test_page)
+
+        # La vista inicial debe ser ColegiosView y mostrar 'Colegio Inicial'
+        main_container = test_page.controls[0]
+        assert isinstance(main_container.content, ColegiosView)
+        textos_iniciales = _extraer_textos_recursivo(main_container.content)
+        assert any("Colegio Inicial" in t for t in textos_iniciales)
+        assert not any("Colegio Restaurado" in t for t in textos_iniciales)
+
+        # Simular apertura de diálogo de copias
+        actions = test_page.appbar.actions
+        btn_backup = next((a for a in actions if isinstance(a, ft.IconButton) and a.tooltip == "Copia de Seguridad"), None)
+        assert btn_backup is not None
+        btn_backup.on_click(None)
+
+        assert len(test_page.dialog_stack) == 1
+        dlg_copia = test_page.active_dialog
+
+        # Simular restauración de copia con nuevo colegio
+        nuevo_backup = {
+            K_COLEGIOS: {
+                "Colegio Restaurado": {
+                    K_CURSOS: {}
+                }
+            }
+        }
+        dlg_copia._mostrar_opciones_restauracion(nuevo_backup)
+        confirm_dlg = test_page.active_dialog
+
+        btn_combinar = next((a for a in confirm_dlg.actions if "Combinar" in _obtener_texto_boton(a)), None)
+        assert btn_combinar is not None
+        btn_combinar.on_click(None)
+
+        # VERIFICACIÓN CRÍTICA:
+        # La vista en el main_container debe haberse refrescado EN EL INSTANTE
+        # mostrando 'Colegio Restaurado' sin reiniciar la aplicación
+        assert isinstance(main_container.content, ColegiosView)
+        textos_actualizados = _extraer_textos_recursivo(main_container.content)
+        assert any("Colegio Restaurado" in t for t in textos_actualizados)
+        assert any("Colegio Inicial" in t for t in textos_actualizados)
+
+
+def test_state_sanitizes_stale_selections_on_replace_restore(populated_state):
+    """Verifica que si la copia reemplaza la base, se limpien las selecciones de colegios/cursos inexistentes."""
+    populated_state.selected_colegio = "Colegio Belgrano"
+    populated_state.selected_curso = "3ro A"
+    populated_state.selected_alumno_id = "1"
+
+    backup_sin_belgrano = {
+        K_COLEGIOS: {
+            "Colegio Totalmente Nuevo": {
+                K_CURSOS: {}
+            }
+        }
+    }
+
+    exito, _, _ = populated_state.import_backup_data(backup_sin_belgrano, mode="replace")
+    assert exito is True
+    assert populated_state.selected_colegio is None
+    assert populated_state.selected_curso is None
+    assert populated_state.selected_alumno_id is None

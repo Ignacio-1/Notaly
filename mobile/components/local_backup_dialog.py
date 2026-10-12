@@ -7,6 +7,7 @@ con guardado automático en la carpeta Descargas del equipo y diseño Slate/Indi
 import json
 import logging
 from pathlib import Path
+from typing import Callable
 import flet as ft
 
 from core.constants import K_COLEGIOS, K_CURSOS, K_ALUMNOS
@@ -42,11 +43,13 @@ class LocalBackupDialog(ft.AlertDialog):
         page: ft.Page,
         file_picker: ft.FilePicker | None = None,
         tokens: ThemeTokens | None = None,
+        on_restored: Callable[[], None] | None = None,
     ):
         self.app_state = state
         self.app_page = page
         self.file_picker = file_picker
         self.tokens = tokens or getattr(state, "tokens", None) or _resolve_tokens(tokens, page)
+        self.on_restored = on_restored
         tok = self.tokens
 
         # Contenedor dinámico de la pestaña activa
@@ -430,12 +433,24 @@ class LocalBackupDialog(ft.AlertDialog):
         )
 
         def aplicar_modo(modo: str):
-            self.app_page.pop_dialog()
+            try:
+                self.app_page.pop_dialog()
+            except Exception:
+                pass
             exito, msg, stats = self.app_state.import_backup_data(datos_a_importar, mode=modo)
             if exito:
+                self._cerrar()
+                if self.on_restored:
+                    try:
+                        self.on_restored()
+                    except Exception as err:
+                        logger.error(f"Error al ejecutar callback on_restored: {err}")
                 self._mostrar_snackbar("Datos restaurados con éxito.")
                 self.tab_selector.selected = ["guardar"]
-                self._mostrar_tab_guardar()
+                try:
+                    self._mostrar_tab_guardar()
+                except Exception:
+                    pass
             else:
                 self._mostrar_snackbar(msg, error=True)
 

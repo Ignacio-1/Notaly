@@ -10,7 +10,7 @@ import pytest
 
 def test_responsive_tarjeta_cursos_bounds(driver):
     """Verifica que las tarjetas de curso en CursosView respeten los márgenes laterales del emulador."""
-    driver.ensure_in_cursos_view() if hasattr(driver, "ensure_in_cursos_view") else driver.ensure_in_colegio()
+    driver.ensure_in_cursos_view() if hasattr(driver, "ensure_in_cursos_view") else driver.ensure_in_colegios()
 
     hierarchy = driver.dump_hierarchy()
     screen_w = driver.get_screen_width() if hasattr(driver, "get_screen_width") else 1080

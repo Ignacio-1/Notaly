@@ -99,6 +99,7 @@ class AppState:
 
     def __init__(self, on_change: Callable[[], None] | None = None, data_path: str | None = None):
         self.on_change = on_change
+        self.on_backup_restored: Callable[[], None] | None = None
         self.data_path = data_path or gestor_datos.leer_ruta_config() or gestor_datos.obtener_ruta_datos_por_defecto()
         self.data: dict = {K_COLEGIOS: {}}
 
@@ -1721,8 +1722,23 @@ class AppState:
         if not isinstance(datos_origen, dict) or K_COLEGIOS not in datos_origen:
             return False, "El archivo seleccionado no tiene el formato válido de Notaly.", {}
 
+        # Limpiar filtros de búsqueda para no ocultar datos recién restaurados
+        self.search_query_colegios = ""
+        self.search_query_cursos = ""
+
         if mode == "replace":
             self.data = datos_origen
+            # Sanitizar selección actual si ya no existe en la base restaurada
+            if self.selected_colegio and self.selected_colegio not in self.data.get(K_COLEGIOS, {}):
+                self.selected_colegio = None
+                self.selected_curso = None
+                self.selected_alumno_id = None
+            elif self.selected_colegio and self.selected_curso:
+                cursos = self.data.get(K_COLEGIOS, {}).get(self.selected_colegio, {}).get(K_CURSOS, {})
+                if self.selected_curso not in cursos:
+                    self.selected_curso = None
+                    self.selected_alumno_id = None
+
             self.save_data()
             summary = self.get_data_summary()
             msg = (
@@ -1731,6 +1747,12 @@ class AppState:
                 f"• Cursos: {summary['total_cursos']}\n"
                 f"• Alumnos: {summary['total_alumnos']}"
             )
+            if self.on_backup_restored:
+                try:
+                    self.on_backup_restored()
+                except Exception as e:
+                    logger.error("Error al ejecutar on_backup_restored tras reemplazo: %s", e)
+
             return True, msg, {
                 "colegios_nuevos": summary["total_colegios"],
                 "cursos_nuevos": summary["total_cursos"],
@@ -1746,6 +1768,12 @@ class AppState:
                 f"• Cursos nuevos agregados: {stats['cursos_nuevos']}\n"
                 f"• Alumnos nuevos agregados: {stats['alumnos_nuevos']}"
             )
+            if self.on_backup_restored:
+                try:
+                    self.on_backup_restored()
+                except Exception as e:
+                    logger.error("Error al ejecutar on_backup_restored tras fusión: %s", e)
+
             return True, msg, stats
 
     # =========================================================================

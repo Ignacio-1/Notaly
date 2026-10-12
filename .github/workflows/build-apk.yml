@@ -1,4 +1,4 @@
-name: Compilar y Firmar APK Android (Notaly)
+name: Compilar y Firmar AAB y APK Android (Notaly)
 
 on:
   workflow_dispatch:
@@ -6,7 +6,7 @@ on:
     branches: [ main, master ]
 
 jobs:
-  build-apk:
+  build-android:
     runs-on: ubuntu-latest
     timeout-minutes: 120
 
@@ -34,7 +34,11 @@ jobs:
       - name: Instalar dependencias Python
         run: |
           python -m pip install --upgrade pip setuptools wheel
-          pip install "flet[all]>=0.28.0" fpdf2 requests Pillow
+          pip install "flet[all]>=0.28.0" fpdf2 requests Pillow python-minifier
+
+      - name: Ofuscar y proteger código fuente (Anti-Reversing)
+        run: |
+          python scripts/obfuscate_pipeline.py
 
       - name: Detectar versión de Flutter requerida por Flet
         id: flet-flutter
@@ -71,7 +75,23 @@ jobs:
 
           yes | flutter doctor --android-licenses || true
 
-      - name: Compilar APK con Flet
+      - name: Compilar AAB para Google Play Store
+        env:
+          FLET_CLI_NO_RICH_OUTPUT: "true"
+        run: |
+          flet build aab . \
+            --module-name mobile_app \
+            --project notaly \
+            --product "Notaly" \
+            --org com.notaly.app \
+            --build-version 2.0.0 \
+            --compile-app \
+            --cleanup-app \
+            --yes \
+            --no-rich-output \
+            --verbose
+
+      - name: Compilar APK para pruebas directas
         env:
           FLET_CLI_NO_RICH_OUTPUT: "true"
         run: |
@@ -81,20 +101,20 @@ jobs:
             --product "Notaly" \
             --org com.notaly.app \
             --build-version 2.0.0 \
-            --android-permissions \
-              "android.permission.READ_EXTERNAL_STORAGE=true" \
-              "android.permission.WRITE_EXTERNAL_STORAGE=true" \
-              "android.permission.MANAGE_EXTERNAL_STORAGE=true" \
+            --compile-app \
+            --cleanup-app \
             --yes \
             --no-rich-output \
             --verbose
 
-      - name: Verificar APK generado
+      - name: Verificar binarios generados
         run: |
-          ls -lah build/apk || { echo "No se generó build/apk"; exit 1; }
-          find build/apk -name "*.apk" -type f
+          echo "=== Archivos AAB generados ==="
+          find build/aab -name "*.aab" -type f || true
+          echo "=== Archivos APK generados ==="
+          find build/apk -name "*.apk" -type f || true
 
-      - name: Firmar APK con apksigner (si hay secrets)
+      - name: Firmar binarios (si hay secrets configurados)
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
@@ -102,35 +122,52 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           if [ -z "$KEYSTORE_BASE64" ]; then
-            echo "No hay keystore configurado; no se firma."
+            echo "No hay keystore configurado en secrets; se generan sin firmar de producción."
             exit 0
           fi
 
           echo "$KEYSTORE_BASE64" | base64 -d > release.keystore
           APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -n 1)
 
-          if [ -z "$APKSIGNER" ]; then
-            echo "No se encontró apksigner"
-            exit 1
+          # Firmar APKs con apksigner
+          if [ -n "$APKSIGNER" ]; then
+            for apk in build/apk/*.apk; do
+              if [ -f "$apk" ] && [[ "$apk" != *"-signed.apk" ]]; then
+                "$APKSIGNER" sign \
+                  --ks release.keystore \
+                  --ks-pass "pass:$KEYSTORE_PASSWORD" \
+                  --ks-key-alias "$KEY_ALIAS" \
+                  --key-pass "pass:$KEY_PASSWORD" \
+                  --out "${apk%.apk}-signed.apk" "$apk"
+                rm -f "$apk"
+              fi
+            done
           fi
 
-          for apk in build/apk/*.apk; do
-            if [ -f "$apk" ] && [[ "$apk" != *"-signed.apk" ]]; then
-              "$APKSIGNER" sign \
-                --ks release.keystore \
-                --ks-pass "pass:$KEYSTORE_PASSWORD" \
-                --ks-key-alias "$KEY_ALIAS" \
-                --key-pass "pass:$KEY_PASSWORD" \
-                --out "${apk%.apk}-signed.apk" "$apk"
-              rm -f "$apk"
+          # Firmar AABs con jarsigner
+          for aab in build/aab/*.aab; do
+            if [ -f "$aab" ] && [[ "$aab" != *"-signed.aab" ]]; then
+              jarsigner \
+                -keystore release.keystore \
+                -storepass "$KEYSTORE_PASSWORD" \
+                -keypass "$KEY_PASSWORD" \
+                "$aab" "$KEY_ALIAS"
+              mv "$aab" "${aab%.aab}-signed.aab"
             fi
           done
 
           rm -f release.keystore
 
-      - name: Subir APK como artefacto
+      - name: Subir AAB para Google Play Store
+        uses: actions/upload-artifact@v4
+        with:
+          name: Notaly-GooglePlay-AAB
+          path: build/aab/*
+          retention-days: 30
+
+      - name: Subir APK para pruebas en dispositivos
         uses: actions/upload-artifact@v4
         with:
           name: Notaly-Android-APK
-          path: build/apk/*.apk
+          path: build/apk/*
           retention-days: 30

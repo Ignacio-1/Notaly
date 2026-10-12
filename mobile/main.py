@@ -31,7 +31,35 @@ from mobile.components.global_search import GlobalSearchBar
 from mobile.theme import PRIMARY, TEXT_MAIN, TEXT_MUTED, BORDER_COLOR, BG_PAGE, SURFACE_WHITE
 
 
+def _verificar_integridad_app() -> bool:
+    """
+    Verifica la integridad de la app en producción (Anti-Tampering).
+    En Android, asegura que el paquete de ejecución sea el oficial (com.notaly.app).
+    En desarrollo, pruebas de pytest o entornos de escritorio no bloquea.
+    """
+    # En desarrollo o pruebas locales no bloqueamos
+    if os.getenv("NOTALY_DEV") or sys.platform in ("win32", "darwin"):
+        return True
+
+    # Comprobación de depurador adjunto en producción
+    if os.getenv("NOTALY_ENV") != "development" and sys.gettrace() is not None:
+        logger.warning("Depurador activo detectado en entorno de producción.")
+        return False
+
+    # Comprobación del paquete oficial en almacenamiento Android
+    flet_storage = os.getenv("FLET_APP_STORAGE_DATA", "")
+    if flet_storage and "com.notaly.app" not in flet_storage:
+        logger.critical("Identificador de paquete alterado o reempaquetado no autorizado.")
+        return False
+
+    return True
+
+
 def main(page: ft.Page):
+    if not _verificar_integridad_app():
+        page.add(ft.Text("Error: Verificación de integridad fallida.", color="red"))
+        return
+
     # Inicializar servicios de Flet (archivos y portapapeles)
     file_picker = ft.FilePicker()
     clipboard = ft.Clipboard()
@@ -75,13 +103,33 @@ def main(page: ft.Page):
             main_container.content = EstadisticasView(state, page, on_navigate=navigate)
         page.update()
 
+    def al_restaurar_copia():
+        # Validar consistencia tras la restauración (combinar o reemplazar)
+        colegios = state.get_colegios()
+        if not state.selected_colegio or state.selected_colegio not in colegios:
+            state.selected_colegio = None
+            state.selected_curso = None
+            state.selected_alumno_id = None
+            navigate("colegios")
+        else:
+            cursos = state.get_cursos(state.selected_colegio)
+            if state.selected_curso and state.selected_curso not in cursos:
+                state.selected_curso = None
+                state.selected_alumno_id = None
+                navigate("cursos")
+            else:
+                navigate(state.current_screen)
+        page.update()
+
+    state.on_backup_restored = al_restaurar_copia
+
     def abrir_estadisticas_global():
         state.origen_pantalla = state.current_screen
         state.estadisticas_nivel = "colegio"
         navigate("estadisticas")
 
     def abrir_modal_copias():
-        dlg = LocalBackupDialog(state, page, file_picker=file_picker)
+        dlg = LocalBackupDialog(state, page, file_picker=file_picker, on_restored=al_restaurar_copia)
         page.show_dialog(dlg)
         page.update()
 
