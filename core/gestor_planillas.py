@@ -14,6 +14,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -321,28 +322,64 @@ def depurar_huerfanos(directorio: Path | None = None) -> int:
         return huerfanos
 
 
+MSG_REQUIERE_VISOR_NATIVO = "REQUIERE_VISOR_NATIVO"
+"""Señal para la capa UI: el SO no permite abrir el archivo desde Python
+(Android/iOS o Linux sin xdg-open) y debe delegarse en el selector nativo."""
+
+_MIME_TYPES = {
+    ".pdf": "application/pdf",
+    ".csv": "text/csv",
+    ".txt": "text/plain",
+}
+
+
+def es_plataforma_movil() -> bool:
+    """
+    Detecta si el intérprete corre en Android o iOS.
+    En Android, Python reporta sys.platform == "linux" (o "android" en 3.13+),
+    por lo que se combinan varios marcadores del entorno.
+    """
+    if sys.platform in ("android", "ios"):
+        return True
+    if hasattr(sys, "getandroidapilevel"):
+        return True
+    if os.environ.get("FLET_PLATFORM", "").lower() in ("android", "ios"):
+        return True
+    return any(os.environ.get(v) for v in ("ANDROID_ROOT", "ANDROID_DATA", "ANDROID_ARGUMENT"))
+
+
+def obtener_mime_type(ruta: str | Path) -> str:
+    """Retorna el MIME type según la extensión (insensible a mayúsculas)."""
+    return _MIME_TYPES.get(Path(str(ruta)).suffix.lower(), "application/octet-stream")
+
+
 def abrir_archivo(ruta_str: str) -> tuple[bool, str | None]:
     """
     Solicita al sistema operativo abrir el archivo con el visor predeterminado.
-    En Windows usa os.startfile; en macOS 'open'; en Linux 'xdg-open'.
-    En entornos móviles/Android captura y retorna para delegación o aviso.
-    Captura excepciones de ausencia de aplicación o archivo sin terminar abruptamente.
+    - Windows: os.startfile. macOS: 'open'. Linux escritorio: 'xdg-open'.
+    - Android/iOS (o Linux sin xdg-open): retorna (False, MSG_REQUIERE_VISOR_NATIVO)
+      sin ejecutar subprocesos, para que la UI delegue en el selector nativo.
+    Captura excepciones sin terminar abruptamente.
     """
     ruta_p = Path(ruta_str)
     if not ruta_p.exists():
         return False, "El archivo no existe"
 
+    if es_plataforma_movil():
+        return False, MSG_REQUIERE_VISOR_NATIVO
+
     try:
         if sys.platform == "win32":
             os.startfile(str(ruta_p.resolve()))  # type: ignore[attr-defined]
             return True, None
-        elif sys.platform == "darwin":
+        if sys.platform == "darwin":
             subprocess.run(["open", str(ruta_p.resolve())], check=True)
             return True, None
-        else:
-            # Linux / Android (si xdg-open está disponible)
-            subprocess.run(["xdg-open", str(ruta_p.resolve())], check=True)
-            return True, None
+        if not shutil.which("xdg-open"):
+            return False, MSG_REQUIERE_VISOR_NATIVO
+        subprocess.run(["xdg-open", str(ruta_p.resolve())], check=True)
+        return True, None
     except Exception as e:
         logger.warning("No se pudo abrir el archivo %s: %s", ruta_str, e)
         return False, str(e)
+

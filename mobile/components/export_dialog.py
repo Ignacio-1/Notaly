@@ -24,6 +24,7 @@ from core.exportador import (
 from core.constants import K_ALUMNOS
 from core import gestor_datos
 from core import gestor_planillas
+from mobile.components.share_helper import compartir_archivo
 from mobile.theme import (
     PRIMARY,
     TEXT_MAIN,
@@ -199,22 +200,13 @@ class ExportDialog(ft.AlertDialog):
         return gestor_planillas.obtener_directorio_exportaciones()
 
     def _intentar_compartir(self, ruta_str: str, nombre_archivo: str):
-        """Dispara la hoja de compartir nativa en Android si el servicio ft.Share está disponible."""
+        """Dispara la hoja de compartir nativa (await real de ft.Share.share_files)."""
         if self.app_page:
-            try:
-                if hasattr(ft, "Share") and hasattr(ft, "ShareFile"):
-                    share = ft.Share()
-                    if hasattr(self.app_page, "services") and isinstance(self.app_page.services, list):
-                        self.app_page.services.append(share)
-                    elif hasattr(self.app_page, "overlay"):
-                        self.app_page.overlay.append(share)
-                    self.app_page.update()
-                    share.share_files(
-                        files=[ft.ShareFile(ruta_str)],
-                        text=f"Reporte de {self.curso_nombre}: {nombre_archivo}",
-                    )
-            except Exception:
-                pass
+            compartir_archivo(
+                self.app_page,
+                ruta_str,
+                texto=f"Reporte de {self.curso_nombre}: {nombre_archivo}",
+            )
 
     def _copiar_texto_al_portapapeles(self, texto: str) -> bool:
         copiado = False

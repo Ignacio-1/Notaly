@@ -11,6 +11,7 @@ from pathlib import Path
 import flet as ft
 
 from mobile.state import AppState
+from mobile.components.share_helper import compartir_archivo, abrir_archivo_planilla
 from mobile.theme import ThemeTokens, LIGHT_TOKENS, get_tokens
 
 
@@ -222,22 +223,20 @@ class PlanillasCursoDialog(ft.AlertDialog):
     def _compartir(self, ruta: str, nombre: str):
         if not ruta:
             return
-        if hasattr(ft, "Share") and hasattr(ft, "ShareFile"):
-            try:
-                share = ft.Share()
-                if hasattr(self.app_page, "services") and isinstance(self.app_page.services, list):
-                    self.app_page.services.append(share)
-                elif hasattr(self.app_page, "overlay"):
-                    self.app_page.overlay.append(share)
-                self.app_page.update()
-                share.share_files(files=[ft.ShareFile(ruta)], text=f"Planilla: {nombre}")
-            except Exception as e:
-                self._mostrar_snackbar(f"No se pudo compartir: {e}", error=True)
-        else:
-            self._mostrar_snackbar(f"Archivo guardado en: {ruta}")
+        compartir_archivo(
+            self.app_page,
+            ruta,
+            texto=f"Planilla: {nombre}",
+            on_error=lambda msg: self._mostrar_snackbar(f"No se pudo compartir: {msg}", error=True),
+        )
 
     def _abrir(self, ruta: str):
-        exito, err = self.state.abrir_planilla_exportada(ruta)
+        exito, err = abrir_archivo_planilla(
+            self.app_page,
+            self.state,
+            ruta,
+            on_error=lambda msg: self._mostrar_snackbar(f"No se pudo abrir el archivo: {msg}", error=True),
+        )
         if not exito:
             if err and "no existe" in err.lower():
                 self._mostrar_snackbar("El archivo físico ya no existe y fue depurado.", error=True)

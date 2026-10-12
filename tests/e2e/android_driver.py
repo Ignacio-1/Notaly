@@ -218,7 +218,11 @@ class AndroidDriver:
     def ensure_in_colegios(self):
         """Regresa hasta la pantalla inicial de ColegiosView."""
         self._ensure_app_foreground()
-        for _ in range(4):
+        # Si quedó abierta la búsqueda interactiva, cerrarla
+        if self.is_visible("Dismiss"):
+            self.press_back()
+            time.sleep(0.5)
+        for _ in range(6):
             if self.is_visible("+ Colegio"):
                 return
             if self.is_visible("Volver"):
@@ -231,6 +235,9 @@ class AndroidDriver:
     def ensure_in_curso(self):
         """Garantiza que la pantalla activa sea NotasView dentro de un curso."""
         self._ensure_app_foreground()
+        if self.is_visible("Dismiss"):
+            self.press_back()
+            time.sleep(0.5)
         if self.is_visible("1° Trim") or self.is_visible("+ Alumno"):
             return
 
