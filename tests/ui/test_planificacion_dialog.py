@@ -233,3 +233,35 @@ def test_planificacion_dialog_cerrar_y_flush(temp_state):
 
     assert temp_state.flush_auto_save.called
     assert on_close_mock.called
+
+
+def test_planificacion_dialog_modo_oscuro_y_tokens(temp_state):
+    from mobile.theme import DARK_TOKENS, LIGHT_TOKENS
+    page = MockMobilePage(width=360, height=800)
+
+    # Modo Oscuro
+    dlg_dark = PlanificacionCursoDialog(
+        state=temp_state,
+        colegio="Escuela 1",
+        curso="3A",
+        page=page,
+        tokens=DARK_TOKENS,
+    )
+    assert dlg_dark.tokens == DARK_TOKENS
+    assert dlg_dark.bgcolor == DARK_TOKENS.surface
+    assert dlg_dark.title.controls[0].color == DARK_TOKENS.primary
+    assert dlg_dark.title.controls[1].controls[0].color == DARK_TOKENS.text_main
+    assert dlg_dark.title.controls[1].controls[1].color == DARK_TOKENS.text_muted
+    assert dlg_dark.content.width == max(280, min(360 - 32, 380))
+
+    # Modo Claro por defecto
+    dlg_light = PlanificacionCursoDialog(
+        state=temp_state,
+        colegio="Escuela 1",
+        curso="3A",
+        page=page,
+        tokens=LIGHT_TOKENS,
+    )
+    assert dlg_light.tokens == LIGHT_TOKENS
+    assert dlg_light.bgcolor == LIGHT_TOKENS.surface
+

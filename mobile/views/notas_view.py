@@ -1546,6 +1546,12 @@ class NotasView(ft.Container):
         celdas["prom_text"].color = fg_prom
         celdas["prom_container"].bgcolor = bg_prom
 
+        if "fin_text" in celdas and "fin_container" in celdas:
+            bg_fin, fg_fin = self._color_por_nota(nota_final_red)
+            celdas["fin_text"].value = str(nota_final_red) if nota_final_red is not None else "-"
+            celdas["fin_text"].color = fg_fin
+            celdas["fin_container"].bgcolor = bg_fin
+
         # Actualizar píldoras de trimestres (.grade-pill)
         if id_str in self.pills_alumnos:
             pills = self.pills_alumnos[id_str]
@@ -1634,6 +1640,7 @@ class NotasView(ft.Container):
                 self.chevron_icons[sid_str].name = ft.Icons.EXPAND_LESS
                 self.chevron_icons[sid_str].color = tok.primary
             self._actualizar_slots_ui(sid_str)
+            self._actualizar_fila_alumno_ui(sid_str)
 
         self._actualizar_dock_labels()
         self.app_page.update()
@@ -1699,6 +1706,7 @@ class NotasView(ft.Container):
             state=self.state,
             colegio=colegio,
             curso=curso,
+            tokens=self.state.tokens,
             on_close=lambda: None,
             page=self.app_page,
         )

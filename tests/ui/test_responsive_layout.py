@@ -131,8 +131,9 @@ def test_planificaciones_dialog_responsive_and_no_wrap(responsive_state):
     assert contador.no_wrap is True
     assert contador.overflow == ft.TextOverflow.ELLIPSIS
 
-    # Botón Añadir planificación debe tener padding compacto
-    btn_anadir = top_row.controls[1]
+    # Botón Añadir planificación debe estar en la fila inferior de acciones y tener dimensiones compactas
+    actions_row = card.content.controls[-1]
+    btn_anadir = actions_row.controls[0]
     assert isinstance(btn_anadir, ft.OutlinedButton)
     assert btn_anadir.height <= 32
 

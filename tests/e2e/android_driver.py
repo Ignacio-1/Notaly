@@ -35,7 +35,18 @@ class UIElement:
             return int(matches[0]), int(matches[1]), int(matches[2]), int(matches[3])
         return 0, 0, 0, 0
 
-    def tap(self):
+    def tap(self, direct: bool = False):
+        if not direct:
+            # Si este nodo contiene un botón interactivo específico (ej. view_leading de SearchBar), pulsar el hijo
+            # solo si el propio nodo no es explícitamente clickable
+            if self.node.attrib.get("clickable", "false") != "true":
+                for child in self.node.iter("node"):
+                    if child is not self.node and child.attrib.get("clickable", "false") == "true":
+                        b_raw = child.attrib.get("bounds", "")
+                        bx1, by1, bx2, by2 = self._parse_bounds(b_raw)
+                        if bx2 > bx1 and by2 > by1:
+                            self.driver.tap_coordinates((bx1 + bx2) // 2, (by1 + by2) // 2)
+                            return
         self.driver.tap_coordinates(self.cx, self.cy)
 
     def set_text(self, text: str):
@@ -209,35 +220,43 @@ class AndroidDriver:
 
     def _ensure_app_foreground(self):
         """Si el emulador está en el Launcher o fuera de la app, levanta Notaly."""
-        hierarchy = self.dump_hierarchy()
-        is_in_app = any(self.package_name in el.node.attrib.get("package", "") for el in hierarchy)
-        if not is_in_app or not hierarchy:
-            self.launch_app(clear_data=False)
-            time.sleep(2.0)
+        focused, _, _ = self.run_cmd('shell "dumpsys window | grep -E \'mCurrentFocus|mFocusedApp\'"')
+        if self.package_name not in focused:
+            self.run_cmd(f"shell monkey -p {self.package_name} -c android.intent.category.LAUNCHER 1")
+            time.sleep(1.5)
+
+    def _dismiss_active_modals(self):
+        """Cierra diálogos modales o popups que hayan quedado abiertos."""
+        for btn in ["Listo", "Cerrar", "Cancelar", "Dismiss"]:
+            if self.is_visible(btn):
+                self.tap(btn)
+                time.sleep(0.5)
 
     def ensure_in_colegios(self):
         """Regresa hasta la pantalla inicial de ColegiosView."""
         self._ensure_app_foreground()
-        # Si quedó abierta la búsqueda interactiva, cerrarla
-        if self.is_visible("Dismiss"):
-            self.press_back()
-            time.sleep(0.5)
+        self._dismiss_active_modals()
         for _ in range(6):
             if self.is_visible("+ Colegio"):
                 return
+            if self.is_visible("Inicio"):
+                self.tap("Inicio")
+                time.sleep(0.8)
+                self._dismiss_active_modals()
+                if self.is_visible("+ Colegio"):
+                    return
             if self.is_visible("Volver"):
                 self.tap("Volver")
                 time.sleep(0.8)
             else:
                 self.press_back()
                 time.sleep(0.8)
+            self._dismiss_active_modals()
 
     def ensure_in_curso(self):
         """Garantiza que la pantalla activa sea NotasView dentro de un curso."""
         self._ensure_app_foreground()
-        if self.is_visible("Dismiss"):
-            self.press_back()
-            time.sleep(0.5)
+        self._dismiss_active_modals()
         if self.is_visible("1° Trim") or self.is_visible("+ Alumno"):
             return
 

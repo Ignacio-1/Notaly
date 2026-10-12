@@ -760,6 +760,31 @@ class TestScrollPreservationAndInPlaceUpdates:
         assert view.expanded_student_id == '2'
         assert view.active_grade_index == 0
 
+    def test_nota_final_reactive_update_on_grade_entry_and_expand(self, isolated_app_state, mock_page_mobile):
+        """Verifica que Nota Final se muestre reactivamente y se actualice al entrar notas o expandir un alumno."""
+        isolated_app_state.selected_colegio = 'Colegio Nacional'
+        isolated_app_state.selected_curso = '5to A'
+        isolated_app_state.active_trimestre = 0
+
+        view = NotasView(isolated_app_state, mock_page_mobile, on_navigate=lambda x: None)
+
+        # Alumno 1 (aprobado: promedio (8+7)/2 = 7.5 -> redondeo 8)
+        celdas1 = view.alumnos_celdas['1']
+        assert celdas1['prom_text'].value == "8"
+        assert celdas1['fin_text'].value == "8"
+        assert celdas1['fin_container'].bgcolor == isolated_app_state.tokens.grade_pass_bg
+
+        # Aplicar nota 10 en slot 0: nuevo promedio (10+7)/2 = 8.5 -> redondeo 9
+        view._aplicar_nota_dock(10.0)
+        assert celdas1['fin_text'].value == "9"
+        assert celdas1['fin_container'].bgcolor == isolated_app_state.tokens.grade_pass_bg
+
+        # Expandir alumno 2 (desaprobado: (4+5+3)/3 = 4.0 -> redondeo 4)
+        view._toggle_expand_alumno('2')
+        celdas2 = view.alumnos_celdas['2']
+        assert celdas2['fin_text'].value == "4"
+        assert celdas2['fin_container'].bgcolor == isolated_app_state.tokens.grade_fail_bg
+
     def test_student_card_toggle_in_place_preserves_listview(self, isolated_app_state, mock_page_mobile):
         """Verifica que expandir y colapsar alumnos no destruya ni reconstruya la ListView, preservando el scroll."""
         isolated_app_state.selected_colegio = 'Colegio Nacional'

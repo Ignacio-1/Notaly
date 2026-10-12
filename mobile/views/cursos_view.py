@@ -304,6 +304,7 @@ class CursosView(ft.Container):
             colegio=self.state.selected_colegio,
             curso_inicial=curso_foco,
             page=self.app_page,
+            tokens=self.state.tokens,
             on_close=lambda: (self._build_ui(), self.app_page.update()),
         )
         self.app_page.show_dialog(dlg)
@@ -314,6 +315,7 @@ class CursosView(ft.Container):
             state=self.state,
             colegio=self.state.selected_colegio,
             curso=cur,
+            tokens=self.state.tokens,
             on_close=lambda: (self._build_ui(), self.app_page.update()),
             page=self.app_page,
         )

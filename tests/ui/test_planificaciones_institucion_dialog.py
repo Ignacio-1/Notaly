@@ -108,10 +108,10 @@ def test_planificaciones_dialog_boton_mandatorio_anadir_planificacion(temp_state
         page=page,
     )
 
-    # Cada tarjeta de curso debe tener el botón con el texto exacto "Añadir planificación"
+    # Cada tarjeta de curso debe tener el botón con el texto exacto "Añadir planificación" en su fila inferior de acciones
     for card in dlg.cursos_content_col.controls:
-        top_row = card.content.controls[0]
-        btn = top_row.controls[1]
+        actions_row = card.content.controls[-1]
+        btn = actions_row.controls[0]
         assert isinstance(btn, ft.OutlinedButton)
         btn_text = getattr(btn, "text", None) or (btn.content if isinstance(btn.content, str) else getattr(btn.content, "value", str(btn.content)))
         assert btn_text == "Añadir planificación"
@@ -181,3 +181,39 @@ def test_planificaciones_dialog_cerrar_y_callback(temp_state):
     assert len(page.dialog_stack) == 0
     assert on_close_mock.called
     assert dlg.open is False
+
+
+def test_planificaciones_dialog_modo_oscuro_y_tokens(temp_state):
+    from mobile.theme import DARK_TOKENS, LIGHT_TOKENS
+    page = MockMobilePage()
+    
+    # 1. Modo Oscuro explícito
+    dlg_dark = PlanificacionesInstitucionDialog(
+        state=temp_state,
+        colegio="Colegio San Martin",
+        page=page,
+        tokens=DARK_TOKENS,
+    )
+    assert dlg_dark.tokens == DARK_TOKENS
+    assert dlg_dark.bgcolor == DARK_TOKENS.surface
+    # El título debe adoptar text_main de dark tokens
+    assert dlg_dark.title.controls[1].controls[0].color == DARK_TOKENS.text_main
+    assert dlg_dark.title.controls[1].controls[1].color == DARK_TOKENS.text_muted
+    # Las tarjetas de cursos deben tener superficie oscura
+    card_dark = dlg_dark.cursos_content_col.controls[0]
+    assert card_dark.bgcolor == DARK_TOKENS.surface
+    # El botón Añadir planificación debe usar el primary de dark tokens
+    btn_dark = card_dark.content.controls[-1].controls[0]
+    assert btn_dark.style.color == DARK_TOKENS.primary
+
+    # 2. Modo Claro por defecto
+    dlg_light = PlanificacionesInstitucionDialog(
+        state=temp_state,
+        colegio="Colegio San Martin",
+        page=page,
+        tokens=LIGHT_TOKENS,
+    )
+    assert dlg_light.tokens == LIGHT_TOKENS
+    assert dlg_light.bgcolor == LIGHT_TOKENS.surface
+    assert dlg_light.title.controls[1].controls[0].color == LIGHT_TOKENS.text_main
+

@@ -3,6 +3,7 @@ Diálogo modal consolidado de planificaciones para todos los cursos de una insti
 Permite visualizar de forma agrupada y cronológica las clases planificadas de cada curso,
 filtrar ágilmente por curso mediante selector de chips y acceder a 'Añadir planificación'
 mediante el sub-diálogo interactivo de calendario PlanificacionCursoDialog.
+Soporte completo para Modo Claro y Modo Oscuro con diseño Material Design 3.
 """
 
 from typing import Callable
@@ -11,20 +12,31 @@ import flet as ft
 from mobile.state import AppState
 from mobile.components.planificacion_dialog import PlanificacionCursoDialog, format_fecha_badge
 from mobile.theme import (
-    PRIMARY,
-    PRIMARY_LIGHT,
-    TEXT_MAIN,
-    TEXT_MUTED,
-    BORDER_COLOR,
-    BG_PAGE,
-    SURFACE_WHITE,
+    ThemeTokens,
+    LIGHT_TOKENS,
+    get_tokens,
 )
+
+
+def _resolve_tokens(
+    tokens: ThemeTokens | None = None,
+    page: ft.Page | None = None,
+    state: AppState | None = None,
+) -> ThemeTokens:
+    """Resuelve los tokens de diseño priorizando parámetros explícitos, estado o tema de la página."""
+    if tokens is not None:
+        return tokens
+    if state is not None and hasattr(state, "tokens") and state.tokens is not None:
+        return state.tokens
+    if page is not None and getattr(page, "theme_mode", None) == ft.ThemeMode.DARK:
+        return get_tokens("dark")
+    return LIGHT_TOKENS
 
 
 class PlanificacionesInstitucionDialog(ft.AlertDialog):
     """
     Diálogo modal consolidado con visor de planificaciones por curso de la institución.
-    Utiliza scroll vertical único para evitar colisiones y desbordamientos en pantallas móviles.
+    Utiliza scroll vertical único y adaptación responsiva en pantallas móviles.
     """
 
     def __init__(
@@ -34,21 +46,24 @@ class PlanificacionesInstitucionDialog(ft.AlertDialog):
         curso_inicial: str | None = None,
         on_close: Callable[[], None] | None = None,
         page: ft.Page | None = None,
+        tokens: ThemeTokens | None = None,
     ):
         self.state = state
         self.colegio = colegio
         self.filtro_curso = curso_inicial
         self.on_close_cb = on_close
         self.app_page = page
+        self.tokens = _resolve_tokens(tokens, page, state)
+        tok = self.tokens
 
         # Encabezado
         title = ft.Row(
             [
-                ft.Icon(ft.Icons.CALENDAR_MONTH, color=PRIMARY, size=22),
+                ft.Icon(ft.Icons.CALENDAR_MONTH, color=tok.primary, size=22),
                 ft.Column(
                     [
-                        ft.Text("Planificaciones", weight=ft.FontWeight.BOLD, size=16, color=TEXT_MAIN),
-                        ft.Text(f"Institución: {colegio}", size=12, color=TEXT_MUTED),
+                        ft.Text("Planificaciones", weight=ft.FontWeight.BOLD, size=16, color=tok.text_main),
+                        ft.Text(f"Institución: {colegio}", size=12, color=tok.text_muted),
                     ],
                     spacing=1,
                     tight=True,
@@ -73,7 +88,7 @@ class PlanificacionesInstitucionDialog(ft.AlertDialog):
         self.scroll_column = ft.Column(
             [
                 self.chips_row,
-                ft.Divider(height=1, color=BORDER_COLOR),
+                ft.Divider(height=1, color=tok.border_color),
                 self.cursos_content_col,
             ],
             scroll=ft.ScrollMode.AUTO,
@@ -81,14 +96,16 @@ class PlanificacionesInstitucionDialog(ft.AlertDialog):
             tight=False,
         )
 
-        calc_w = 340
-        if self.app_page and hasattr(self.app_page, "width") and self.app_page.width:
-            calc_w = min(self.app_page.width - 24, 380)
+        # Dimensiones responsivas M3
+        pw = self.app_page.width if self.app_page and self.app_page.width else 390
+        ph = self.app_page.height if self.app_page and self.app_page.height else 844
+        calc_w = max(280, min(pw - 32, 380))
+        self.max_dialog_h = max(240, min(ph * 0.72, 520))
 
         self.dialog_container = ft.Container(
             content=self.scroll_column,
             width=calc_w,
-            height=380,
+            height=min(self.max_dialog_h, 380),
             padding=ft.Padding(left=0, right=0, top=4, bottom=4),
         )
 
@@ -96,7 +113,7 @@ class PlanificacionesInstitucionDialog(ft.AlertDialog):
             ft.FilledButton(
                 "Listo",
                 style=ft.ButtonStyle(
-                    bgcolor=PRIMARY,
+                    bgcolor=tok.primary,
                     color=ft.Colors.WHITE,
                     shape=ft.RoundedRectangleBorder(radius=8),
                 ),
@@ -110,10 +127,12 @@ class PlanificacionesInstitucionDialog(ft.AlertDialog):
             actions=actions,
             actions_alignment=ft.MainAxisAlignment.END,
             modal=True,
+            bgcolor=tok.surface,
         )
 
     def _render_chips(self):
         """Renderiza los chips de filtrado horizontal por curso."""
+        tok = self.tokens
         cursos = self.state.get_cursos(self.colegio)
         if len(cursos) <= 1:
             self.chips_row.visible = False
@@ -129,10 +148,10 @@ class PlanificacionesInstitucionDialog(ft.AlertDialog):
                 "Todos",
                 size=12,
                 weight=ft.FontWeight.BOLD if is_todos else ft.FontWeight.NORMAL,
-                color=ft.Colors.WHITE if is_todos else TEXT_MAIN,
+                color=ft.Colors.WHITE if is_todos else tok.text_main,
             ),
-            bgcolor=PRIMARY if is_todos else SURFACE_WHITE,
-            border=ft.Border.all(1, PRIMARY if is_todos else BORDER_COLOR),
+            bgcolor=tok.primary if is_todos else tok.surface_variant,
+            border=ft.Border.all(1, tok.primary if is_todos else tok.border_color),
             border_radius=16,
             padding=ft.Padding(left=10, right=10, top=4, bottom=4),
             ink=True,
@@ -147,10 +166,10 @@ class PlanificacionesInstitucionDialog(ft.AlertDialog):
                     c,
                     size=12,
                     weight=ft.FontWeight.BOLD if is_active else ft.FontWeight.NORMAL,
-                    color=ft.Colors.WHITE if is_active else TEXT_MAIN,
+                    color=ft.Colors.WHITE if is_active else tok.text_main,
                 ),
-                bgcolor=PRIMARY if is_active else SURFACE_WHITE,
-                border=ft.Border.all(1, PRIMARY if is_active else BORDER_COLOR),
+                bgcolor=tok.primary if is_active else tok.surface_variant,
+                border=ft.Border.all(1, tok.primary if is_active else tok.border_color),
                 border_radius=16,
                 padding=ft.Padding(left=10, right=10, top=4, bottom=4),
                 ink=True,
@@ -171,6 +190,7 @@ class PlanificacionesInstitucionDialog(ft.AlertDialog):
 
     def _render_content(self):
         """Compila y renderiza las tarjetas de cursos y sus clases planificadas."""
+        tok = self.tokens
         self.cursos_content_col.controls.clear()
         resumen = self.state.get_resumen_planificaciones_institucion(self.colegio)
 
@@ -179,11 +199,11 @@ class PlanificacionesInstitucionDialog(ft.AlertDialog):
                 ft.Container(
                     content=ft.Column(
                         [
-                            ft.Icon(ft.Icons.INFO_OUTLINE, color=TEXT_MUTED, size=28),
+                            ft.Icon(ft.Icons.INFO_OUTLINE, color=tok.text_muted, size=28),
                             ft.Text(
                                 "No hay cursos registrados en esta institución.",
                                 size=13,
-                                color=TEXT_MUTED,
+                                color=tok.text_muted,
                                 text_align=ft.TextAlign.CENTER,
                             ),
                         ],
@@ -206,7 +226,8 @@ class PlanificacionesInstitucionDialog(ft.AlertDialog):
         if hasattr(self, "dialog_container"):
             num_cards = len(resumen_filtrado)
             total_clases_visible = sum(len(c.get("clases", [])) for c in resumen_filtrado)
-            calc_h = min(460, max(240, num_cards * 130 + total_clases_visible * 30 + 70))
+            max_h = getattr(self, "max_dialog_h", 460)
+            calc_h = min(max_h, max(240, num_cards * 140 + total_clases_visible * 30 + 80))
             self.dialog_container.height = calc_h
 
         for curso_info in resumen_filtrado:
@@ -214,7 +235,13 @@ class PlanificacionesInstitucionDialog(ft.AlertDialog):
             self.cursos_content_col.controls.append(card)
 
     def _build_curso_card(self, curso_info: dict) -> ft.Container:
-        """Construye la tarjeta visual para un curso específico dentro del visor."""
+        """
+        Construye la tarjeta visual para un curso específico dentro del visor.
+        Organiza el encabezado con 100% de ancho horizontal para título y horarios,
+        y ubica el botón 'Añadir planificación' en una fila de acciones inferior dedicada
+        para prevenir quiebres silábicos y superposiciones de texto (Regla 4 flet-mobile).
+        """
+        tok = self.tokens
         nom_curso = curso_info["curso"]
         horario = curso_info.get("horario", "")
         total_clases = curso_info.get("total_clases", 0)
@@ -226,11 +253,11 @@ class PlanificacionesInstitucionDialog(ft.AlertDialog):
             horario_widgets.append(
                 ft.Row(
                     [
-                        ft.Icon(ft.Icons.ACCESS_TIME_ROUNDED, size=12, color=TEXT_MUTED),
+                        ft.Icon(ft.Icons.ACCESS_TIME_ROUNDED, size=12, color=tok.text_muted),
                         ft.Text(
                             horario.strip(),
                             size=11,
-                            color=TEXT_MUTED,
+                            color=tok.text_muted,
                             no_wrap=True,
                             overflow=ft.TextOverflow.ELLIPSIS,
                         ),
@@ -245,12 +272,12 @@ class PlanificacionesInstitucionDialog(ft.AlertDialog):
             "Añadir planificación",
             icon=ft.Icons.EDIT_CALENDAR,
             style=ft.ButtonStyle(
-                color=PRIMARY,
-                side=ft.BorderSide(1, PRIMARY),
+                color=tok.primary,
+                side=ft.BorderSide(1, tok.primary),
                 shape=ft.RoundedRectangleBorder(radius=8),
-                padding=ft.Padding(8, 0, 8, 0),
+                padding=ft.Padding(10, 0, 10, 0),
             ),
-            height=30,
+            height=32,
             on_click=lambda e, cur=nom_curso: self._abrir_adicion_planificacion(cur),
         )
 
@@ -260,7 +287,7 @@ class PlanificacionesInstitucionDialog(ft.AlertDialog):
                 content=ft.Text(
                     "No hay clases planificadas para este curso.",
                     size=11,
-                    color=TEXT_MUTED,
+                    color=tok.text_muted,
                     italic=True,
                 ),
                 padding=ft.Padding(left=4, right=4, top=6, bottom=6),
@@ -273,9 +300,9 @@ class PlanificacionesInstitucionDialog(ft.AlertDialog):
                         c["fecha_badge"],
                         size=10,
                         weight=ft.FontWeight.BOLD,
-                        color=PRIMARY,
+                        color=tok.primary,
                     ),
-                    bgcolor=PRIMARY_LIGHT,
+                    bgcolor=tok.primary_light,
                     border_radius=6,
                     padding=ft.Padding(left=6, right=6, top=2, bottom=2),
                 )
@@ -284,7 +311,7 @@ class PlanificacionesInstitucionDialog(ft.AlertDialog):
                 tema_widget = ft.Text(
                     tema_txt,
                     size=12,
-                    color=TEXT_MAIN if c["tema"] else TEXT_MUTED,
+                    color=tok.text_main if c["tema"] else tok.text_muted,
                     italic=(not c["tema"]),
                     expand=True,
                 )
@@ -304,40 +331,48 @@ class PlanificacionesInstitucionDialog(ft.AlertDialog):
             else "Sin clases planificadas"
         )
 
+        # Encabezado del curso (ocupa todo el ancho, sin botones que lo estrangulen)
+        header_col = ft.Column(
+            [
+                ft.Text(nom_curso, size=15, weight=ft.FontWeight.BOLD, color=tok.text_main),
+                *horario_widgets,
+                ft.Text(contador_txt, size=11, color=tok.text_muted, no_wrap=True, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS),
+            ],
+            spacing=2,
+            tight=True,
+            expand=True,
+        )
+
+        header_row = ft.Row(
+            [header_col],
+            vertical_alignment=ft.CrossAxisAlignment.START,
+        )
+
+        # Fila inferior de acciones dedicada
+        actions_row = ft.Row(
+            [btn_anadir],
+            alignment=ft.MainAxisAlignment.END,
+        )
+
         return ft.Container(
             content=ft.Column(
                 [
-                    ft.Row(
-                        [
-                            ft.Column(
-                                [
-                                    ft.Text(nom_curso, size=14, weight=ft.FontWeight.BOLD, color=TEXT_MAIN),
-                                    *horario_widgets,
-                                    ft.Text(contador_txt, size=11, color=TEXT_MUTED, no_wrap=True, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS),
-                                ],
-                                spacing=2,
-                                tight=True,
-                                expand=True,
-                            ),
-                            btn_anadir,
-                        ],
-                        vertical_alignment=ft.CrossAxisAlignment.START,
-                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                    ),
-                    ft.Divider(height=1, color="#F1F5F9"),
+                    header_row,
+                    ft.Divider(height=1, color=tok.border_color),
                     clases_content,
+                    actions_row,
                 ],
                 spacing=8,
                 tight=True,
             ),
-            bgcolor=SURFACE_WHITE,
-            border=ft.Border.all(1, BORDER_COLOR),
+            bgcolor=tok.surface,
+            border=ft.Border.all(1, tok.border_color),
             border_radius=12,
             padding=12,
         )
 
     def _abrir_adicion_planificacion(self, curso: str):
-        """Abre PlanificacionCursoDialog pasando page para desapilar y refrescar reactivamente."""
+        """Abre PlanificacionCursoDialog pasando page y tokens para desapilar y refrescar reactivamente."""
         def on_subdialog_close():
             self._render_content()
             if self.app_page:
@@ -352,6 +387,7 @@ class PlanificacionesInstitucionDialog(ft.AlertDialog):
             curso=curso,
             on_close=on_subdialog_close,
             page=self.app_page,
+            tokens=self.tokens,
         )
         if self.app_page:
             self.app_page.show_dialog(sub_dlg)

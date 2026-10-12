@@ -12,13 +12,8 @@ import flet as ft
 
 from mobile.theme import (
     ThemeTokens,
-    PRIMARY,
-    PRIMARY_LIGHT,
-    TEXT_MAIN,
-    TEXT_MUTED,
-    BORDER_COLOR,
-    BG_PAGE,
-    SURFACE_WHITE,
+    LIGHT_TOKENS,
+    get_tokens,
 )
 from core.constants import K_TEMA, K_CLASES, K_HORARIO
 from mobile.state import AppState
@@ -43,6 +38,21 @@ def format_fecha_badge(fecha_iso: str) -> str:
         return fecha_iso
 
 
+def _resolve_tokens(
+    tokens: ThemeTokens | None = None,
+    page: ft.Page | None = None,
+    state: AppState | None = None,
+) -> ThemeTokens:
+    """Resuelve los tokens de diseño defensivamente priorizando parámetros, estado o tema de la página."""
+    if tokens is not None:
+        return tokens
+    if state is not None and hasattr(state, "tokens") and state.tokens is not None:
+        return state.tokens
+    if page is not None and getattr(page, "theme_mode", None) == ft.ThemeMode.DARK:
+        return get_tokens("dark")
+    return LIGHT_TOKENS
+
+
 class PlanificacionCursoDialog(ft.AlertDialog):
     """
     Diálogo modal de planificación de clases de un curso.
@@ -63,7 +73,7 @@ class PlanificacionCursoDialog(ft.AlertDialog):
         self.curso = curso
         self.on_close_cb = on_close
         self.app_page = page
-        self.tokens = tokens or (state.tokens if state else ThemeTokens())
+        self.tokens = _resolve_tokens(tokens, page, state)
         tok = self.tokens
 
         # Diccionarios de referencia a controles para foco y navegación
@@ -182,10 +192,16 @@ class PlanificacionCursoDialog(ft.AlertDialog):
             tight=False,
         )
 
+        # Dimensiones responsivas M3
+        pw = self.app_page.width if self.app_page and self.app_page.width else 390
+        ph = self.app_page.height if self.app_page and self.app_page.height else 844
+        calc_w = max(280, min(pw - 32, 380))
+        max_h = max(280, min(ph * 0.72, 520))
+
         content = ft.Container(
             content=self.scroll_column,
-            width=340,
-            height=480,
+            width=calc_w,
+            height=max_h,
             padding=ft.Padding(left=0, right=0, top=4, bottom=4),
         )
 
