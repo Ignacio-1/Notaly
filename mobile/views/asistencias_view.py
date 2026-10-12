@@ -415,20 +415,27 @@ class AsistenciasView(ft.Container):
         return ft.Container(
             bgcolor=tok.surface,
             border=ft.Border.only(top=ft.BorderSide(1, tok.border_color)),
-            padding=ft.Padding(left=16, right=16, top=8, bottom=14),
-            content=ft.Column(
-                tight=True,
-                spacing=6,
-                controls=[
-                    ft.Row(
-                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                        controls=[
-                            ft.Text("DOCK DE MARCADO RÁPIDO", size=10, weight=ft.FontWeight.BOLD, color=tok.text_subtle),
-                            self.dock_label_active,
-                        ],
-                    ),
-                    ft.Row(spacing=6, controls=dock_buttons),
-                ],
+            padding=ft.Padding(left=16, right=16, top=8, bottom=0),
+            content=ft.SafeArea(
+                avoid_intrusions_top=False,
+                avoid_intrusions_bottom=True,
+                avoid_intrusions_left=False,
+                avoid_intrusions_right=False,
+                minimum_padding=ft.Padding(0, 0, 0, 10),
+                content=ft.Column(
+                    tight=True,
+                    spacing=6,
+                    controls=[
+                        ft.Row(
+                            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                            controls=[
+                                ft.Text("DOCK DE MARCADO RÁPIDO", size=10, weight=ft.FontWeight.BOLD, color=tok.text_subtle),
+                                self.dock_label_active,
+                            ],
+                        ),
+                        ft.Row(spacing=6, controls=dock_buttons),
+                    ],
+                ),
             ),
         )
 

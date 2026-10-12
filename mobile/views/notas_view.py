@@ -1140,6 +1140,7 @@ class NotasView(ft.Container):
 
         self.lista_tarjetas_listview = ft.ListView(
             spacing=10,
+            padding=ft.Padding(left=0, top=0, right=0, bottom=56),
             controls=student_cards,
             expand=True,
         )
@@ -1307,27 +1308,34 @@ class NotasView(ft.Container):
         return ft.Container(
             bgcolor=tok.surface,
             border=ft.Border.only(top=ft.BorderSide(1, tok.border_color)),
-            padding=ft.Padding(left=16, right=16, top=10, bottom=16),
+            padding=ft.Padding(left=16, right=16, top=10, bottom=0),
             shadow=ft.BoxShadow(blur_radius=16, color="#0F172A14", offset=ft.Offset(0, -4)),
-            content=ft.Column(
-                tight=True,
-                spacing=8,
-                controls=[
-                    ft.Row(
-                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                        controls=[
-                            self.dock_label_active,
-                            ft.Container(
-                                bgcolor=tok.primary_light,
-                                border_radius=6,
-                                padding=ft.Padding(left=8, right=8, top=2, bottom=2),
-                                content=self.dock_badge_trimestre,
-                            ),
-                        ],
-                    ),
-                    ft.Row(spacing=6, controls=numpad_row1_controls),
-                    ft.Row(spacing=6, controls=numpad_row2_controls),
-                ],
+            content=ft.SafeArea(
+                avoid_intrusions_top=False,
+                avoid_intrusions_bottom=True,
+                avoid_intrusions_left=False,
+                avoid_intrusions_right=False,
+                minimum_padding=ft.Padding(0, 0, 0, 10),
+                content=ft.Column(
+                    tight=True,
+                    spacing=8,
+                    controls=[
+                        ft.Row(
+                            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                            controls=[
+                                self.dock_label_active,
+                                ft.Container(
+                                    bgcolor=tok.primary_light,
+                                    border_radius=6,
+                                    padding=ft.Padding(left=8, right=8, top=2, bottom=2),
+                                    content=self.dock_badge_trimestre,
+                                ),
+                            ],
+                        ),
+                        ft.Row(spacing=6, controls=numpad_row1_controls),
+                        ft.Row(spacing=6, controls=numpad_row2_controls),
+                    ],
+                ),
             ),
         )
 

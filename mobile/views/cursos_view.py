@@ -258,16 +258,18 @@ class CursosView(ft.Container):
                 )
                 cards.append(card)
 
+        self.list_view = ft.ListView(
+            spacing=12,
+            padding=ft.Padding(left=0, top=0, right=0, bottom=56),
+            controls=[
+                header_section,
+                *cards,
+            ],
+        )
         body = ft.Container(
             expand=True,
-            padding=ft.Padding(left=16, right=16, top=12, bottom=12),
-            content=ft.ListView(
-                spacing=12,
-                controls=[
-                    header_section,
-                    *cards,
-                ],
-            ),
+            padding=ft.Padding(left=16, right=16, top=12, bottom=0),
+            content=self.list_view,
         )
 
         self.content = ft.Column(

@@ -138,7 +138,7 @@ class GruposView(ft.Container):
         self.lista_grupos_listview = ft.ListView(
             expand=True,
             spacing=10,
-            padding=ft.Padding(left=16, right=16, top=4, bottom=20),
+            padding=ft.Padding(left=16, right=16, top=4, bottom=56),
             controls=self._build_tarjetas_grupos(trabajo_actual),
         )
 

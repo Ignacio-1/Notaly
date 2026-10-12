@@ -33,10 +33,14 @@ class ColegiosView(ft.Container):
         self.on_navigate = on_navigate
         self.padding = 0
 
-        self.list_view = ft.ListView(spacing=12, controls=[])
+        self.list_view = ft.ListView(
+            spacing=12,
+            padding=ft.Padding(left=0, top=0, right=0, bottom=56),
+            controls=[],
+        )
         body = ft.Container(
             expand=True,
-            padding=ft.Padding(left=16, right=16, top=12, bottom=12),
+            padding=ft.Padding(left=16, right=16, top=12, bottom=0),
             content=self.list_view,
         )
         self.content = ft.Column(

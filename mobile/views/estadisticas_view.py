@@ -78,7 +78,7 @@ class EstadisticasView(ft.Container):
         self.list_view = ft.ListView(
             expand=True,
             spacing=16,
-            padding=ft.Padding(left=16, right=16, top=12, bottom=32),
+            padding=ft.Padding(left=16, right=16, top=12, bottom=56),
         )
 
         self._inicializar_ui()
