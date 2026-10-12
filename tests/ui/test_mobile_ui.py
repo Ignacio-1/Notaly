@@ -552,34 +552,26 @@ class TestExportModalIsolation:
         assert "Planilla 4A" in archivo_notas.name
 
     def test_obtener_carpeta_exportacion_android_documents_prioridad(self, monkeypatch, tmp_path):
-        """Verifica que en Android con almacenamiento externo se priorice la carpeta Documents sobre el almacenamiento privado."""
-        storage_mock = tmp_path / "storage_emulated_0"
-        storage_mock.mkdir()
-        monkeypatch.setenv("EXTERNAL_STORAGE", str(storage_mock))
+        """Verifica que en Android se utilice el almacenamiento seguro de la app para exportaciones (SPEC-016)."""
+        flet_storage = tmp_path / "flet_internal"
+        monkeypatch.setenv("FLET_APP_STORAGE_DATA", str(flet_storage))
         monkeypatch.setenv("ANDROID_DATA", "/data")
-        monkeypatch.setenv("FLET_APP_STORAGE_DATA", str(tmp_path / "flet_internal"))
 
         dlg = ExportDialog("notas", "Colegio Nacional", "5to A", {}, lambda ok, p: None)
         destino = dlg._obtener_carpeta_exportacion()
 
-        assert str(destino) == str(storage_mock / "Documents")
+        assert str(destino) == str(flet_storage / "exports")
         assert destino.exists()
 
-    def test_obtener_carpeta_exportacion_android_download_fallback(self, monkeypatch, tmp_path):
-        """Verifica que si la carpeta Documents falla, se recurra a Download."""
-        storage_mock = tmp_path / "storage_emulated_0"
-        storage_mock.mkdir()
-        # Crear Documents y Documentos como archivos regulares para forzar error en mkdir / escritura
-        (storage_mock / "Documents").touch()
-        (storage_mock / "Documentos").touch()
-
-        monkeypatch.setenv("EXTERNAL_STORAGE", str(storage_mock))
-        monkeypatch.setenv("ANDROID_DATA", "/data")
+    def test_obtener_carpeta_exportacion_android_config_fallback(self, monkeypatch, tmp_path):
+        """Verifica que si no hay FLET_APP_STORAGE_DATA, se use el directorio de configuración de la app."""
+        monkeypatch.delenv("FLET_APP_STORAGE_DATA", raising=False)
+        monkeypatch.setattr("core.gestor_planillas._get_config_dir", lambda: tmp_path / "cfg")
 
         dlg = ExportDialog("notas", "Colegio Nacional", "5to A", {}, lambda ok, p: None)
         destino = dlg._obtener_carpeta_exportacion()
 
-        assert str(destino) == str(storage_mock / "Download")
+        assert str(destino) == str(tmp_path / "cfg" / "exports")
         assert destino.exists()
 
     def test_obtener_carpeta_exportacion_android_flet_storage(self, monkeypatch, tmp_path):
@@ -1398,7 +1390,8 @@ def test_cursos_view_cabecera_dos_niveles_y_boton_planificaciones(isolated_app_s
     fila_contexto = header.controls[0]
     assert isinstance(fila_contexto, ft.Row)
     assert fila_contexto.controls[0].controls[0].value == "Mis cursos"
-    assert fila_contexto.controls[1].icon == ft.Icons.INSIGHTS
+    # El botón redundante de estadísticas junto a 'Mis cursos' fue removido en SPEC-016 (REQ-EARS-23)
+    assert len(fila_contexto.controls) == 1
 
     fila_acciones = header.controls[1]
     assert isinstance(fila_acciones, ft.Row)

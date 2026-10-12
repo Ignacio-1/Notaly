@@ -19,4 +19,6 @@ def aislar_config_de_produccion(tmp_path, monkeypatch):
     Esto protege la integridad de los datos de producción.
     """
     config_temporal = tmp_path / "config_test.json"
+    preferencias_temporal = tmp_path / "preferencias_test.json"
     monkeypatch.setattr(gestor_datos, "CONFIG_FILE", config_temporal)
+    monkeypatch.setattr(gestor_datos, "PREFERENCIAS_FILE", preferencias_temporal)

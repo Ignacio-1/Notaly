@@ -9,6 +9,7 @@ from datetime import datetime, date, timedelta
 import flet as ft
 from mobile.state import AppState
 from mobile.components.export_dialog import ExportDialog
+from mobile.components.planillas_curso_dialog import PlanillasCursoDialog
 from mobile.components.date_picker_dialog import DatePickerDialog
 from mobile.components.planificacion_dialog import PlanificacionCursoDialog
 from core.constants import formatear_fecha
@@ -241,12 +242,25 @@ class AsistenciasView(ft.Container):
                         ),
                         on_click=lambda e: self._marcar_todos_presentes(),
                     ),
-                    ft.IconButton(
-                        icon=ft.Icons.SHARE,
-                        icon_size=18,
-                        icon_color=tok.text_muted,
-                        tooltip="Exportar Asistencias (PDF/CSV/TXT)",
-                        on_click=lambda e: self._abrir_modal_exportar(),
+                    ft.Row(
+                        spacing=2,
+                        tight=True,
+                        controls=[
+                            ft.IconButton(
+                                icon=ft.Icons.FOLDER_SHARED_OUTLINED,
+                                icon_size=18,
+                                icon_color=tok.text_muted,
+                                tooltip="Historial de Planillas",
+                                on_click=lambda e: self._abrir_modal_planillas_curso(),
+                            ),
+                            ft.IconButton(
+                                icon=ft.Icons.SHARE,
+                                icon_size=18,
+                                icon_color=tok.text_muted,
+                                tooltip="Exportar Asistencias (PDF/CSV/TXT)",
+                                on_click=lambda e: self._abrir_modal_exportar(),
+                            ),
+                        ],
                     ),
                 ],
             ),
@@ -256,7 +270,7 @@ class AsistenciasView(ft.Container):
         lista_alumnos = self._construir_lista_alumnos(alumnos, asistencias_dia, fecha_actual)
 
         # 7. Dock inferior de marcado rápido (Bottom Dock P, A, T, J)
-        marking_dock = self._construir_dock_marcado(alumnos)
+        self.marking_dock = self._construir_dock_marcado(alumnos)
 
         self.content = ft.Column(
             expand=True,
@@ -272,7 +286,7 @@ class AsistenciasView(ft.Container):
                     padding=ft.Padding(left=16, right=16, top=4, bottom=6),
                     content=lista_alumnos,
                 ),
-                marking_dock,
+                self.marking_dock,
             ],
         )
 
@@ -728,6 +742,43 @@ class AsistenciasView(ft.Container):
         else:
             self._mostrar_snackbar("Error al guardar asistencias.", error=True)
 
+    def _mostrar_dialogo_con_dock_oculto(self, dlg):
+        """Muestra un diálogo modal ocultando temporalmente el teclado dock inferior para evitar saturación visual."""
+        if hasattr(self, "marking_dock") and self.marking_dock:
+            self.marking_dock.visible = False
+            try:
+                self.marking_dock.update()
+            except Exception:
+                pass
+
+        original_dismiss = getattr(dlg, "on_dismiss", None)
+
+        def on_dismiss_wrapper(e=None):
+            if hasattr(self, "marking_dock") and self.marking_dock:
+                self.marking_dock.visible = True
+                try:
+                    self.marking_dock.update()
+                except Exception:
+                    pass
+            if callable(original_dismiss):
+                original_dismiss(e)
+
+        dlg.on_dismiss = on_dismiss_wrapper
+        self.app_page.show_dialog(dlg)
+        self.app_page.update()
+
+    def _abrir_modal_planillas_curso(self):
+        colegio = self.state.selected_colegio or ""
+        curso = self.state.selected_curso or ""
+        dlg = PlanillasCursoDialog(
+            colegio_nombre=colegio,
+            curso_nombre=curso,
+            state=self.state,
+            page=self.app_page,
+            tokens=self.state.tokens,
+        )
+        self._mostrar_dialogo_con_dock_oculto(dlg)
+
     def _abrir_modal_exportar(self):
         colegio = self.state.selected_colegio or ""
         curso = self.state.selected_curso or ""
@@ -748,8 +799,7 @@ class AsistenciasView(ft.Container):
             page=self.app_page,
             tokens=self.state.tokens,
         )
-        self.app_page.show_dialog(dlg)
-        self.app_page.update()
+        self._mostrar_dialogo_con_dock_oculto(dlg)
 
     def _mostrar_snackbar(self, mensaje: str, error: bool = False):
         sb = ft.SnackBar(

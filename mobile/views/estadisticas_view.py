@@ -218,6 +218,31 @@ class EstadisticasView(ft.Container):
         self.state.estadisticas_nivel = nuevo_nivel
         if curso:
             self.state.selected_curso = curso
+        elif nuevo_nivel == "curso" and not self.state.selected_curso:
+            cursos = self.state.get_cursos(self.state.selected_colegio)
+            if cursos:
+                self.state.selected_curso = cursos[0]
+        self._actualizar_datos_ui()
+        try:
+            self.header_container.update()
+            self.level_selector_container.update()
+            self.seccion_selector_container.update()
+            self.period_selector_container.update()
+            self.kpi_container.update()
+            self.donut_container.update()
+            self.dynamic_content_container.update()
+            self.comportamiento_container.update()
+        except RuntimeError:
+            pass
+
+    def _cambiar_colegio_estadisticas(self, col: str):
+        """Cambia el colegio analizado y sincroniza el curso activo."""
+        self.state.selected_colegio = col
+        cursos = self.state.get_cursos(col)
+        if self.state.estadisticas_nivel == "curso":
+            self.state.selected_curso = cursos[0] if cursos else None
+            if not self.state.selected_curso:
+                self.state.estadisticas_nivel = "colegio"
         self._actualizar_datos_ui()
         try:
             self.header_container.update()
@@ -236,23 +261,58 @@ class EstadisticasView(ft.Container):
     # -------------------------------------------------------------------------
 
     def _build_level_selector(self) -> ft.Container:
-        """Pestañas superiores de selección de contexto: Todo el Colegio vs Curso específico."""
-        colegio = self.state.selected_colegio
-        cursos = self.state.get_cursos(colegio) if colegio else []
+        """Pestañas superiores de selección de contexto: Colegios, Institucional y Cursos."""
+        colegios = self.state.get_colegios()
+        colegio_actual = self.state.selected_colegio or (colegios[0] if colegios else None)
+        cursos = self.state.get_cursos(colegio_actual) if colegio_actual else []
         nivel = self.state.estadisticas_nivel
         tok = self.state.tokens
 
-        tabs = [
+        filas_controles = []
+
+        # 1. Selector de Colegio (si hay más de 1 colegio registrado en la app)
+        if len(colegios) > 1:
+            chips_colegio = []
+            for col in colegios:
+                es_sel = (col == colegio_actual)
+                chips_colegio.append(
+                    ft.Container(
+                        content=ft.Row(
+                            [
+                                ft.Icon(ft.Icons.SCHOOL, size=14, color=tok.primary if es_sel else tok.text_muted),
+                                ft.Text(
+                                    col,
+                                    size=12,
+                                    weight=ft.FontWeight.BOLD if es_sel else ft.FontWeight.W_500,
+                                    color=tok.primary if es_sel else tok.text_muted,
+                                ),
+                            ],
+                            spacing=4,
+                            alignment=ft.MainAxisAlignment.CENTER,
+                        ),
+                        padding=ft.Padding(left=10, right=10, top=6, bottom=6),
+                        bgcolor=tok.primary_light if es_sel else tok.surface,
+                        border=ft.Border.all(1, tok.primary if es_sel else tok.border_color),
+                        border_radius=8,
+                        on_click=lambda _, c=col: self._cambiar_colegio_estadisticas(c),
+                    )
+                )
+            filas_controles.append(
+                ft.Row(chips_colegio, spacing=8, scroll=ft.ScrollMode.AUTO)
+            )
+
+        # 2. Selector de Nivel (Institucional vs Cursos del colegio activo)
+        tabs_nivel = [
             ft.Container(
                 content=ft.Row(
                     [
                         ft.Icon(
-                            ft.Icons.SCHOOL,
-                            size=16,
+                            ft.Icons.ANALYTICS_OUTLINED,
+                            size=15,
                             color=tok.primary if nivel == "colegio" else tok.text_muted,
                         ),
                         ft.Text(
-                            "Institucional (Colegio)",
+                            "Institucional (Todo el Colegio)",
                             size=12,
                             weight=ft.FontWeight.BOLD if nivel == "colegio" else ft.FontWeight.W_500,
                             color=tok.primary if nivel == "colegio" else tok.text_muted,
@@ -270,36 +330,41 @@ class EstadisticasView(ft.Container):
         ]
 
         if cursos:
-            cur_activo = self.state.selected_curso or cursos[0]
-            tabs.append(
-                ft.Container(
-                    content=ft.Row(
-                        [
-                            ft.Icon(
-                                ft.Icons.CLASS_,
-                                size=16,
-                                color=tok.primary if nivel == "curso" else tok.text_muted,
-                            ),
-                            ft.Text(
-                                f"Curso: {cur_activo}",
-                                size=12,
-                                weight=ft.FontWeight.BOLD if nivel == "curso" else ft.FontWeight.W_500,
-                                color=tok.primary if nivel == "curso" else tok.text_muted,
-                            ),
-                        ],
-                        spacing=6,
-                        alignment=ft.MainAxisAlignment.CENTER,
-                    ),
-                    padding=ft.Padding(left=12, right=12, top=8, bottom=8),
-                    bgcolor=tok.primary_light if nivel == "curso" else tok.surface,
-                    border=ft.Border.all(1, tok.primary if nivel == "curso" else tok.border_color),
-                    border_radius=8,
-                    on_click=lambda _: self._conmutar_nivel("curso", cur_activo),
+            for cur in cursos:
+                es_cur_activo = (nivel == "curso" and self.state.selected_curso == cur)
+                tabs_nivel.append(
+                    ft.Container(
+                        content=ft.Row(
+                            [
+                                ft.Icon(
+                                    ft.Icons.CLASS_,
+                                    size=15,
+                                    color=tok.primary if es_cur_activo else tok.text_muted,
+                                ),
+                                ft.Text(
+                                    f"Curso: {cur}",
+                                    size=12,
+                                    weight=ft.FontWeight.BOLD if es_cur_activo else ft.FontWeight.W_500,
+                                    color=tok.primary if es_cur_activo else tok.text_muted,
+                                ),
+                            ],
+                            spacing=6,
+                            alignment=ft.MainAxisAlignment.CENTER,
+                        ),
+                        padding=ft.Padding(left=12, right=12, top=8, bottom=8),
+                        bgcolor=tok.primary_light if es_cur_activo else tok.surface,
+                        border=ft.Border.all(1, tok.primary if es_cur_activo else tok.border_color),
+                        border_radius=8,
+                        on_click=lambda _, c=cur: self._conmutar_nivel("curso", c),
+                    )
                 )
-            )
+
+        filas_controles.append(
+            ft.Row(tabs_nivel, spacing=8, scroll=ft.ScrollMode.AUTO)
+        )
 
         return ft.Container(
-            content=ft.Row(tabs, spacing=8, scroll=ft.ScrollMode.AUTO),
+            content=ft.Column(filas_controles, spacing=8),
             margin=ft.Margin(bottom=4, top=0, left=0, right=0),
         )
 

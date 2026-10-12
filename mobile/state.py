@@ -7,6 +7,8 @@ import os
 import json
 import math
 import re
+import copy
+import shutil
 from datetime import datetime, date, timedelta
 import logging
 from pathlib import Path
@@ -16,6 +18,7 @@ import threading
 import time
 
 from core import gestor_datos
+from core import gestor_planillas
 from core.constants import (
     K_COLEGIOS,
     K_CURSOS,
@@ -113,6 +116,7 @@ class AppState:
         self.selected_alumno_id: str | None = None
         self.active_trimestre: int = 0  # 0: 1° Trim, 1: 2° Trim, 2: 3° Trim, 3: Resumen Anual
         self.asistencia_fecha: str = datetime.now().strftime("%Y-%m-%d")
+        self.footer_tab: str = "inicio"  # "inicio", "planillas", "estadisticas"
 
         # Filtros de búsqueda
         self.search_query_colegios: str = ""
@@ -131,6 +135,12 @@ class AppState:
 
         # Preferencia de tema visual (Claro / Oscuro)
         self.theme_mode: str = gestor_datos.leer_preferencia_tema()
+
+        # Sistema de Respaldo Automático Diario Local (SPEC-015)
+        self._auto_backup_lock: threading.Lock = threading.Lock()
+        self._is_auto_backing_up: bool = False
+        self._auto_backup_thread: threading.Thread | None = None
+        self._latest_auto_backup_path: Path | None = None
 
         # Cargar datos iniciales
         self.load_data()
@@ -210,6 +220,7 @@ class AppState:
             self.has_unsaved_asistencias = False
             self.set_save_status("saved")
             self.notify()
+            self.verificar_y_ejecutar_auto_backup_en_background(tiene_cambios_recientes=True)
             return True
         except Exception as e:
             logger.error("Error al persistir datos automáticamente: %s", e)
@@ -235,6 +246,7 @@ class AppState:
         self.has_unsaved_asistencias = False
         self.set_save_status("saved")
         self.notify()
+        self.verificar_y_ejecutar_auto_backup_en_background(tiene_cambios_recientes=False)
 
     def save_data(self) -> bool:
         """Guarda los datos en disco de forma segura e inmediata."""
@@ -1641,10 +1653,172 @@ class AppState:
         error_msg = f"Error al generar la copia de seguridad: {ultimo_error}" if ultimo_error else "No se encontró ningún directorio con permisos de escritura."
         return False, error_msg, None
 
+    def create_daily_auto_backup(self) -> tuple[bool, str, Path | None]:
+        """
+        Crea una copia de seguridad automática diaria fija y atómica (SPEC-015).
+        - Snapshot profundo inmutable de memoria (copy.deepcopy).
+        - Validación de base no vacía (omite si no hay colegios).
+        - Guarda preferentemente en Descargas/Documentos para fácil transferencia,
+          con fallback seguro automático a la carpeta interna de la app.
+        - Escritura atómica (.tmp -> fsync -> relectura json.load).
+        - Rotación preventiva de contingencia a .bak.
+        - Persistencia de metadatos constitucionales en preferencias.json.
+        """
+        snapshot = copy.deepcopy(self.data)
+        if not isinstance(snapshot, dict):
+            return False, "Estructura de datos inválida.", None
+
+        colegios = snapshot.get(K_COLEGIOS, {})
+        if not colegios or len(colegios) == 0:
+            return False, "Base de datos vacía, omitiendo respaldo automático.", None
+
+        # Priorizar Descargas / Documentos para facilitar transferir a otro dispositivo,
+        # con fallback a la carpeta segura interna de la app.
+        dest_dirs_to_try: list[Path] = []
+        for d in self.get_backup_directories():
+            nom = d.name.lower()
+            if "download" in nom or "descarga" in nom or "document" in nom:
+                dest_dirs_to_try.append(d)
+
+        if self.data_path:
+            dest_dirs_to_try.append(Path(self.data_path).parent / "backups")
+            dest_dirs_to_try.append(Path(self.data_path).parent)
+        try:
+            cfg_dir = gestor_datos._get_config_dir()
+            dest_dirs_to_try.append(cfg_dir / "backups")
+            dest_dirs_to_try.append(cfg_dir)
+        except Exception:
+            pass
+
+        now = datetime.now()
+        fecha_str = now.strftime(FORMATO_FECHA)
+        hora_str = now.strftime(FORMATO_HORA)
+        ultimo_error: Exception | None = None
+
+        for dest_dir in dest_dirs_to_try:
+            try:
+                dest_dir.mkdir(parents=True, exist_ok=True)
+                backup_path = dest_dir / gestor_datos.AUTO_BACKUP_FILENAME
+                temp_file = dest_dir / f"{gestor_datos.AUTO_BACKUP_FILENAME}.tmp"
+                bak_file = dest_dir / gestor_datos.AUTO_BACKUP_BAK_FILENAME
+
+                # 1. Escritura atómica a archivo temporal
+                with open(temp_file, "w", encoding="utf-8") as f:
+                    json.dump(snapshot, f, ensure_ascii=False, indent=2)
+                    f.flush()
+                    os.fsync(f.fileno())
+
+                # 2. Validación de integridad mediante relectura completa
+                try:
+                    with open(temp_file, "r", encoding="utf-8") as f:
+                        validados = json.load(f)
+                    if not isinstance(validados, dict) or K_COLEGIOS not in validados:
+                        if temp_file.exists():
+                            temp_file.unlink()
+                        continue
+                except Exception as e_val:
+                    if temp_file.exists():
+                        temp_file.unlink()
+                    continue
+
+                # 3. Rotación preventiva a .bak si ya existía una copia previa
+                if backup_path.exists():
+                    try:
+                        shutil.copy2(backup_path, bak_file)
+                    except Exception as e_bak:
+                        logger.warning("No se pudo rotar copia previa a .bak: %s", e_bak)
+
+                # 4. Reemplazo atómico final
+                temp_file.replace(backup_path)
+
+                tamano_kb = round(backup_path.stat().st_size / 1024, 1)
+
+                # 5. Persistir metadatos de éxito
+                gestor_datos.guardar_metadatos_auto_backup(
+                    fecha=fecha_str,
+                    hora=hora_str,
+                    estado="exito",
+                    tamano_kb=tamano_kb,
+                    error=None,
+                )
+
+                self._latest_auto_backup_path = backup_path
+                msg = f"Copia automática diaria generada exitosamente en {backup_path}"
+                logger.info(msg)
+                return True, msg, backup_path
+
+            except (PermissionError, OSError) as err:
+                ultimo_error = err
+                logger.warning("No se pudo escribir auto backup en '%s' (%s). Probando siguiente...", dest_dir, err)
+                continue
+            except Exception as e:
+                logger.error("Error inesperado en auto backup en '%s': %s", dest_dir, e)
+                ultimo_error = e
+                continue
+
+        error_msg = str(ultimo_error) if ultimo_error else "No se encontró ningún directorio con permisos de escritura."
+        logger.error("Error al generar copia de seguridad automática diaria: %s", error_msg)
+        gestor_datos.guardar_metadatos_auto_backup(
+            fecha=fecha_str,
+            hora=hora_str,
+            estado="fallo",
+            tamano_kb=0.0,
+            error=error_msg,
+        )
+        return False, error_msg, None
+
+    def is_database_empty(self) -> bool:
+        """Indica si la base de datos no contiene ninguna institución registrada."""
+        if not isinstance(self.data, dict):
+            return True
+        colegios = self.data.get(K_COLEGIOS, {})
+        return not bool(colegios and len(colegios) > 0)
+
+    def get_latest_auto_backup_path(self) -> Path | None:
+        """Retorna la ruta física del archivo de copia automática más reciente si existe."""
+        backups = self.find_local_backups()
+        for b in backups:
+            if b.get("es_auto_backup") and Path(b["ruta"]).exists():
+                return Path(b["ruta"])
+        if getattr(self, "_latest_auto_backup_path", None) and self._latest_auto_backup_path.exists():
+            return self._latest_auto_backup_path
+        return None
+
+    def verificar_y_ejecutar_auto_backup_en_background(self, tiene_cambios_recientes: bool = False):
+        """
+        Evalúa de forma no bloqueante si corresponde ejecutar la copia automática diaria
+        y, en caso afirmativo, despacha la tarea en un hilo daemon secundario.
+        """
+        if self._is_auto_backing_up:
+            return
+
+        meta = gestor_datos.leer_metadatos_auto_backup()
+        fecha_hoy = datetime.now().strftime(FORMATO_FECHA)
+        ultima_fecha = meta.get(gestor_datos.K_AUTO_BACKUP_ULTIMA_FECHA)
+
+        if gestor_datos.debe_ejecutar_auto_backup(
+            self.data,
+            ultima_fecha,
+            fecha_hoy,
+            tiene_cambios_pendientes=tiene_cambios_recientes,
+        ):
+            def _worker():
+                with self._auto_backup_lock:
+                    self._is_auto_backing_up = True
+                    try:
+                        self.create_daily_auto_backup()
+                    finally:
+                        self._is_auto_backing_up = False
+
+            t = threading.Thread(target=_worker, daemon=True)
+            t.start()
+            self._auto_backup_thread = t
+
     def find_local_backups(self) -> list[dict]:
         """
         Busca copias de seguridad de Notaly (.json) en Descargas, Documentos y carpetas de la app.
         Retorna lista de diccionarios con metadatos de cada archivo encontrado.
+        Prioriza la copia automática más reciente al inicio de la lista y deduplica multi-carpetas.
         """
         directorios_a_buscar = self.get_backup_directories()
         backups_encontrados = []
@@ -1678,7 +1852,7 @@ class AppState:
 
                     # Filtrar archivos relevantes por nombre o patrón
                     nombre_lower = file.name.lower()
-                    if "backup" in nombre_lower or "notaly" in nombre_lower or "promedio" in nombre_lower or "datos" in nombre_lower:
+                    if "copia" in nombre_lower or "backup" in nombre_lower or "notaly" in nombre_lower or "promedio" in nombre_lower or "datos" in nombre_lower:
                         try:
                             datos = gestor_datos._intentar_cargar_archivo(file)
                             if datos and K_COLEGIOS in datos:
@@ -1692,6 +1866,11 @@ class AppState:
                                     for cur in col.get(K_CURSOS, {}).values()
                                 )
 
+                                es_auto = (
+                                    file.name == gestor_datos.AUTO_BACKUP_FILENAME
+                                    or file.name == getattr(gestor_datos, "LEGACY_AUTO_BACKUP_FILENAME", "backup_notaly_auto.json")
+                                )
+
                                 backups_encontrados.append({
                                     "nombre": file.name,
                                     "ruta": resolved_str,
@@ -1703,6 +1882,7 @@ class AppState:
                                     "total_alumnos": total_alum,
                                     "colegios_nombres": list(colegios.keys()),
                                     "datos": datos,
+                                    "es_auto_backup": es_auto,
                                 })
                                 rutas_procesadas.add(resolved_str)
                         except Exception:
@@ -1710,9 +1890,17 @@ class AppState:
             except (PermissionError, OSError):
                 continue
 
-        # Ordenar por fecha más reciente primero
-        backups_encontrados.sort(key=lambda x: x["timestamp"], reverse=True)
-        return backups_encontrados
+        # Deduplicar copias automáticas si existieran en varias carpetas, conservando la más reciente (REQ-EARS-015)
+        auto_backups = [b for b in backups_encontrados if b.get("es_auto_backup")]
+        otros_backups = [b for b in backups_encontrados if not b.get("es_auto_backup")]
+
+        auto_backups.sort(key=lambda x: x["timestamp"], reverse=True)
+        otros_backups.sort(key=lambda x: x["timestamp"], reverse=True)
+
+        if auto_backups:
+            # Priorizar la copia automática más reciente al tope de la lista (REQ-EARS-013)
+            return [auto_backups[0]] + otros_backups
+        return otros_backups
 
     def import_backup_data(self, datos_origen: dict, mode: str = "merge") -> tuple[bool, str, dict]:
         """
@@ -1810,5 +1998,89 @@ class AppState:
         curso_data = self.get_curso_data(col, cur)
         p_idx = self.estadisticas_periodo if periodo_idx is None else periodo_idx
         return obtener_estadisticas_curso(curso_data, p_idx)
+
+    # =========================================================================
+    # --- GESTIÓN CENTRALIZADA DE PLANILLAS EXPORTADAS (SPEC-016) ---
+    # =========================================================================
+
+    def get_planillas(
+        self, colegio: str | None = None, curso: str | None = None
+    ) -> list[dict]:
+        """
+        Recupera el listado histórico de planillas exportadas.
+        Permite filtrar opcionalmente por colegio y/o curso.
+        Delega en core.gestor_planillas.cargar_indice.
+        """
+        indice = gestor_planillas.cargar_indice()
+        if not colegio and not curso:
+            return indice
+
+        filtradas = []
+        for item in indice:
+            colegio_item = item.get("colegio", "")
+            curso_item = item.get("curso", "")
+            if colegio and colegio_item != colegio:
+                continue
+            if curso and curso_item != curso:
+                continue
+            filtradas.append(item)
+        return filtradas
+
+    def registrar_planilla_exportada(
+        self,
+        ruta_archivo: str | Path,
+        colegio: str,
+        curso: str,
+        tipo: str,
+        formato: str,
+        directorio: Path | None = None,
+    ) -> dict:
+        """
+        Registra una nueva planilla exportada en el índice histórico y notifica reactivamente.
+        """
+        reg = gestor_planillas.registrar_exportacion(
+            ruta_archivo=ruta_archivo,
+            colegio=colegio,
+            curso=curso,
+            tipo=tipo,
+            formato=formato,
+            directorio=directorio,
+        )
+        self.notify()
+        return reg
+
+    def eliminar_planilla_exportada(
+        self, id_o_ruta: str, directorio: Path | None = None
+    ) -> tuple[bool, str]:
+        """
+        Elimina física y lógicamente una planilla del historial.
+        Tolerante a ausencias previas en disco y notifica reactivamente.
+        """
+        exito, msg = gestor_planillas.eliminar_planilla(
+            id_o_ruta=id_o_ruta, directorio=directorio
+        )
+        if exito:
+            self.notify()
+        return exito, msg
+
+    def abrir_planilla_exportada(self, ruta_str: str) -> tuple[bool, str | None]:
+        """
+        Abre la planilla en el visor del sistema operativo.
+        Si el archivo físico no existe, depura huérfanos y notifica.
+        """
+        exito, err = gestor_planillas.abrir_archivo(ruta_str)
+        if not exito and "no existe" in (err or "").lower():
+            self.depurar_planillas_huerfanas()
+        return exito, err
+
+    def depurar_planillas_huerfanas(self, directorio: Path | None = None) -> int:
+        """
+        Elimina del índice los registros cuyos archivos ya no existen físicamente.
+        """
+        huerfanos = gestor_planillas.depurar_huerfanos(directorio)
+        if huerfanos > 0:
+            self.notify()
+        return huerfanos
+
 
 

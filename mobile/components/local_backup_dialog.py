@@ -6,11 +6,18 @@ con guardado automático en la carpeta Descargas del equipo y diseño Slate/Indi
 
 import json
 import logging
+from datetime import datetime
 from pathlib import Path
 from typing import Callable
 import flet as ft
 
-from core.constants import K_COLEGIOS, K_CURSOS, K_ALUMNOS
+from core import gestor_datos
+from core.constants import (
+    K_COLEGIOS,
+    K_CURSOS,
+    K_ALUMNOS,
+    FORMATO_FECHA,
+)
 from mobile.state import AppState
 from mobile.theme import (
     PRIMARY,
@@ -22,6 +29,20 @@ from mobile.theme import (
     ThemeTokens,
     get_tokens,
 )
+
+# Constantes de respaldo automático (con import y fallback seguro)
+try:
+    from core.gestor_datos import AUTO_BACKUP_FILENAME, AUTO_BACKUP_BAK_FILENAME
+except ImportError:
+    AUTO_BACKUP_FILENAME = "backup_notaly_auto.json"
+    AUTO_BACKUP_BAK_FILENAME = "backup_notaly_auto.bak"
+    if not hasattr(gestor_datos, "AUTO_BACKUP_FILENAME"):
+        gestor_datos.AUTO_BACKUP_FILENAME = AUTO_BACKUP_FILENAME
+    if not hasattr(gestor_datos, "AUTO_BACKUP_BAK_FILENAME"):
+        gestor_datos.AUTO_BACKUP_BAK_FILENAME = AUTO_BACKUP_BAK_FILENAME
+
+if not hasattr(gestor_datos, "leer_metadatos_auto_backup"):
+    gestor_datos.leer_metadatos_auto_backup = lambda: {}
 
 logger = logging.getLogger(__name__)
 
@@ -85,17 +106,9 @@ class LocalBackupDialog(ft.AlertDialog):
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
             ),
             content=ft.Container(
-                content=ft.Column(
-                    [
-                        self.tab_selector,
-                        ft.Divider(height=10, color=tok.border_color),
-                        self.tabs_content_container,
-                    ],
-                    tight=True,
-                    spacing=8,
-                ),
+                content=self.tabs_content_container,
                 width=360,
-                height=430,
+                height=480,
             ),
             actions=[
                 ft.TextButton(
@@ -113,8 +126,8 @@ class LocalBackupDialog(ft.AlertDialog):
         if self.file_picker and hasattr(self.file_picker, "on_result"):
             self.file_picker.on_result = self._on_file_picker_result
 
-        # Renderizar pestaña inicial: Guardar Copia
-        self._mostrar_tab_guardar()
+        # Renderizar vista unificada directa
+        self._mostrar_vista_unificada()
 
     def _cerrar(self):
         self.open = False
@@ -152,123 +165,158 @@ class LocalBackupDialog(ft.AlertDialog):
                 logger.error(f"No se pudo programar tarea asíncrona: {err}")
 
     def _on_tab_changed(self, e):
-        selected = list(self.tab_selector.selected) if self.tab_selector.selected else ["guardar"]
-        val = selected[0] if selected else "guardar"
-        if val in ["guardar", "crear", "datos"]:
-            self._mostrar_tab_guardar()
-        elif val == "restaurar":
-            self._mostrar_tab_restaurar()
+        self._mostrar_vista_unificada()
 
-    # Compatibilidad hacia atrás
     def _mostrar_tab_crear_copia(self):
-        self._mostrar_tab_guardar()
+        self._mostrar_vista_unificada()
 
     def _mostrar_tab_mis_datos(self):
-        self._mostrar_tab_guardar()
-
-    # =========================================================================
-    # --- APARTADO 1: GUARDAR COPIA DE SEGURIDAD ---
-    # =========================================================================
+        self._mostrar_vista_unificada()
 
     def _mostrar_tab_guardar(self):
-        summary = self.app_state.get_data_summary()
+        self._mostrar_vista_unificada()
+
+    def _mostrar_tab_restaurar(self):
+        self._mostrar_vista_unificada()
+
+    def _mostrar_vista_unificada(self):
         tok = self.tokens
 
-        def ejecutar_guardar_copia(e):
-            exito, msg, path = self.app_state.create_local_backup()
-            if exito:
-                nombre_archivo = Path(path).name if path else "archivo .json"
-                self._mostrar_snackbar(f"¡Copia guardada con éxito en Descargas ({nombre_archivo})!")
-                self.tab_selector.selected = ["restaurar"]
-                self._mostrar_tab_restaurar()
-            else:
-                self._mostrar_snackbar(msg, error=True)
+        # 1. Panel informativo del estado de la copia automática diaria (REQ-EARS-011)
+        meta = {}
+        if hasattr(gestor_datos, "leer_metadatos_auto_backup"):
+            try:
+                meta = gestor_datos.leer_metadatos_auto_backup() or {}
+            except Exception as e:
+                logger.warning("Error al leer metadatos de auto backup: %s", e)
+                meta = {}
 
-        card_info = ft.Container(
+        if not isinstance(meta, dict):
+            meta = {}
+
+        hoy_str = datetime.now().strftime(FORMATO_FECHA)
+        if meta.get("ultima_fecha") == hoy_str and meta.get("estado") == "exito":
+            estado_texto = "Al día (hoy)"
+            estado_icono = ft.Icons.CHECK_CIRCLE_ROUNDED
+            icono_color = ft.Colors.GREEN_600
+            detalle_str = f"• Último resguardo: {meta.get('ultima_fecha')} a las {meta.get('ultima_hora')} ({meta.get('tamano_kb', 0.0)} KB)"
+        elif meta.get("ultima_fecha"):
+            estado_texto = "Pendiente para hoy"
+            estado_icono = ft.Icons.SCHEDULE_ROUNDED
+            icono_color = ft.Colors.AMBER_700
+            detalle_str = f"• Último resguardo previo: {meta.get('ultima_fecha')} a las {meta.get('ultima_hora')} ({meta.get('tamano_kb', 0.0)} KB)"
+        else:
+            estado_texto = "Pendiente de creación"
+            estado_icono = ft.Icons.INFO_OUTLINE_ROUNDED
+            icono_color = tok.primary
+            detalle_str = "• Se generará automáticamente al final del día con el autoguardado."
+
+        def compartir_copia(e):
+            ruta = self.app_state.get_latest_auto_backup_path()
+            if ruta and ruta.exists():
+                try:
+                    self.app_page.set_clipboard(str(ruta.resolve()))
+                except Exception:
+                    pass
+                self._mostrar_snackbar(f"Copia lista: {ruta.name}\nRuta copiada al portapapeles para transferir por WhatsApp o Drive.")
+            else:
+                self._mostrar_snackbar("Aún no hay una copia automática creada para compartir.", error=True)
+
+        card_auto = ft.Container(
             bgcolor=tok.surface_variant,
             border=ft.Border.all(1, tok.border_color),
             border_radius=12,
-            padding=14,
+            padding=12,
             content=ft.Column(
                 [
                     ft.Row(
                         [
-                            ft.Icon(ft.Icons.FOLDER_SPECIAL_OUTLINED, color=tok.primary, size=22),
-                            ft.Text("Guardar en Descargas", size=14, weight=ft.FontWeight.BOLD, color=tok.text_main),
+                            ft.Icon(estado_icono, color=icono_color, size=20),
+                            ft.Text("Copia Diaria Automática", size=13, weight=ft.FontWeight.BOLD, color=tok.text_main),
+                            ft.Container(expand=True),
+                            ft.Container(
+                                content=ft.Text(estado_texto, size=11, weight=ft.FontWeight.W_500, color=icono_color),
+                                bgcolor=ft.Colors.with_opacity(0.12, icono_color),
+                                padding=ft.Padding(6, 2, 6, 2),
+                                border_radius=6,
+                            ),
                         ],
-                        spacing=8,
                         vertical_alignment=ft.CrossAxisAlignment.CENTER,
                     ),
+                    ft.Text(detalle_str, size=11, color=tok.text_muted),
                     ft.Text(
-                        "Se creará una copia de respaldo con todos tus colegios, cursos, notas y asistencias directamente en la carpeta Descargas de este equipo.",
-                        size=12,
+                        "Tus copias de seguridad se generan automáticamente al final del día sin que tengas que hacer nada.",
+                        size=10,
                         color=tok.text_muted,
+                        italic=True,
                     ),
-                    ft.Divider(height=12, color=tok.border_color),
-                    ft.Text(f"• Instituciones registradas: {summary['total_colegios']}", size=12, color=tok.text_main),
-                    ft.Text(f"• Cursos registrados: {summary['total_cursos']}", size=12, color=tok.text_main),
-                    ft.Text(f"• Alumnos totales: {summary['total_alumnos']}", size=12, color=tok.text_main),
+                    ft.Container(
+                        content=ft.OutlinedButton(
+                            "Compartir / Enviar copia",
+                            icon=ft.Icons.SHARE_ROUNDED,
+                            height=30,
+                            style=ft.ButtonStyle(
+                                color=tok.primary,
+                                side=ft.BorderSide(1, tok.primary),
+                                shape=ft.RoundedRectangleBorder(radius=6),
+                                padding=ft.Padding(left=8, right=8, top=0, bottom=0),
+                            ),
+                            on_click=compartir_copia,
+                        ),
+                        alignment=ft.Alignment.CENTER_RIGHT,
+                        padding=ft.Padding(top=2, bottom=0, left=0, right=0),
+                    ),
                 ],
-                spacing=6,
+                spacing=4,
             ),
         )
 
-        btn_guardar = ft.FilledButton(
-            "Guardar Copia de Seguridad",
-            icon=ft.Icons.SAVE_ALT,
-            width=350,
-            height=44,
-            style=ft.ButtonStyle(
-                bgcolor=tok.primary,
-                color=ft.Colors.WHITE,
-                shape=ft.RoundedRectangleBorder(radius=10),
-            ),
-            on_click=ejecutar_guardar_copia,
-        )
-
-        nota_pie = ft.Container(
-            padding=ft.Padding(left=4, right=4, top=4, bottom=4),
-            content=ft.Text(
-                "La copia se guardará como un archivo .json en tu carpeta Descargas para que puedas conservarla o transferirla fácilmente.",
-                size=11,
-                color=tok.text_muted,
-                italic=True,
-            ),
-        )
-
-        self.tabs_content_container.content = ft.Column(
-            [
-                card_info,
-                ft.Container(height=8),
-                btn_guardar,
-                nota_pie,
-            ],
-            spacing=6,
-            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-        )
-        try:
-            self.app_page.update()
-        except Exception:
-            pass
-
-    # =========================================================================
-    # --- APARTADO 2: RESTAURAR COPIA DE SEGURIDAD ---
-    # =========================================================================
-
-    def _mostrar_tab_restaurar(self):
+        # 2. Lista de copias disponibles para restaurar
         backups = self.app_state.find_local_backups()
-        tok = self.tokens
+        auto_nom = getattr(gestor_datos, "AUTO_BACKUP_FILENAME", AUTO_BACKUP_FILENAME)
+        legacy_nom = getattr(gestor_datos, "LEGACY_AUTO_BACKUP_FILENAME", "backup_notaly_auto.json")
+
+        def resolver_datos_y_restaurar(b_info: dict):
+            datos = b_info.get("datos")
+            ruta = b_info.get("ruta")
+
+            # REQ-EARS-014: Si los datos estuvieran vacíos o faltara K_COLEGIOS, intentar cargar contingencia .bak
+            if (not datos or not isinstance(datos, dict) or K_COLEGIOS not in datos) and ruta:
+                ruta_p = Path(ruta)
+                bak_nombre = getattr(gestor_datos, "AUTO_BACKUP_BAK_FILENAME", AUTO_BACKUP_BAK_FILENAME)
+                candidatos_bak = [
+                    ruta_p.with_suffix(".bak"),
+                    ruta_p.parent / bak_nombre,
+                    ruta_p.parent / getattr(gestor_datos, "LEGACY_AUTO_BACKUP_BAK_FILENAME", "backup_notaly_auto.bak"),
+                ]
+                for ruta_bak in candidatos_bak:
+                    if ruta_bak.exists():
+                        try:
+                            with open(ruta_bak, "r", encoding="utf-8") as f:
+                                datos_recup = json.load(f)
+                            if isinstance(datos_recup, dict) and K_COLEGIOS in datos_recup:
+                                datos = datos_recup
+                                logger.info("Datos recuperados exitosamente desde archivo de contingencia: %s", ruta_bak)
+                                break
+                        except Exception as err:
+                            logger.warning("Error al leer archivo de contingencia %s: %s", ruta_bak, err)
+
+            if not isinstance(datos, dict) or K_COLEGIOS not in datos:
+                self._mostrar_snackbar("La copia seleccionada no contiene datos válidos de Notaly.", error=True)
+                return
+
+            self._mostrar_opciones_restauracion(datos)
 
         backup_cards = []
         if not backups:
             backup_cards.append(
                 ft.Container(
-                    padding=24,
+                    padding=16,
                     alignment=ft.Alignment.CENTER,
                     content=ft.Column(
                         [
-                            ft.Icon(ft.Icons.INBOX_OUTLINED, size=36, color=tok.text_muted),
-                            ft.Text("No se encontraron copias en Descargas.", size=12, color=tok.text_muted),
+                            ft.Icon(ft.Icons.INBOX_OUTLINED, size=32, color=tok.text_muted),
+                            ft.Text("No se encontraron copias en el dispositivo.", size=12, color=tok.text_muted),
                             ft.Text("Puedes seleccionar una copia manualmente con el botón de abajo.", size=11, color=tok.text_muted),
                         ],
                         horizontal_alignment=ft.CrossAxisAlignment.CENTER,
@@ -284,6 +332,21 @@ class LocalBackupDialog(ft.AlertDialog):
                 cols_count = b["total_colegios"]
                 alums_count = b["total_alumnos"]
                 sub = f"{fecha} • {size_kb} KB • {cols_count} inst • {alums_count} alum"
+                es_auto = bool(b.get("es_auto_backup") or nom in [auto_nom, legacy_nom])
+
+                fila_titulo = [
+                    ft.Text(nom, size=12, weight=ft.FontWeight.BOLD, color=tok.text_main, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS),
+                ]
+
+                if es_auto:
+                    badge_auto = ft.Container(
+                        content=ft.Text("Copia Diaria Automática", size=9, weight=ft.FontWeight.BOLD, color=tok.primary),
+                        bgcolor=ft.Colors.with_opacity(0.12, tok.primary),
+                        border=ft.Border.all(1, tok.primary),
+                        border_radius=4,
+                        padding=ft.Padding(4, 1, 4, 1),
+                    )
+                    fila_titulo.append(badge_auto)
 
                 card = ft.Container(
                     bgcolor=tok.surface_variant,
@@ -293,10 +356,19 @@ class LocalBackupDialog(ft.AlertDialog):
                     padding=ft.Padding(left=10, right=8, top=8, bottom=8),
                     content=ft.Row(
                         [
-                            ft.Icon(ft.Icons.DESCRIPTION_OUTLINED, color=tok.primary, size=22),
+                            ft.Icon(
+                                ft.Icons.AUTO_AWESOME_ROUNDED if es_auto else ft.Icons.DESCRIPTION_OUTLINED,
+                                color=tok.primary,
+                                size=22,
+                            ),
                             ft.Column(
                                 [
-                                    ft.Text(nom, size=12, weight=ft.FontWeight.BOLD, color=tok.text_main, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS),
+                                    ft.Row(
+                                        fila_titulo,
+                                        spacing=6,
+                                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                                        wrap=True,
+                                    ),
                                     ft.Text(sub, size=10, color=tok.text_muted),
                                 ],
                                 spacing=2,
@@ -311,7 +383,7 @@ class LocalBackupDialog(ft.AlertDialog):
                                     shape=ft.RoundedRectangleBorder(radius=8),
                                     padding=ft.Padding(left=10, right=10, top=0, bottom=0),
                                 ),
-                                on_click=lambda e, data=b["datos"]: self._mostrar_opciones_restauracion(data),
+                                on_click=lambda e, backup_dict=b: resolver_datos_y_restaurar(backup_dict),
                             ),
                         ],
                         alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
@@ -319,12 +391,6 @@ class LocalBackupDialog(ft.AlertDialog):
                     ),
                 )
                 backup_cards.append(card)
-
-        lista_backups = ft.ListView(
-            controls=backup_cards,
-            expand=True,
-            spacing=4,
-        )
 
         async def abrir_selector_archivo(e):
             if self.file_picker:
@@ -345,21 +411,23 @@ class LocalBackupDialog(ft.AlertDialog):
 
         self.tabs_content_container.content = ft.Column(
             [
+                card_auto,
+                ft.Divider(height=10, color=tok.border_color),
                 ft.Row(
                     [
-                        ft.Text("Copias disponibles en Descargas:", size=13, weight=ft.FontWeight.BOLD, color=tok.text_main),
+                        ft.Text("Copias disponibles para restaurar:", size=13, weight=ft.FontWeight.BOLD, color=tok.text_main),
                         ft.IconButton(
                             icon=ft.Icons.REFRESH,
                             icon_size=18,
                             icon_color=tok.text_muted,
                             tooltip="Actualizar lista",
-                            on_click=lambda e: self._mostrar_tab_restaurar(),
+                            on_click=lambda e: self._mostrar_vista_unificada(),
                         ),
                     ],
                     alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                 ),
-                ft.Container(content=lista_backups, expand=True),
-                ft.Divider(height=6, color=tok.border_color),
+                ft.Column(controls=backup_cards, spacing=4),
+                ft.Divider(height=8, color=tok.border_color),
                 ft.OutlinedButton(
                     "Seleccionar archivo de copia (.json)",
                     icon=ft.Icons.FILE_OPEN_OUTLINED,
@@ -373,9 +441,14 @@ class LocalBackupDialog(ft.AlertDialog):
                     on_click=lambda e: self._run_async(abrir_selector_archivo, e),
                 ),
             ],
-            expand=True,
             spacing=6,
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            scroll=ft.ScrollMode.AUTO,
         )
+        try:
+            self.app_page.update()
+        except Exception:
+            pass
         try:
             self.app_page.update()
         except Exception:
@@ -403,12 +476,38 @@ class LocalBackupDialog(ft.AlertDialog):
                 self._mostrar_snackbar("No se pudo leer el contenido del archivo seleccionado.", error=True)
                 return
 
+            if (not isinstance(datos, dict) or K_COLEGIOS not in datos) and ruta_archivo:
+                # REQ-EARS-014: Intentar cargar contingencia .bak si el principal está incompleto
+                bak_p = Path(ruta_archivo).with_suffix(".bak")
+                if bak_p.exists():
+                    try:
+                        with open(bak_p, "r", encoding="utf-8") as fb:
+                            datos_bak = json.load(fb)
+                        if isinstance(datos_bak, dict) and K_COLEGIOS in datos_bak:
+                            datos = datos_bak
+                            logger.info("Recuperados datos de contingencia desde .bak tras archivo inválido")
+                    except Exception:
+                        pass
+
             if not isinstance(datos, dict) or K_COLEGIOS not in datos:
                 self._mostrar_snackbar("El archivo seleccionado no contiene datos válidos de Notaly.", error=True)
                 return
 
             self._mostrar_opciones_restauracion(datos)
         except Exception as err:
+            # Si falló la lectura del JSON principal, intentar el archivo .bak
+            if ruta_archivo:
+                bak_p = Path(ruta_archivo).with_suffix(".bak")
+                if bak_p.exists():
+                    try:
+                        with open(bak_p, "r", encoding="utf-8") as fb:
+                            datos_bak = json.load(fb)
+                        if isinstance(datos_bak, dict) and K_COLEGIOS in datos_bak:
+                            logger.info("Recuperados datos de contingencia desde .bak tras error: %s", err)
+                            self._mostrar_opciones_restauracion(datos_bak)
+                            return
+                    except Exception:
+                        pass
             self._mostrar_snackbar(f"Error al leer el archivo: {err}", error=True)
 
     def _on_file_picker_result(self, e):

@@ -17,6 +17,8 @@ from mobile.views.notas_view import NotasView
 from mobile.views.asistencias_view import AsistenciasView
 from mobile.views.estadisticas_view import EstadisticasView
 from mobile.views.grupos_view import GruposView
+from mobile.views.planillas_view import PlanillasView
+from mobile.components.footer import AppFooter
 
 # Configurar logging
 logging.basicConfig(
@@ -87,6 +89,10 @@ def main(page: ft.Page):
     # Contenedor principal donde se renderiza la vista activa
     main_container = ft.Container(expand=True)
 
+    # Barra inferior de navegación principal (Footer SPEC-016)
+    footer = AppFooter(state=state, on_navigate=lambda v: navigate(v), tokens=tokens)
+    page.navigation_bar = footer
+
     def navigate(view_name: str):
         state.current_screen = view_name
         if view_name == "colegios":
@@ -101,6 +107,9 @@ def main(page: ft.Page):
             main_container.content = GruposView(state, page, on_navigate=navigate)
         elif view_name == "estadisticas":
             main_container.content = EstadisticasView(state, page, on_navigate=navigate)
+        elif view_name == "planillas":
+            main_container.content = PlanillasView(state, page, on_navigate=navigate)
+        footer.sincronizar_vista(view_name)
         page.update()
 
     def al_restaurar_copia():
@@ -231,9 +240,10 @@ def main(page: ft.Page):
         if isinstance(theme_menu_item.content, ft.Text):
             theme_menu_item.content.value = "Modo Claro" if is_dark else "Modo Oscuro"
 
-        # 3. Barra de búsqueda global
+        # 3. Barra de búsqueda global y footer
         if hasattr(global_search, "actualizar_tema"):
             global_search.actualizar_tema(t)
+        footer.actualizar_tema(t)
 
         # 4. Refrescar la vista actual manteniendo intacto el contexto docente
         navigate(state.current_screen)
@@ -255,11 +265,6 @@ def main(page: ft.Page):
                 items=[
                     theme_menu_item,
                     ft.PopupMenuItem(
-                        icon=ft.Icons.INSIGHTS,
-                        content=ft.Text("Estadísticas"),
-                        on_click=lambda e: abrir_estadisticas_global(),
-                    ),
-                    ft.PopupMenuItem(
                         icon=ft.Icons.INFO_OUTLINE,
                         content=ft.Text("Acerca de"),
                         on_click=lambda e: abrir_modal_acerca_de(),
@@ -271,8 +276,87 @@ def main(page: ft.Page):
 
     page.add(main_container)
 
+    # Gestión reactiva del ciclo de vida móvil (Android / iOS)
+    def _gestionar_ciclo_vida(e: ft.AppLifecycleStateChangeEvent):
+        try:
+            estado_str = str(e.state).lower()
+            if any(s in estado_str for s in ["pause", "inactive", "detach"]):
+                state.flush_auto_save()
+                state.verificar_y_ejecutar_auto_backup_en_background(tiene_cambios_recientes=True)
+        except Exception as err:
+            logger.warning("Error al procesar cambio de ciclo de vida: %s", err)
+
+    page.on_app_lifecycle_state_change = _gestionar_ciclo_vida
+
     # Iniciar en la pantalla de colegios
     navigate("colegios")
+
+    # Detección automática en primer inicio si la base está vacía (REQ-EARS-015)
+    def _verificar_primer_inicio():
+        try:
+            if state.is_database_empty():
+                copias = state.find_local_backups()
+                if copias:
+                    primera = copias[0]
+                    nom = primera.get("nombre", "copia de seguridad")
+                    fec = primera.get("fecha", "")
+
+                    def _restaurar_clic(e):
+                        page.pop_dialog()
+                        page.update()
+                        abrir_modal_copias()
+
+                    dlg_onboarding = ft.AlertDialog(
+                        modal=True,
+                        title=ft.Row(
+                            [
+                                ft.Icon(ft.Icons.RESTORE_ROUNDED, color=tokens.primary, size=24),
+                                ft.Text("¿Restaurar tus datos?", size=16, weight=ft.FontWeight.BOLD),
+                            ],
+                            spacing=8,
+                        ),
+                        content=ft.Column(
+                            [
+                                ft.Text(
+                                    f"Detectamos una copia de seguridad previa en tu dispositivo:\n• {nom}",
+                                    size=13,
+                                    color=tokens.text_main,
+                                ),
+                                ft.Text(f"Fecha: {fec}", size=12, color=tokens.text_muted),
+                                ft.Text(
+                                    "¿Deseas restaurar tus instituciones y calificaciones ahora?",
+                                    size=13,
+                                    weight=ft.FontWeight.W_500,
+                                    color=tokens.text_main,
+                                ),
+                            ],
+                            spacing=6,
+                            tight=True,
+                            width=320,
+                        ),
+                        actions=[
+                            ft.TextButton(
+                                "Comenzar de cero",
+                                on_click=lambda e: (page.pop_dialog(), page.update()),
+                            ),
+                            ft.FilledButton(
+                                "Restaurar Copia",
+                                style=ft.ButtonStyle(
+                                    bgcolor=tokens.primary,
+                                    color=ft.Colors.WHITE,
+                                    shape=ft.RoundedRectangleBorder(radius=8),
+                                ),
+                                on_click=_restaurar_clic,
+                            ),
+                        ],
+                        actions_alignment=ft.MainAxisAlignment.END,
+                    )
+                    page.show_dialog(dlg_onboarding)
+                    page.update()
+        except Exception as err:
+            logger.warning("Error al verificar copias en primer inicio: %s", err)
+
+    _verificar_primer_inicio()
 
 
 if __name__ == "__main__":

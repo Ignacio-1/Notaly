@@ -111,8 +111,14 @@ def populated_state(tmp_path):
     with open(temp_data_file, 'w', encoding='utf-8') as f:
         json.dump(initial_data, f, ensure_ascii=False, indent=2)
 
-    state = AppState(data_path=str(temp_data_file))
-    state.load_data()
+    downloads_tmp = tmp_path / "Downloads"
+    downloads_tmp.mkdir(parents=True, exist_ok=True)
+    with patch.object(AppState, "get_backup_directories", return_value=[downloads_tmp]):
+        state = AppState(data_path=str(temp_data_file))
+        state.load_data()
+        if state._auto_backup_thread and state._auto_backup_thread.is_alive():
+            state._auto_backup_thread.join(timeout=2.0)
+    state._latest_auto_backup_path = None
     return state
 
 
@@ -171,38 +177,44 @@ def test_local_backup_dialog_tabs_navigation(populated_state, mock_page):
 
 
 def test_local_backup_dialog_summary_display(populated_state, mock_page):
-    """Verifica que el apartado de guardar presente la información clara y justa para el usuario común."""
+    """Verifica que el diálogo presente la información clara y justa para el usuario común (aviso de copias automáticas y copias disponibles)."""
     dlg = LocalBackupDialog(populated_state, mock_page)
     dlg._mostrar_tab_guardar()
 
     textos_visibles = _extraer_textos_recursivo(dlg.tabs_content_container.content)
-    # Debe indicar claramente la carpeta Descargas y los datos a respaldar
-    assert any("descargas" in t.lower() for t in textos_visibles)
-    assert any("2" in t for t in textos_visibles)  # 2 colegios
-    assert any("3" in t for t in textos_visibles)  # 3 cursos
-    assert any("4" in t for t in textos_visibles)  # 4 alumnos
+    # Debe indicar claramente el aviso de que las copias se generan automáticamente y el panel
+    assert any("copia diaria automática" in t.lower() for t in textos_visibles)
+    assert any("automáticamente" in t.lower() for t in textos_visibles)
 
 
 def test_local_backup_dialog_create_backup_action(populated_state, mock_page, tmp_path):
-    """Verifica que la acción de guardar copia genere el archivo y cambie de apartado con retroalimentación."""
-    dlg = LocalBackupDialog(populated_state, mock_page)
+    """Verifica que el diálogo unificado permita compartir la copia con retroalimentación visible."""
+    downloads_dir = tmp_path / "Downloads"
+    downloads_dir.mkdir(parents=True, exist_ok=True)
+    auto_backup_file = downloads_dir / "copia de seguridad automatica notaly.json"
+    auto_backup_file.write_text(json.dumps({K_COLEGIOS: {}}), encoding="utf-8")
 
-    with patch("pathlib.Path.home", return_value=tmp_path):
-        dlg._mostrar_tab_guardar()
-        # Buscar el botón de guardar copia semánticamente
-        btn_crear = next(
-            (c for c in dlg.tabs_content_container.content.controls
-             if isinstance(c, (ft.FilledButton, ft.ElevatedButton, ft.TextButton, ft.OutlinedButton))
-             and ("copia" in _obtener_texto_boton(c).lower() or "guardar" in _obtener_texto_boton(c).lower())
-             and c.on_click is not None),
-            None
-        )
-        assert btn_crear is not None
-        btn_crear.on_click(None)
+    def _buscar_botones(control):
+        res = []
+        if isinstance(control, (ft.OutlinedButton, ft.FilledButton, ft.ElevatedButton, ft.TextButton)):
+            res.append(control)
+        if hasattr(control, "content") and control.content:
+            res.extend(_buscar_botones(control.content))
+        if hasattr(control, "controls") and control.controls:
+            for c in control.controls:
+                res.extend(_buscar_botones(c))
+        return res
 
-    # Comportamiento esperado: retroalimentación visible al usuario y cambio a pestaña restaurar
+    with patch.object(populated_state, "get_backup_directories", return_value=[downloads_dir]):
+        dlg = LocalBackupDialog(populated_state, mock_page)
+        botones = _buscar_botones(dlg.tabs_content_container.content)
+        btn_share = next((b for b in botones if "compartir" in _obtener_texto_boton(b).lower()), None)
+        assert btn_share is not None
+        btn_share.on_click(None)
+
+    # Comportamiento esperado: retroalimentación visible al usuario y copia en portapapeles
     assert len(mock_page.overlay) > 0
-    assert "restaurar" in dlg.tab_selector.selected
+    assert mock_page.clipboard_data == str(auto_backup_file.resolve())
 
 
 def test_local_backup_dialog_restore_confirm_decision(populated_state, mock_page):
@@ -306,7 +318,8 @@ def test_main_appbar_backup_icon_not_in_three_dots():
             items_textos.append(item.text)
 
     assert not any("copia" in t.lower() for t in items_textos)
-    assert any("Estadísticas" in t for t in items_textos)
+    # En SPEC-016 (REQ-EARS-25), Estadísticas se removió del menú de tres puntos para consolidarse en el Footer
+    assert not any("estadística" in t.lower() for t in items_textos)
     assert any("Acerca de" in t for t in items_textos)
 
 

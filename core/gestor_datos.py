@@ -20,9 +20,13 @@ Estrategia de lectura con recuperación:
 import json
 import logging
 import os
+import re
 import shutil
 import sys
+import threading
+import time
 import unicodedata
+from datetime import datetime
 from pathlib import Path
 
 from .constants import (
@@ -42,6 +46,16 @@ logger = logging.getLogger(__name__)
 
 APP_NAME = "Promediador"
 DATA_FILENAME = "datos_promedios.json"
+AUTO_BACKUP_FILENAME = "copia de seguridad automatica notaly.json"
+AUTO_BACKUP_BAK_FILENAME = "copia de seguridad automatica notaly.bak"
+LEGACY_AUTO_BACKUP_FILENAME = "backup_notaly_auto.json"
+LEGACY_AUTO_BACKUP_BAK_FILENAME = "backup_notaly_auto.bak"
+K_AUTO_BACKUP = "auto_backup"
+K_AUTO_BACKUP_ULTIMA_FECHA = "ultima_fecha"
+K_AUTO_BACKUP_ULTIMA_HORA = "ultima_hora"
+K_AUTO_BACKUP_ESTADO = "estado"
+K_AUTO_BACKUP_TAMANO_KB = "tamano_kb"
+K_AUTO_BACKUP_ERROR = "ultimo_error"
 
 
 def _get_config_dir() -> Path:
@@ -83,6 +97,7 @@ CONFIG_FILE = _get_config_dir() / "config_path.json"
 PREFERENCIAS_FILE = _get_config_dir() / "preferencias.json"
 
 
+
 def obtener_ruta_datos_por_defecto() -> str:
     """
     Retorna la ruta absoluta por defecto para el archivo de datos JSON.
@@ -104,7 +119,8 @@ def _escribir_archivo_seguro(ruta: Path, contenido: str) -> None:
     Raises:
         IOError/OSError: Si hay errores de escritura en disco.
     """
-    ruta_temporal = ruta.with_suffix(ruta.suffix + ".tmp")
+    ident = f"{os.getpid()}_{threading.get_ident()}"
+    ruta_temporal = ruta.parent / f"{ruta.name}.{ident}.tmp"
     ruta_backup = ruta.with_suffix(ruta.suffix + ".bak")
 
     # Paso 1: Escribir a archivo temporal con flush + fsync
@@ -131,8 +147,17 @@ def _escribir_archivo_seguro(ruta: Path, contenido: str) -> None:
             # El backup falló, pero no es crítico — continuamos con el guardado
             logger.warning("No se pudo crear backup '%s': %s", ruta_backup, e)
 
-    # Paso 4: Reemplazar atómicamente el original con el temporal
-    os.replace(str(ruta_temporal), str(ruta))
+    # Paso 4: Reemplazar atómicamente el original con el temporal (con reintentos breves ante locks de Windows)
+    reintentos = 5
+    for intento in range(reintentos):
+        try:
+            os.replace(str(ruta_temporal), str(ruta))
+            break
+        except (PermissionError, OSError):
+            if intento == reintentos - 1:
+                ruta_temporal.unlink(missing_ok=True)
+                raise
+            time.sleep(0.05)
 
 
 def leer_ruta_config() -> str | None:
@@ -633,3 +658,190 @@ def guardar_preferencia_tema(tema: str) -> bool:
     except Exception as e:
         logger.error("Error al guardar preferencia de tema: %s", e)
         return False
+
+
+def leer_metadatos_auto_backup() -> dict:
+    """
+    Lee de PREFERENCIAS_FILE la clave 'auto_backup'.
+    Si el archivo no existe o la clave no está o está corrupta, retorna:
+    {
+        "ultima_fecha": None,
+        "ultima_hora": None,
+        "estado": "",
+        "tamano_kb": 0.0,
+        "ultimo_error": None,
+    }
+    """
+    defaults = {
+        K_AUTO_BACKUP_ULTIMA_FECHA: None,
+        K_AUTO_BACKUP_ULTIMA_HORA: None,
+        K_AUTO_BACKUP_ESTADO: "",
+        K_AUTO_BACKUP_TAMANO_KB: 0.0,
+        K_AUTO_BACKUP_ERROR: None,
+    }
+
+    if not PREFERENCIAS_FILE.exists():
+        return defaults
+
+    try:
+        with open(PREFERENCIAS_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data, dict):
+            meta = data.get(K_AUTO_BACKUP)
+            if isinstance(meta, dict):
+                resultado = defaults.copy()
+                resultado.update({k: v for k, v in meta.items() if k in defaults})
+                return resultado
+    except Exception as e:
+        logger.warning("Error al leer metadatos de auto backup: %s", e)
+
+    return defaults
+
+
+def guardar_metadatos_auto_backup(
+    fecha: str | None = None,
+    hora: str | None = None,
+    estado: str = "exito",
+    tamano_kb: float = 0.0,
+    error: str | None = None,
+    *,
+    ultima_fecha: str | None = None,
+    ultima_hora: str | None = None,
+    ultimo_error: str | None = None,
+) -> bool:
+    r"""
+    Valida formatos constitucionales (dd-mm-aaaa para fecha con regex r"^\d{2}-\d{2}-\d{4}$",
+    hh:mm para hora con regex r"^\d{2}:\d{2}$" y validación estricta de calendario).
+    Si no cumplen, retorna False sin corromper ni tocar el archivo.
+    Carga el diccionario actual de PREFERENCIAS_FILE (preservando 'tema' y otras claves),
+    actualiza 'auto_backup' con las claves indicadas, y guarda atómicamente con
+    _escribir_archivo_seguro. Retorna True en éxito, False si ocurre excepción.
+    """
+    fec = ultima_fecha if fecha is None else fecha
+    hor = ultima_hora if hora is None else hora
+    err = ultimo_error if error is None else error
+
+    if fec is None or not (isinstance(fec, str) and re.match(r"^\d{2}-\d{2}-\d{4}$", fec)):
+        logger.warning("Formato de fecha inválido para metadatos de auto backup: %r", fec)
+        return False
+
+    if hor is None or not (isinstance(hor, str) and re.match(r"^\d{2}:\d{2}$", hor)):
+        logger.warning("Formato de hora inválido para metadatos de auto backup: %r", hor)
+        return False
+
+    try:
+        datetime.strptime(fec, "%d-%m-%Y")
+        datetime.strptime(hor, "%H:%M")
+    except (ValueError, TypeError) as val_err:
+        logger.warning("Fecha u hora fuera de rango de calendario: %s", val_err)
+        return False
+
+    try:
+        data = {}
+        if PREFERENCIAS_FILE.exists():
+            try:
+                with open(PREFERENCIAS_FILE, "r", encoding="utf-8") as f:
+                    contenido_actual = json.load(f)
+                if isinstance(contenido_actual, dict):
+                    data = contenido_actual
+            except Exception:
+                data = {}
+
+        data[K_AUTO_BACKUP] = {
+            K_AUTO_BACKUP_ULTIMA_FECHA: fec,
+            K_AUTO_BACKUP_ULTIMA_HORA: hor,
+            K_AUTO_BACKUP_ESTADO: estado,
+            K_AUTO_BACKUP_TAMANO_KB: float(tamano_kb),
+            K_AUTO_BACKUP_ERROR: err,
+        }
+
+        contenido = json.dumps(data, indent=2, ensure_ascii=False)
+        _escribir_archivo_seguro(PREFERENCIAS_FILE, contenido)
+        logger.info("Metadatos de auto backup guardados exitosamente (%s %s).", fec, hor)
+        return True
+    except Exception as e:
+        logger.error("Error al guardar metadatos de auto backup: %s", e)
+        return False
+
+
+def debe_ejecutar_auto_backup(
+    datos: dict,
+    ultima_fecha_str: str | None,
+    fecha_hoy_str: str,
+    tiene_cambios_pendientes: bool = False,
+) -> bool:
+    """
+    Determina si corresponde ejecutar el respaldo automático diario (función pura).
+
+    Reglas de negocio:
+    - Base vacía: colegios = datos.get(K_COLEGIOS, {}) -> si not colegios (len == 0), retorna False.
+    - Primera vez: si not ultima_fecha_str, retorna True.
+    - Formato fecha: parsear con datetime.strptime(..., "%d-%m-%Y").date() tanto hoy como ultima_fecha.
+    - Si hoy == ultima_fecha:
+      Retorna True si tiene_cambios_pendientes es True, o False si tiene_cambios_pendientes es False.
+    - Si hoy < ultima_fecha (reloj atrasado):
+      logger.warning("Reloj del sistema atrasado...") y retorna False.
+    - Si hoy > ultima_fecha:
+      Retorna True.
+    """
+    if not isinstance(datos, dict):
+        return False
+
+    colegios = datos.get(K_COLEGIOS, {})
+    if not colegios or len(colegios) == 0:
+        return False
+
+    if not ultima_fecha_str:
+        return True
+
+    try:
+        hoy = datetime.strptime(fecha_hoy_str, "%d-%m-%Y").date()
+        ultima_fecha = datetime.strptime(ultima_fecha_str, "%d-%m-%Y").date()
+    except (ValueError, TypeError) as e:
+        logger.warning(
+            "Error al parsear fechas en debe_ejecutar_auto_backup (hoy='%s', ultima='%s'): %s",
+            fecha_hoy_str,
+            ultima_fecha_str,
+            e,
+        )
+        return True
+
+    if hoy == ultima_fecha:
+        return bool(tiene_cambios_pendientes)
+
+    if hoy < ultima_fecha:
+        logger.warning(
+            "Reloj del sistema atrasado (hoy: %s < ultima_fecha: %s). Omitiendo auto backup.",
+            fecha_hoy_str,
+            ultima_fecha_str,
+        )
+        return False
+
+    # hoy > ultima_fecha
+    return True
+
+
+def guardar_archivo_auto_backup(ruta_destino: Path, datos: dict) -> tuple[bool, float, str | None]:
+    """
+    Escribe el archivo de respaldo automático de forma atómica y segura.
+    Genera copia de contingencia .bak si el archivo ya existía previamente.
+
+    Retorna:
+        tuple[bool, float, str | None]: (éxito, tamano_kb, error_msg)
+    """
+    try:
+        ruta_destino.parent.mkdir(parents=True, exist_ok=True)
+        ruta_bak = ruta_destino.with_name(AUTO_BACKUP_BAK_FILENAME)
+        if ruta_destino.exists():
+            try:
+                shutil.copy2(str(ruta_destino), str(ruta_bak))
+            except OSError as e:
+                logger.warning("No se pudo crear copia de contingencia .bak '%s': %s", ruta_bak, e)
+
+        contenido = json.dumps(datos, indent=2, ensure_ascii=False)
+        _escribir_archivo_seguro(ruta_destino, contenido)
+        tamano_kb = round(ruta_destino.stat().st_size / 1024, 2)
+        return True, tamano_kb, None
+    except Exception as e:
+        logger.error("Error al guardar archivo de auto backup en '%s': %s", ruta_destino, e)
+        return False, 0.0, str(e)

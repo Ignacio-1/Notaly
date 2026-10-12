@@ -15,6 +15,7 @@ from mobile.components.student_dialog import (
     StudentFormDialog,
 )
 from mobile.components.export_dialog import ExportDialog
+from mobile.components.planillas_curso_dialog import PlanillasCursoDialog
 from mobile.components.planificacion_dialog import PlanificacionCursoDialog
 from mobile.components.comportamiento_dialog import ComportamientoDialog
 from mobile.components.ui_header import (
@@ -324,6 +325,13 @@ class NotasView(ft.Container):
                                 icon_color=tok.text_muted,
                                 tooltip="Ordenar Alumnos (A-Z)",
                                 on_click=lambda e: self._ordenar_alumnos_az(),
+                            ),
+                            ft.IconButton(
+                                icon=ft.Icons.FOLDER_SHARED_OUTLINED,
+                                icon_size=18,
+                                icon_color=tok.text_muted,
+                                tooltip="Historial de Planillas",
+                                on_click=lambda e: self._abrir_modal_planillas_curso(),
                             ),
                             ft.IconButton(
                                 icon=ft.Icons.SHARE,
@@ -1901,6 +1909,18 @@ class NotasView(ft.Container):
             on_success=resultado_exportacion,
             page=self.app_page,
             periodo_activo=self.state.active_trimestre,
+            tokens=self.state.tokens,
+        )
+        self._mostrar_dialogo_con_dock_oculto(dlg)
+
+    def _abrir_modal_planillas_curso(self):
+        colegio = self.state.selected_colegio or ""
+        curso = self.state.selected_curso or ""
+        dlg = PlanillasCursoDialog(
+            colegio_nombre=colegio,
+            curso_nombre=curso,
+            state=self.state,
+            page=self.app_page,
             tokens=self.state.tokens,
         )
         self._mostrar_dialogo_con_dock_oculto(dlg)

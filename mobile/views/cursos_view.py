@@ -50,17 +50,6 @@ class CursosView(ft.Container):
                                 ft.Text(f"{len(cursos)} activos · Ciclo lectivo", size=12, color=tok.text_muted),
                             ],
                         ),
-                        ft.IconButton(
-                            icon=ft.Icons.INSIGHTS,
-                            icon_color=tok.primary,
-                            icon_size=20,
-                            tooltip="Estadísticas del Colegio",
-                            style=ft.ButtonStyle(
-                                bgcolor=tok.primary_light,
-                                shape=ft.RoundedRectangleBorder(radius=10),
-                            ),
-                            on_click=lambda _: self._abrir_estadisticas_colegio(),
-                        ),
                     ],
                 ),
                 ft.Row(
