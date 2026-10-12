@@ -207,8 +207,17 @@ class AndroidDriver:
             if any(kw in line.lower() for kw in ["fatal", "traceback", "exception", "error"])
         ]
 
+    def _ensure_app_foreground(self):
+        """Si el emulador está en el Launcher o fuera de la app, levanta Notaly."""
+        hierarchy = self.dump_hierarchy()
+        is_in_app = any(self.package_name in el.node.attrib.get("package", "") for el in hierarchy)
+        if not is_in_app or not hierarchy:
+            self.launch_app(clear_data=False)
+            time.sleep(2.0)
+
     def ensure_in_colegios(self):
         """Regresa hasta la pantalla inicial de ColegiosView."""
+        self._ensure_app_foreground()
         for _ in range(4):
             if self.is_visible("+ Colegio"):
                 return
@@ -221,6 +230,7 @@ class AndroidDriver:
 
     def ensure_in_curso(self):
         """Garantiza que la pantalla activa sea NotasView dentro de un curso."""
+        self._ensure_app_foreground()
         if self.is_visible("1° Trim") or self.is_visible("+ Alumno"):
             return
 
