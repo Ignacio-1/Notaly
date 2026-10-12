@@ -18,6 +18,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -27,6 +28,7 @@ from core.gestor_datos import _get_config_dir
 logger = logging.getLogger(__name__)
 
 INDEX_FILENAME = "exports_index.json"
+_INDEX_LOCK = threading.RLock()
 
 
 def _probar_escritura(directorio: Path) -> bool:
@@ -71,14 +73,15 @@ def obtener_directorio_exportaciones() -> Path:
 
 def sanitizar_nombre_curso(nombre: str | None) -> str:
     """
-    Sanitiza el nombre del curso eliminando caracteres inválidos en sistemas de archivos
-    (\\, /, :, *, ?, \", <, >, |). Preserva acentos y espacios.
+    Sanitiza el nombre del curso eliminando secuencias de path traversal (..)
+    y caracteres inválidos en sistemas de archivos (\\, /, :, *, ?, \", <, >, |).
+    Preserva acentos y espacios.
     Si el resultado queda vacío o con solo espacios, retorna 'Curso'.
     """
     if not nombre:
         return "Curso"
-    # Elimina caracteres prohibidos en sistemas de archivos
-    limpio = re.sub(r'[\\/:*?"<>|]', "", str(nombre)).strip()
+    texto = str(nombre).replace("..", "")
+    limpio = re.sub(r'[\\/:*?"<>|]', "", texto).strip()
     return limpio if limpio else "Curso"
 
 
@@ -132,39 +135,50 @@ def obtener_ruta_indice(directorio: Path | None = None) -> Path:
 
 def cargar_indice(directorio: Path | None = None) -> list[dict]:
     """Carga y valida el índice de planillas. Retorna lista vacía si no existe o falla."""
-    ruta = obtener_ruta_indice(directorio)
-    if not ruta.exists():
-        return []
-
-    try:
-        with open(ruta, "r", encoding="utf-8") as f:
-            datos = json.load(f)
-            if isinstance(datos, list):
-                return datos
+    with _INDEX_LOCK:
+        ruta = obtener_ruta_indice(directorio)
+        if not ruta.exists():
             return []
-    except Exception as e:
-        logger.warning("Error al cargar índice de exportaciones desde %s: %s", ruta, e)
-        return []
+
+        try:
+            with open(ruta, "r", encoding="utf-8") as f:
+                datos = json.load(f)
+                if isinstance(datos, list):
+                    return datos
+                return []
+        except Exception as e:
+            logger.warning("Error al cargar índice de exportaciones desde %s: %s", ruta, e)
+            return []
 
 
 def guardar_indice(indice: list[dict], directorio: Path | None = None) -> bool:
     """Guarda atómicamente el índice mediante archivo temporal .tmp y reemplazo atómico."""
-    ruta = obtener_ruta_indice(directorio)
-    try:
-        ruta.parent.mkdir(parents=True, exist_ok=True)
-        ident = f"{os.getpid()}_{threading.get_ident()}"
-        ruta_tmp = ruta.parent / f"{ruta.name}.{ident}.tmp"
+    with _INDEX_LOCK:
+        ruta = obtener_ruta_indice(directorio)
+        try:
+            ruta.parent.mkdir(parents=True, exist_ok=True)
+            ident = f"{os.getpid()}_{threading.get_ident()}"
+            ruta_tmp = ruta.parent / f"{ruta.name}.{ident}.tmp"
 
-        with open(ruta_tmp, "w", encoding="utf-8") as f:
-            json.dump(indice, f, ensure_ascii=False, indent=2)
-            f.flush()
-            os.fsync(f.fileno())
+            with open(ruta_tmp, "w", encoding="utf-8") as f:
+                json.dump(indice, f, ensure_ascii=False, indent=2)
+                f.flush()
+                os.fsync(f.fileno())
 
-        ruta_tmp.replace(ruta)
-        return True
-    except Exception as e:
-        logger.error("Error al guardar atómicamente el índice en %s: %s", ruta, e)
-        return False
+            # En Windows reintentar brevemente si hay colisión de lectura simultánea
+            for attempt in range(5):
+                try:
+                    ruta_tmp.replace(ruta)
+                    break
+                except PermissionError:
+                    if attempt == 4:
+                        raise
+                    time.sleep(0.02 * (attempt + 1))
+
+            return True
+        except Exception as e:
+            logger.error("Error al guardar atómicamente el índice en %s: %s", ruta, e)
+            return False
 
 
 def formatear_tamano(bytes_cant: int) -> str:
@@ -223,11 +237,12 @@ def registrar_exportacion(
     }
 
     dir_base = Path(directorio) if directorio is not None else ruta_p.parent
-    indice = cargar_indice(dir_base)
-    # Evitar duplicados exactos por ruta si ya estuviera registrado
-    indice = [item for item in indice if item.get("ruta") != str(ruta_p)]
-    indice.insert(0, registro)
-    guardar_indice(indice, dir_base)
+    with _INDEX_LOCK:
+        indice = cargar_indice(dir_base)
+        # Evitar duplicados exactos por ruta si ya estuviera registrado
+        indice = [item for item in indice if item.get("ruta") != str(ruta_p)]
+        indice.insert(0, registro)
+        guardar_indice(indice, dir_base)
 
     return registro
 
@@ -240,42 +255,43 @@ def eliminar_planilla(
     Elimina físicamente el archivo del disco si aún existe y lo retira incondicionalmente
     del índice. Tolerante a ausencias previas (no falla si el archivo ya fue borrado).
     """
-    indice = cargar_indice(directorio)
-    registro_encontrado = None
+    with _INDEX_LOCK:
+        indice = cargar_indice(directorio)
+        registro_encontrado = None
 
-    for item in indice:
-        if (
-            item.get("id") == id_o_ruta
-            or item.get("ruta") == str(id_o_ruta)
-            or item.get("nombre_archivo") == id_o_ruta
-            or Path(item.get("ruta", "")).name == id_o_ruta
-        ):
-            registro_encontrado = item
-            break
+        for item in indice:
+            if (
+                item.get("id") == id_o_ruta
+                or item.get("ruta") == str(id_o_ruta)
+                or item.get("nombre_archivo") == id_o_ruta
+                or Path(item.get("ruta", "")).name == id_o_ruta
+            ):
+                registro_encontrado = item
+                break
 
-    if registro_encontrado:
-        # Intentar eliminación física tolerante
-        ruta_p = Path(registro_encontrado["ruta"])
-        try:
-            ruta_p.unlink(missing_ok=True)
-        except Exception as e:
-            logger.warning("No se pudo eliminar archivo físico %s: %s", ruta_p, e)
+        if registro_encontrado:
+            # Intentar eliminación física tolerante
+            ruta_p = Path(registro_encontrado["ruta"])
+            try:
+                ruta_p.unlink(missing_ok=True)
+            except Exception as e:
+                logger.warning("No se pudo eliminar archivo físico %s: %s", ruta_p, e)
 
-        # Retirar incondicionalmente del índice
-        nuevo_indice = [it for it in indice if it.get("id") != registro_encontrado.get("id")]
-        guardar_indice(nuevo_indice, directorio)
-        return True, "Planilla eliminada exitosamente"
-
-    # Si no estaba en el índice, verificar si es una ruta física directa existente
-    try:
-        ruta_directa = Path(id_o_ruta)
-        if ruta_directa.exists() and ruta_directa.is_file():
-            ruta_directa.unlink(missing_ok=True)
+            # Retirar incondicionalmente del índice
+            nuevo_indice = [it for it in indice if it.get("id") != registro_encontrado.get("id")]
+            guardar_indice(nuevo_indice, directorio)
             return True, "Planilla eliminada exitosamente"
-    except Exception:
-        pass
 
-    return False, "Planilla no encontrada"
+        # Si no estaba en el índice, verificar si es una ruta física directa existente
+        try:
+            ruta_directa = Path(id_o_ruta)
+            if ruta_directa.exists() and ruta_directa.is_file():
+                ruta_directa.unlink(missing_ok=True)
+                return True, "Planilla eliminada exitosamente"
+        except Exception:
+            pass
+
+        return False, "Planilla no encontrada"
 
 
 def depurar_huerfanos(directorio: Path | None = None) -> int:
@@ -284,24 +300,25 @@ def depurar_huerfanos(directorio: Path | None = None) -> int:
     Purga automáticamente los registros que ya no existen en disco.
     Retorna la cantidad de huérfanos removidos.
     """
-    indice = cargar_indice(directorio)
-    if not indice:
-        return 0
+    with _INDEX_LOCK:
+        indice = cargar_indice(directorio)
+        if not indice:
+            return 0
 
-    limpios = []
-    huerfanos = 0
+        limpios = []
+        huerfanos = 0
 
-    for item in indice:
-        ruta_str = item.get("ruta", "")
-        if ruta_str and Path(ruta_str).exists():
-            limpios.append(item)
-        else:
-            huerfanos += 1
+        for item in indice:
+            ruta_str = item.get("ruta", "")
+            if ruta_str and Path(ruta_str).exists():
+                limpios.append(item)
+            else:
+                huerfanos += 1
 
-    if huerfanos > 0:
-        guardar_indice(limpios, directorio)
+        if huerfanos > 0:
+            guardar_indice(limpios, directorio)
 
-    return huerfanos
+        return huerfanos
 
 
 def abrir_archivo(ruta_str: str) -> tuple[bool, str | None]:

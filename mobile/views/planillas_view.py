@@ -28,7 +28,7 @@ class PlanillasView(ft.Container):
         self.list_view = ft.ListView(
             expand=True,
             spacing=12,
-            padding=ft.Padding(left=16, right=16, top=12, bottom=56),
+            padding=ft.Padding(left=16, right=16, top=12, bottom=84),
         )
 
         self.content = ft.Column(

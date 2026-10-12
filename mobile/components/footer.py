@@ -29,6 +29,11 @@ class AppFooter(ft.NavigationBar):
         self.on_navigate_callback = on_navigate
         self.tokens = tokens if tokens is not None else state.tokens
 
+        label_behavior = (
+            getattr(ft.NavigationBarLabelBehavior, "ALWAYS_SHOW", None)
+            if hasattr(ft, "NavigationBarLabelBehavior")
+            else None
+        )
         DestinationClass = getattr(ft, "NavigationBarDestination", None) or getattr(ft, "NavigationDestination", None)
         super().__init__(
             destinations=[
@@ -50,10 +55,10 @@ class AppFooter(ft.NavigationBar):
             ],
             selected_index=self._calcular_indice_activo(),
             on_change=self._al_cambiar_pestana,
+            label_behavior=label_behavior,
             bgcolor=self.tokens.surface,
             indicator_color=self.tokens.primary_light,
             elevation=3,
-            height=64,
         )
 
     def _calcular_indice_activo(self) -> int:

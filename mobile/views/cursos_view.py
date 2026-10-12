@@ -249,7 +249,7 @@ class CursosView(ft.Container):
 
         self.list_view = ft.ListView(
             spacing=12,
-            padding=ft.Padding(left=0, top=0, right=0, bottom=56),
+            padding=ft.Padding(left=0, top=0, right=0, bottom=84),
             controls=[
                 header_section,
                 *cards,
