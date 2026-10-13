@@ -183,40 +183,18 @@ def test_dock_teclado_notas_safearea(app_state_con_datos, mock_page):
 
 def test_dock_marcado_asistencias_safearea(app_state_con_datos, mock_page):
     """
-    Valida REQ-UBI-01, REQ-EVT-02, REQ-STA-01, REQ-STA-02 y REQ-ERR-01:
-    El dock de marcado rápido en AsistenciasView debe tener fondo tokens.surface,
-    padding inferior exterior 0, y envolver los botones [P], [A], [T], [J] en ft.SafeArea
-    con avoid_intrusions_bottom=True y minimum_padding.bottom >= 10.
+    SPEC-025: En AsistenciasView se eliminó el dock inferior para maximizar el viewport.
+    Valida que view.marking_dock es None, y que la toma de asistencias se realiza
+    directamente mediante las opciones laterales interactivas.
     """
     view = AsistenciasView(state=app_state_con_datos, page=mock_page, on_navigate=lambda _: None)
-    dock = view.content.controls[-1]
-    assert dock is not None, "AsistenciasView debe tener un dock inferior como último control"
-    assert isinstance(dock, ft.Container), "El dock de asistencias debe ser un ft.Container"
-    assert dock.bgcolor == app_state_con_datos.tokens.surface, (
-        "El dock debe mantener bgcolor de tokens.surface para Edge-to-Edge"
-    )
-
-    pad = dock.padding
-    bottom_pad = pad.bottom if isinstance(pad, ft.Padding) else (pad if isinstance(pad, (int, float)) else 0)
-    assert bottom_pad == 0, (
-        f"El padding inferior del dock exterior debe ser 0, actualmente es {bottom_pad}"
-    )
-
-    assert isinstance(dock.content, ft.SafeArea), (
-        f"dock.content debe ser ft.SafeArea, actualmente es {type(dock.content).__name__}"
-    )
-    safe_area = dock.content
-    assert safe_area.avoid_intrusions_bottom is True, "SafeArea debe tener avoid_intrusions_bottom=True"
-    assert safe_area.avoid_intrusions_top is False, "SafeArea debe tener avoid_intrusions_top=False"
-    assert safe_area.minimum_padding is not None, "SafeArea debe definir minimum_padding"
-
-    min_bottom = (
-        safe_area.minimum_padding.bottom
-        if isinstance(safe_area.minimum_padding, ft.Padding)
-        else safe_area.minimum_padding
-    )
-    assert min_bottom >= 10, f"minimum_padding.bottom debe ser >= 10dp, actualmente es {min_bottom}"
-    assert isinstance(safe_area.content, ft.Column), "El contenido interno de SafeArea debe ser ft.Column"
+    assert view.marking_dock is None, "AsistenciasView no debe renderizar dock inferior"
+    # El último control del contenido es el contenedor expandido de la lista de alumnos
+    ultimo_control = view.content.controls[-1]
+    assert isinstance(ultimo_control, ft.Container)
+    assert ultimo_control.expand is True
+    # Comprobar que en alumnos_botones existen las opciones laterales interactivas P, A, T, J
+    assert hasattr(view, "alumnos_botones") and len(view.alumnos_botones) > 0
 
 
 def test_colegios_listview_bottom_padding(app_state_con_datos, mock_page):

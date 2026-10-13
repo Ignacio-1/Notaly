@@ -99,6 +99,8 @@ def main(page: ft.Page):
     _last_back_time: float = 0.0
     _in_transition: bool = False
     EXIT_WINDOW_SECONDS: float = 2.0
+    _curso_views: dict[str, ft.Control] = {}
+    _curso_context: tuple[str | None, str | None] = (None, None)
 
     def _mostrar_snackbar_doble_back():
         t = state.tokens
@@ -129,6 +131,13 @@ def main(page: ft.Page):
         # Nivel 1: Búsqueda Omnibox Abierta
         if global_search is not None and getattr(global_search, "is_open", False):
             if global_search.cerrar_vista_si_abierta():
+                _last_back_time = 0.0
+                return
+
+        # Nivel 1.5: Teclado numérico / Dock retráctil abierto en la vista activa
+        current_view = getattr(main_container, "content", None)
+        if current_view is not None and hasattr(current_view, "cerrar_dock_si_abierto") and callable(current_view.cerrar_dock_si_abierto):
+            if current_view.cerrar_dock_si_abierto():
                 _last_back_time = 0.0
                 return
 
@@ -199,12 +208,17 @@ def main(page: ft.Page):
             _mostrar_snackbar_doble_back()
 
     def navigate(view_name: str, push_history: bool = True):
-        nonlocal _last_back_time
+        nonlocal _last_back_time, _curso_context
         _last_back_time = 0.0
 
         if view_name == "back":
             _gestionar_retroceso_sistema()
             return
+
+        current_context = (state.selected_colegio, state.selected_curso)
+        if current_context != _curso_context or view_name in ("colegios", "cursos"):
+            _curso_views.clear()
+            _curso_context = current_context
 
         if push_history and view_name != state.current_screen:
             if state.can_pop() and state.peek_history() and state.peek_history().get("screen") == view_name:
@@ -219,11 +233,17 @@ def main(page: ft.Page):
         elif view_name == "cursos":
             main_container.content = CursosView(state, page, on_navigate=navigate)
         elif view_name == "notas":
-            main_container.content = NotasView(state, page, on_navigate=navigate)
+            if "notas" not in _curso_views:
+                _curso_views["notas"] = NotasView(state, page, on_navigate=navigate)
+            main_container.content = _curso_views["notas"]
         elif view_name == "asistencias":
-            main_container.content = AsistenciasView(state, page, on_navigate=navigate)
+            if "asistencias" not in _curso_views:
+                _curso_views["asistencias"] = AsistenciasView(state, page, on_navigate=navigate)
+            main_container.content = _curso_views["asistencias"]
         elif view_name == "grupos":
-            main_container.content = GruposView(state, page, on_navigate=navigate)
+            if "grupos" not in _curso_views:
+                _curso_views["grupos"] = GruposView(state, page, on_navigate=navigate)
+            main_container.content = _curso_views["grupos"]
         elif view_name == "estadisticas":
             main_container.content = EstadisticasView(state, page, on_navigate=navigate)
         elif view_name == "planillas":
@@ -233,6 +253,7 @@ def main(page: ft.Page):
 
     def al_restaurar_copia():
         # Validar consistencia tras la restauración (combinar o reemplazar)
+        _curso_views.clear()
         state.clear_history()
         colegios = state.get_colegios()
         if not state.selected_colegio or state.selected_colegio not in colegios:
@@ -366,6 +387,7 @@ def main(page: ft.Page):
         footer.actualizar_tema(t)
 
         # 4. Refrescar la vista actual manteniendo intacto el contexto docente
+        _curso_views.clear()
         navigate(state.current_screen)
         page.update()
 

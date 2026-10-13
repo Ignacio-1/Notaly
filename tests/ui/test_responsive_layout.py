@@ -188,12 +188,16 @@ def test_export_dialog_responsive_and_scroll(responsive_state):
 
 
 def test_notas_view_dock_hides_when_dialog_open_and_restores_on_dismiss(responsive_state):
-    """Verifica que al abrir cualquier diálogo modal en NotasView, el teclado dock inferior se oculte y se restaure al salir."""
+    """Verifica que al abrir cualquier diálogo modal en NotasView, el teclado dock numérico se oculte y se restaure al salir."""
     page = MockResponsivePage(width=360, height=800)
     view = NotasView(responsive_state, page, on_navigate=lambda _: None)
 
-    # El dock numérico debe estar visible inicialmente en trimestres (T1)
+    # El dock numérico inicia oculto para maximizar visibilidad
     assert view.dock_container is not None
+    assert view.dock_container.visible is False
+
+    # Al tocar una celda se activa el dock
+    view.alumnos_celdas['1']['P0']['container'].on_click(None)
     assert view.dock_container.visible is True
 
     # Abrir diálogo de exportación

@@ -259,6 +259,9 @@ def test_stress_ciclo_vida_modales_y_dock_resiliencia(stress_env):
     with patch("core.gestor_planillas.obtener_directorio_exportaciones", return_value=exports_dir):
         # 1. NotasView
         notas_view = NotasView(state=state, page=mock_page, on_navigate=lambda v: None)
+        assert notas_view.dock_container.visible is False
+        first_alumno = list(notas_view.alumnos_celdas.keys())[0]
+        notas_view.alumnos_celdas[first_alumno]["P0"]["container"].on_click(None)
         assert notas_view.dock_container.visible is True
 
         for _ in range(15):
@@ -273,17 +276,16 @@ def test_stress_ciclo_vida_modales_y_dock_resiliencia(stress_env):
             mock_page.pop_dialog()
             assert notas_view.dock_container.visible is True
 
-        # 2. AsistenciasView
+        # 2. AsistenciasView: Sin dock inferior (marcado lateral directo)
         asist_view = AsistenciasView(state=state, page=mock_page, on_navigate=lambda v: None)
-        assert asist_view.marking_dock.visible is True
+        assert asist_view.marking_dock is None
 
         for _ in range(15):
             asist_view._abrir_modal_planillas_curso()
-            assert asist_view.marking_dock.visible is False
             dlg = mock_page.active_dialog
             assert isinstance(dlg, PlanillasCursoDialog)
 
             if callable(dlg.on_dismiss):
                 dlg.on_dismiss(None)
             mock_page.pop_dialog()
-            assert asist_view.marking_dock.visible is True
+            assert asist_view.marking_dock is None

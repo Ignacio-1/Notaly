@@ -141,7 +141,7 @@ class NotasView(ft.Container):
 
         # Estado visual interno
         self.expanded_student_id: str | None = None
-        self.active_grade_index: int = 0  # 0 a 4 (P0, P1, P2, E0, R0)
+        self.active_grade_index: int = -1  # -1 indica ningún slot activo
         self.alumnos_celdas: dict = {}
         self.tarjetas_alumnos: dict = {}
         self.name_drafts: dict = {}
@@ -154,6 +154,9 @@ class NotasView(ft.Container):
 
         self.paneles_anuales: dict[str, dict] = {}
         self.header_pills_containers: dict[str, ft.Container] = {}
+        self.sub_header_container: ft.Container | None = None
+        self.collapsible_header: ft.Container | None = None
+        self._ultimo_scroll_offset: float = 0.0
         self.dock_container: ft.Container | None = None
 
         self.dock_label_active: ft.Text | None = None
@@ -208,6 +211,9 @@ class NotasView(ft.Container):
             self.expanded_student_id = str(self.state.selected_alumno_id)
         elif self.expanded_student_id not in alumnos:
             self.expanded_student_id = alumnos_keys[0] if alumnos_keys else None
+
+        if self.expanded_student_id:
+            self.active_grade_index = 0
 
         trim_idx = self.state.active_trimestre if 0 <= self.state.active_trimestre < 3 else 0
         nombres_cols = self.state.get_nombres_columnas(colegio, curso, trim_idx)
@@ -346,22 +352,33 @@ class NotasView(ft.Container):
             ),
         )
 
-        # 5. Lista de tarjetas expandibles de alumnos
+        # Agrupar sub-header colapsable (Pestañas, Trimestres, Acciones) que fluirá dentro del ListView
+        self.sub_header_container = ft.Container(
+            content=ft.Column(
+                spacing=0,
+                controls=[
+                    module_tabs,
+                    trim_selector_bar,
+                    actions_bar,
+                ],
+            ),
+            visible=True,
+        )
+        self.collapsible_header = self.sub_header_container
+
+        # 5. Lista de tarjetas expandibles de alumnos (con el sub-header integrado al inicio del scroll)
         lista_tarjetas = self._construir_lista_tarjetas(alumnos, trim_idx, nombres_cols)
 
-        # 6. Teclado Flotante Inferior anclado al pie (Dock Numérico)
+        # 6. Teclado Flotante Inferior anclado al pie (Dock Numérico retráctil)
         self.dock_container = self._construir_dock_teclado(alumnos, trim_idx, nombres_cols)
-        if self.state.active_trimestre == 3:
-            self.dock_container.visible = False
+        # Oculto por defecto hasta que el usuario toque un casillero de nota
+        self.dock_container.visible = False
 
         self.content = ft.Column(
             expand=True,
             spacing=0,
             controls=[
                 header,
-                module_tabs,
-                trim_selector_bar,
-                actions_bar,
                 ft.Container(
                     expand=True,
                     padding=ft.Padding(left=16, right=16, top=2, bottom=4),
@@ -653,7 +670,9 @@ class NotasView(ft.Container):
 
     def _seleccionar_trimestre(self, trim_idx: int):
         self.state.active_trimestre = trim_idx
-        self.active_grade_index = 0
+        dock_estaba_abierto = bool(hasattr(self, "dock_container") and self.dock_container and self.dock_container.visible)
+        if not dock_estaba_abierto:
+            self.active_grade_index = -1
         tok = self.state.tokens
 
         # Si no tenemos tarjetas montadas, construir UI
@@ -699,16 +718,15 @@ class NotasView(ft.Container):
             self.app_page.update()
             return
 
-        # Caso B: Regreso a Trimestres (T1, T2, T3) (restablecer edición normal y dock reactivo)
+        # Caso B: Regreso a Trimestres (T1, T2, T3) (restablecer edición normal)
         if hasattr(self, "dock_container") and self.dock_container:
-            self.dock_container.visible = True
+            # Solo mostrar el dock si previamente estaba abierto y hay un slot de nota activo
+            self.dock_container.visible = bool(dock_estaba_abierto and self.active_grade_index >= 0 and self.expanded_student_id is not None)
 
         if hasattr(self, "tarjetas_alumnos"):
             for sid in self.tarjetas_alumnos:
                 if sid in self.paneles_anuales:
                     self.paneles_anuales[sid]["container"].visible = False
-                if sid in self.header_pills_containers:
-                    self.header_pills_containers[sid].visible = True
                 if sid in self.chevron_icons:
                     self.chevron_icons[sid].visible = True
 
@@ -778,7 +796,7 @@ class NotasView(ft.Container):
         self.header_pills_containers = {}
 
         if not alumnos:
-            return ft.Container(
+            empty_msg = ft.Container(
                 content=ft.Column(
                     [
                         ft.Container(
@@ -799,6 +817,14 @@ class NotasView(ft.Container):
                 alignment=ft.Alignment.CENTER,
                 padding=30,
             )
+            ctrls = [self.sub_header_container, empty_msg] if getattr(self, "sub_header_container", None) else [empty_msg]
+            self.lista_tarjetas_listview = ft.ListView(
+                spacing=10,
+                padding=ft.Padding(left=0, top=0, right=0, bottom=56),
+                controls=ctrls,
+                expand=True,
+            )
+            return self.lista_tarjetas_listview
 
         student_cards = []
         es_modo_anual = (self.state.active_trimestre == 3)
@@ -965,29 +991,21 @@ class NotasView(ft.Container):
                 content=ft.Row(spacing=2, controls=trim_buttons),
             )
 
-            # 2. Formulario compacto de edición rápida de nombres
-            txt_edit_apellido = ft.TextField(
-                label="Apellido",
-                value=self.name_drafts[id_str]["apellido"],
-                dense=True,
-                border_radius=8,
-                text_size=12,
-                on_change=lambda e, sid=id_str: self._actualizar_draft_nombre(sid, "apellido", e.control.value),
-            )
-            txt_edit_nombre = ft.TextField(
-                label="Nombre",
-                value=self.name_drafts[id_str]["nombre"],
-                dense=True,
-                border_radius=8,
-                text_size=12,
-                on_change=lambda e, sid=id_str: self._actualizar_draft_nombre(sid, "nombre", e.control.value),
+            # Fila superior de la tarjeta desplegada: selector local de trimestre + botón de Lápiz para editar/eliminar alumno
+            btn_editar_alumno = ft.IconButton(
+                icon=ft.Icons.EDIT_OUTLINED,
+                icon_color=tok.primary,
+                icon_size=20,
+                tooltip="Editar o eliminar alumno",
+                on_click=lambda _, i=id_str, n=nombre_al: self._abrir_modal_renombrar_alumno(i, n),
             )
 
-            edicion_alumno_row = ft.Column(
-                spacing=6,
+            cabecera_desplegada_row = ft.Row(
+                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
                 controls=[
-                    ft.Text("Editar datos del alumno", size=12, weight=ft.FontWeight.BOLD, color=tok.text_main),
-                    ft.Row(spacing=8, controls=[ft.Container(expand=True, content=txt_edit_apellido), ft.Container(expand=True, content=txt_edit_nombre)]),
+                    ft.Container(expand=True, content=selector_trim_local),
+                    btn_editar_alumno,
                 ],
             )
 
@@ -1057,8 +1075,7 @@ class NotasView(ft.Container):
                 content=ft.Column(
                     spacing=12,
                     controls=[
-                        edicion_alumno_row,
-                        selector_trim_local,
+                        cabecera_desplegada_row,
                         ft.Row(spacing=6, controls=slots_widgets),
                         resumen_trimestre_row,
                         fila_comportamiento,
@@ -1069,17 +1086,11 @@ class NotasView(ft.Container):
 
             chevron_icon = ft.Icon(
                 ft.Icons.EXPAND_LESS if is_open else ft.Icons.EXPAND_MORE,
-                size=18,
+                size=20,
                 color=tok.primary if is_open else tok.text_muted,
                 visible=(not es_modo_anual),
             )
             self.chevron_icons[id_str] = chevron_icon
-
-            header_pills_cont = ft.Container(
-                visible=(not es_modo_anual),
-                content=ft.Row(spacing=4, tight=True, controls=[pill1, pill2, pill3]),
-            )
-            self.header_pills_containers[id_str] = header_pills_cont
 
             # Tarjeta completa
             card_container = ft.Container(
@@ -1090,13 +1101,13 @@ class NotasView(ft.Container):
                 content=ft.Column(
                     spacing=0,
                     controls=[
-                        # Cabecera colapsable / expandible
+                        # Cabecera colapsable / expandible con máximo ancho para el nombre
                         ft.Container(
                             padding=12,
                             ink=(not es_modo_anual),
                             on_click=lambda _, sid=id_str: self._toggle_expand_alumno(sid),
                             content=ft.Row(
-                                spacing=10,
+                                spacing=12,
                                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
                                 controls=[
                                     ft.Container(
@@ -1107,33 +1118,16 @@ class NotasView(ft.Container):
                                         alignment=ft.Alignment.CENTER,
                                         content=ft.Text(iniciales, size=12, weight=ft.FontWeight.BOLD, color=avatar_fg),
                                     ),
-                                    ft.Column(
+                                    ft.Text(
+                                        f"#{id_str} {nombre_al}",
+                                        size=14,
+                                        weight=ft.FontWeight.BOLD,
+                                        color=tok.text_main,
                                         expand=True,
-                                        spacing=1,
-                                        controls=[
-                                            ft.Text(f"#{id_str} {nombre_al}", size=13, weight=ft.FontWeight.BOLD, color=tok.text_main, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS),
-                                            prom_anual_txt,
-                                        ],
+                                        max_lines=1,
+                                        overflow=ft.TextOverflow.ELLIPSIS,
                                     ),
-                                    header_pills_cont,
                                     chevron_icon,
-                                    ft.PopupMenuButton(
-                                        icon=ft.Icons.MORE_VERT,
-                                        icon_size=18,
-                                        icon_color=tok.text_muted,
-                                        items=[
-                                            ft.PopupMenuItem(
-                                                icon=ft.Icons.EDIT_OUTLINED,
-                                                content=ft.Text("Renombrar"),
-                                                on_click=lambda e, i=id_str, n=nombre_al: self._abrir_modal_renombrar_alumno(i, n),
-                                            ),
-                                            ft.PopupMenuItem(
-                                                icon=ft.Icons.DELETE_OUTLINE,
-                                                content=ft.Text("Eliminar Alumno"),
-                                                on_click=lambda e, i=id_str, n=nombre_al: self._abrir_modal_eliminar_alumno(i, n),
-                                            ),
-                                        ],
-                                    ),
                                 ],
                             ),
                         ),
@@ -1146,13 +1140,18 @@ class NotasView(ft.Container):
             self.tarjetas_alumnos[id_str] = card_container
             student_cards.append(card_container)
 
+        ctrls = [self.sub_header_container, *student_cards] if getattr(self, "sub_header_container", None) else student_cards
         self.lista_tarjetas_listview = ft.ListView(
             spacing=10,
             padding=ft.Padding(left=0, top=0, right=0, bottom=56),
-            controls=student_cards,
+            controls=ctrls,
             expand=True,
         )
         return self.lista_tarjetas_listview
+
+    def _al_hacer_scroll(self, e=None):
+        """Deprecado: el desplazamiento fluye de forma 100% nativa con el sub-header integrado en el ListView."""
+        pass
 
     def _crear_slot_control(
         self,
@@ -1214,27 +1213,22 @@ class NotasView(ft.Container):
                 return
             self.expanded_student_id = id_al
             self.active_grade_index = slot_index
+
+            # Abrir el dock numérico retráctil si estaba cerrado
+            if hasattr(self, "dock_container") and self.dock_container:
+                self.dock_container.visible = True
+                try:
+                    self.dock_container.update()
+                except Exception:
+                    pass
+
             self._actualizar_dock_labels()
             self._actualizar_slots_ui(id_al)
-
-            # Abrir también GradeEditorDialog para soporte táctil fino y compatibilidad con tests
-            def guardar_desde_dialogo(nuevo_val):
-                curr_trim = self.state.active_trimestre if 0 <= self.state.active_trimestre < 3 else 0
-                self.state.set_nota(id_al, curr_trim, ref_dict["tipo"], ref_dict["sub_idx"], nuevo_val)
-                self._actualizar_fila_alumno_ui(id_al)
-                self._actualizar_boton_guardar()
-                self._actualizar_dock_labels()
-                self.app_page.update()
-
-            dlg = GradeEditorDialog(
-                alumno_nombre=nombre_alumno,
-                columna_nombre=ref_dict.get("col_name", col_name),
-                valor_actual=ref_dict.get("valor"),
-                on_save=guardar_desde_dialogo,
-                page=self.app_page,
-                tokens=self.state.tokens,
-            )
-            self._mostrar_dialogo_con_dock_oculto(dlg)
+            if hasattr(self, "app_page") and self.app_page:
+                try:
+                    self.app_page.update()
+                except Exception:
+                    pass
 
         container.on_click = on_slot_click
 
@@ -1330,13 +1324,31 @@ class NotasView(ft.Container):
                     controls=[
                         ft.Row(
                             alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                            vertical_alignment=ft.CrossAxisAlignment.CENTER,
                             controls=[
-                                self.dock_label_active,
                                 ft.Container(
-                                    bgcolor=tok.primary_light,
-                                    border_radius=6,
-                                    padding=ft.Padding(left=8, right=8, top=2, bottom=2),
-                                    content=self.dock_badge_trimestre,
+                                    expand=True,
+                                    content=self.dock_label_active,
+                                ),
+                                ft.Row(
+                                    spacing=6,
+                                    tight=True,
+                                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                                    controls=[
+                                        ft.Container(
+                                            bgcolor=tok.primary_light,
+                                            border_radius=6,
+                                            padding=ft.Padding(left=8, right=8, top=2, bottom=2),
+                                            content=self.dock_badge_trimestre,
+                                        ),
+                                        ft.IconButton(
+                                            icon=ft.Icons.KEYBOARD_ARROW_DOWN,
+                                            icon_size=20,
+                                            icon_color=tok.text_muted,
+                                            tooltip="Ocultar teclado",
+                                            on_click=lambda _: self._ocultar_dock_y_deseleccionar(),
+                                        ),
+                                    ],
                                 ),
                             ],
                         ),
@@ -1359,7 +1371,9 @@ class NotasView(ft.Container):
         nombres_cols = self.state.get_nombres_columnas(colegio, curso, trim_idx)
 
         val_int = int(math.floor(float(valor) + 0.5))
-        tipo, sub_idx, _, _ = self._get_slot_meta(self.active_grade_index, nombres_cols)
+        slot_actual = self.active_grade_index if self.active_grade_index >= 0 else 0
+        self.active_grade_index = slot_actual
+        tipo, sub_idx, _, _ = self._get_slot_meta(slot_actual, nombres_cols)
         self.state.set_nota(id_al, trim_idx, tipo, sub_idx, val_int)
 
         self._actualizar_fila_alumno_ui(id_al)
@@ -1381,6 +1395,32 @@ class NotasView(ft.Container):
         self._actualizar_slots_ui(id_al)
         self.app_page.update()
 
+    def cerrar_dock_si_abierto(self) -> bool:
+        """Cierra el dock numérico si está visible y deselecciona la nota activa. Retorna True si consumió el evento."""
+        if hasattr(self, "dock_container") and self.dock_container and self.dock_container.visible:
+            self._ocultar_dock_y_deseleccionar()
+            return True
+        return False
+
+    def _ocultar_dock_y_deseleccionar(self):
+        """Oculta el dock inferior y deselecciona el casillero de nota activo."""
+        self.active_grade_index = -1
+        if hasattr(self, "dock_container") and self.dock_container:
+            self.dock_container.visible = False
+            try:
+                self.dock_container.update()
+            except Exception:
+                pass
+
+        if self.expanded_student_id:
+            self._actualizar_slots_ui(self.expanded_student_id)
+
+        if hasattr(self, "app_page") and self.app_page:
+            try:
+                self.app_page.update()
+            except Exception:
+                pass
+
     def _limpiar_nota_dock(self):
         """Borra la nota del slot activo del alumno expandido."""
         if self.state.active_trimestre >= 3 or not self.expanded_student_id:
@@ -1392,7 +1432,9 @@ class NotasView(ft.Container):
         curso = self.state.selected_curso or ""
         nombres_cols = self.state.get_nombres_columnas(colegio, curso, trim_idx)
 
-        tipo, sub_idx, _, _ = self._get_slot_meta(self.active_grade_index, nombres_cols)
+        slot_actual = self.active_grade_index if self.active_grade_index >= 0 else 0
+        self.active_grade_index = slot_actual
+        tipo, sub_idx, _, _ = self._get_slot_meta(slot_actual, nombres_cols)
         self.state.set_nota(id_al, trim_idx, tipo, sub_idx, None)
 
         self._actualizar_fila_alumno_ui(id_al)
@@ -1409,7 +1451,13 @@ class NotasView(ft.Container):
         curso = self.state.selected_curso or ""
         alumnos_keys = list(self.state.get_alumnos(colegio, curso).keys())
 
-        if self.active_grade_index < 4:
+        if self.active_grade_index < 0:
+            self.active_grade_index = 0
+            if self.expanded_student_id:
+                self._actualizar_slots_ui(self.expanded_student_id)
+            self._actualizar_dock_labels()
+            self.app_page.update()
+        elif self.active_grade_index < 4:
             self.active_grade_index += 1
             if self.expanded_student_id:
                 self._actualizar_slots_ui(self.expanded_student_id)
@@ -1612,6 +1660,9 @@ class NotasView(ft.Container):
         if prev_id == sid_str:
             # Colapsar el alumno actual
             self.expanded_student_id = None
+            self.active_grade_index = -1
+            if hasattr(self, "dock_container") and self.dock_container:
+                self.dock_container.visible = False
             self.expanded_containers[sid_str].visible = False
             self.tarjetas_alumnos[sid_str].border = ft.Border.all(1.5, tok.border_color)
             self.tarjetas_alumnos[sid_str].shadow = ft.BoxShadow(spread_radius=0, blur_radius=8, color=ft.Colors.TRANSPARENT)
@@ -1630,9 +1681,10 @@ class NotasView(ft.Container):
                     self.chevron_icons[prev_str].name = ft.Icons.EXPAND_MORE
                     self.chevron_icons[prev_str].color = tok.text_muted
 
-            # Expandir el nuevo alumno
+            # Expandir el nuevo alumno (el dock permanece cerrado a menos que el docente toque un casillero)
             self.expanded_student_id = sid_str
             self.active_grade_index = 0
+
             self.expanded_containers[sid_str].visible = True
             self.tarjetas_alumnos[sid_str].border = ft.Border.all(1.5, tok.primary)
             self.tarjetas_alumnos[sid_str].shadow = ft.BoxShadow(spread_radius=0, blur_radius=8, color="#0F172A0D")
@@ -1676,7 +1728,12 @@ class NotasView(ft.Container):
 
     def _mostrar_dialogo_con_dock_oculto(self, dlg):
         """Muestra un diálogo modal ocultando temporalmente el teclado dock numérico para evitar saturación visual."""
-        if hasattr(self, "dock_container") and self.dock_container:
+        estaba_visible = bool(
+            hasattr(self, "dock_container")
+            and self.dock_container
+            and self.dock_container.visible
+        )
+        if estaba_visible:
             self.dock_container.visible = False
             try:
                 self.dock_container.update()
@@ -1686,7 +1743,7 @@ class NotasView(ft.Container):
         original_dismiss = getattr(dlg, "on_dismiss", None)
 
         def on_dismiss_wrapper(e=None):
-            if hasattr(self, "dock_container") and self.dock_container and self.state.active_trimestre < 3:
+            if estaba_visible and hasattr(self, "dock_container") and self.dock_container and self.state.active_trimestre < 3:
                 self.dock_container.visible = True
                 try:
                     self.dock_container.update()
@@ -1844,6 +1901,7 @@ class NotasView(ft.Container):
             nombre_actual=nom_act,
             modo_continuo=False,
             on_confirm=confirmar,
+            on_delete=lambda: self._abrir_modal_eliminar_alumno(id_al, nombre_actual),
             page=self.app_page,
             tokens=self.state.tokens,
         )

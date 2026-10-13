@@ -719,11 +719,14 @@ class TestScrollPreservationAndInPlaceUpdates:
         assert celdas_alumno1['P0']['text_widget'].value == "8"
 
         with patch.object(view, '_build_ui', wraps=view._build_ui) as mock_rebuild:
+            # Al tocar el casillero, se abre el dock numérico retráctil sin ventana modal intermedia
             celdas_alumno1['P0']['container'].on_click(None)
-            dialogo = mock_page_mobile.active_dialog
-            assert isinstance(dialogo, GradeEditorDialog)
-            dialogo.txt_nota.value = "9.5"
-            dialogo._guardar_desde_input()
+            assert mock_page_mobile.active_dialog is None
+            assert view.dock_container.visible is True
+            assert view.active_grade_index == 0
+
+            # Carga directa mediante el dock numérico táctil
+            view._aplicar_nota_dock(10.0)
             assert mock_rebuild.call_count == 0
 
         assert celdas_alumno1['P0']['text_widget'].value == "10"
@@ -964,6 +967,11 @@ def test_vista_anual_solo_lectura_informativa_y_dock_oculto(isolated_app_state, 
     initial_listview = view.lista_tarjetas_listview
     assert initial_listview is not None
     assert view.dock_container is not None
+    # El dock numérico inicia oculto para dar máxima visibilidad a los alumnos
+    assert view.dock_container.visible is False
+
+    # Al tocar un casillero se abre el dock
+    view.alumnos_celdas['1']['P0']['container'].on_click(None)
     assert view.dock_container.visible is True
 
     view._seleccionar_trimestre(3)
@@ -975,7 +983,6 @@ def test_vista_anual_solo_lectura_informativa_y_dock_oculto(isolated_app_state, 
         assert view.paneles_anuales[sid]['container'].visible is True
         assert view.expanded_containers[sid].visible is False
         assert view.chevron_icons[sid].visible is False
-        assert view.header_pills_containers[sid].visible is False
 
     anual_al1 = view.paneles_anuales['1']
     assert anual_al1['t1_text'].value == "8"
@@ -1002,11 +1009,12 @@ def test_vista_anual_solo_lectura_informativa_y_dock_oculto(isolated_app_state, 
 
     view._seleccionar_trimestre(0)
     assert view.state.active_trimestre == 0
+    # Al regresar a trimestre, el dock permanece oculto si no hay slot seleccionado
+    view.alumnos_celdas['1']['P0']['container'].on_click(None)
     assert view.dock_container.visible is True
 
     for sid in ['1', '2']:
         assert view.paneles_anuales[sid]['container'].visible is False
-        assert view.header_pills_containers[sid].visible is True
         assert view.chevron_icons[sid].visible is True
 
     exp_sid = view.expanded_student_id
@@ -1549,4 +1557,76 @@ def test_notas_view_exportar_dialog_integracion_whatsapp(isolated_app_state, moc
     assert len(mock_page_mobile.overlay) > 0
     ultimo_snack = mock_page_mobile.overlay[-1]
     assert "📋 Calificaciones de 3° Trimestre copiadas al portapapeles. ¡Listas para pegar en WhatsApp!" in ultimo_snack.content.value
+    mock_page_mobile.pop_dialog()
+
+
+def test_notas_view_dock_retractil_y_header_colapsable_y_lapiz_edicion(isolated_app_state, mock_page_mobile):
+    """
+    Verifica los nuevos requerimientos UX de la planilla móvil:
+    1. El dock numérico inicia oculto y se activa al pulsar cualquier celda.
+    2. El dock se puede cerrar mediante cerrar_dock_si_abierto() deseleccionando la nota.
+    3. Al hacer scroll hacia abajo, el sub-header se oculta; al hacer scroll hacia arriba, reaparece.
+    4. La tarjeta plegada muestra el nombre completo sin píldoras ni menú de tres puntos.
+    5. La tarjeta desplegada incluye un botón de lápiz que abre el diálogo de edición/eliminación.
+    """
+    from mobile.views.notas_view import NotasView
+    isolated_app_state.selected_colegio = "Colegio Nacional"
+    isolated_app_state.selected_curso = "5to A"
+    isolated_app_state.active_trimestre = 0
+
+    view = NotasView(isolated_app_state, mock_page_mobile, on_navigate=lambda x: None)
+
+    # 1. Dock oculto por defecto
+    assert view.dock_container is not None
+    assert view.dock_container.visible is False
+
+    # 2. Al tocar una celda se abre el dock y activa el slot
+    celda_p0 = view.alumnos_celdas['1']['P0']['container']
+    celda_p0.on_click(None)
+    assert view.dock_container.visible is True
+    assert view.active_grade_index == 0
+
+    # 3. Al cerrar el dock (flecha o back del celular), se oculta y deselecciona
+    cerrado = view.cerrar_dock_si_abierto()
+    assert cerrado is True
+    assert view.dock_container.visible is False
+    assert view.active_grade_index == -1
+
+    # Si se vuelve a invocar cuando ya está cerrado, retorna False
+    assert view.cerrar_dock_si_abierto() is False
+
+    # 4. Sub-header integrado dentro del ListView para scroll 100% nativo y sin saltos (Opción 1)
+    assert view.sub_header_container is not None
+    assert view.lista_tarjetas_listview.controls[0] == view.sub_header_container
+    assert getattr(view.lista_tarjetas_listview, "on_scroll", None) is None
+    assert len(view.content.controls) == 3
+    assert view.content.controls[2] == view.dock_container
+
+    # 4.1 Al abrir y cerrar modal de editar alumno cuando el dock está cerrado, permanece cerrado
+    assert view.dock_container.visible is False
+    view._abrir_modal_renombrar_alumno('1', 'Perez, Juan')
+    assert mock_page_mobile.active_dialog is not None
+    dlg = mock_page_mobile.active_dialog
+    if callable(dlg.on_dismiss):
+        dlg.on_dismiss(None)
+    mock_page_mobile.pop_dialog()
+    assert view.dock_container.visible is False
+
+    # 5. Tarjeta plegada: número y nombre con máximo ancho, sin píldoras en la fila
+    card_col = view.tarjetas_alumnos['1'].content
+    header_row = card_col.controls[0].content
+    # Controles: Avatar, Text(f"#{id_str} {nombre_al}"), Chevron
+    text_nombre = header_row.controls[1]
+    assert isinstance(text_nombre, ft.Text)
+    assert text_nombre.expand is True
+    assert "#1" in text_nombre.value
+    # Comprobar que no hay PopupMenuButton ni header_pills en la fila
+    assert not any(isinstance(c, ft.PopupMenuButton) for c in header_row.controls)
+    assert not any(getattr(c, "data", None) == "grade-pill" for c in header_row.controls)
+
+    # 6. Tarjeta desplegada: botón de lápiz que abre el modal de edición/borrado
+    view._abrir_modal_renombrar_alumno("1", "Gomez Juan")
+    dlg = mock_page_mobile.active_dialog
+    assert isinstance(dlg, StudentFormDialog)
+    assert dlg.on_delete is not None
     mock_page_mobile.pop_dialog()

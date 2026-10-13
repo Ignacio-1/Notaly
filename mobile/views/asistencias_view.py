@@ -269,8 +269,8 @@ class AsistenciasView(ft.Container):
         # 6. Lista de Alumnos para toma de asistencia
         lista_alumnos = self._construir_lista_alumnos(alumnos, asistencias_dia, fecha_actual)
 
-        # 7. Dock inferior de marcado rápido (Bottom Dock P, A, T, J)
-        self.marking_dock = self._construir_dock_marcado(alumnos)
+        # 7. Dock de marcado eliminado (la marcación es directa vía botones laterales P, A, T, J)
+        self.marking_dock = None
 
         self.content = ft.Column(
             expand=True,
@@ -286,7 +286,6 @@ class AsistenciasView(ft.Container):
                     padding=ft.Padding(left=16, right=16, top=4, bottom=6),
                     content=lista_alumnos,
                 ),
-                self.marking_dock,
             ],
         )
 

@@ -246,11 +246,13 @@ def test_notas_and_asistencias_views_planillas_modal_integration(sample_state, m
         # 1. NotasView
         notas_view = NotasView(state=state, page=mock_page, on_navigate=lambda v: None)
         assert hasattr(notas_view, "dock_container")
+        # Simular que el dock estaba abierto por tocar un casillero
+        notas_view.dock_container.visible = True
 
         # Abrir modal de planillas
         notas_view._abrir_modal_planillas_curso()
         assert isinstance(mock_page.active_dialog, PlanillasCursoDialog)
-        # Dock debe estar oculto
+        # Dock debe estar oculto durante el modal
         assert notas_view.dock_container.visible is False
 
         # Cerrar modal
@@ -260,19 +262,20 @@ def test_notas_and_asistencias_views_planillas_modal_integration(sample_state, m
         assert notas_view.dock_container.visible is True
         mock_page.pop_dialog()
 
-        # 2. AsistenciasView
+        # 2. AsistenciasView: El dock inferior fue eliminado a favor del marcado lateral directo
         asist_view = AsistenciasView(state=state, page=mock_page, on_navigate=lambda v: None)
-        assert hasattr(asist_view, "marking_dock")
+        assert asist_view.marking_dock is None
+        # Comprobar que en content.controls no hay dock al pie
+        assert not any(getattr(c, "data", None) == "marking-dock" for c in asist_view.content.controls)
 
-        # Abrir modal de planillas
+        # Abrir modal de planillas en asistencias
         asist_view._abrir_modal_planillas_curso()
         assert isinstance(mock_page.active_dialog, PlanillasCursoDialog)
-        assert asist_view.marking_dock.visible is False
 
         dismiss_fn_asist = mock_page.active_dialog.on_dismiss
         if callable(dismiss_fn_asist):
             dismiss_fn_asist(None)
-        assert asist_view.marking_dock.visible is True
+        mock_page.pop_dialog()
 
 
 def test_estadisticas_view_multi_institution_selector(sample_state, mock_page):

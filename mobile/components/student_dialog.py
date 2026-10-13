@@ -51,11 +51,13 @@ class StudentFormDialog(ft.AlertDialog):
         apellido_actual: str = "",
         nombre_actual: str = "",
         modo_continuo: bool = True,
+        on_delete: Callable[[], None] | None = None,
         on_close: Callable[[], None] | None = None,
         page: ft.Page | None = None,
         tokens: ThemeTokens | None = None,
     ):
         self.on_confirm = on_confirm
+        self.on_delete = on_delete
         self.modo_continuo = modo_continuo
         self.on_close_cb = on_close
         self.app_page = page
@@ -110,13 +112,24 @@ class StudentFormDialog(ft.AlertDialog):
             spacing=10,
         )
 
-        actions = [
+        actions = []
+        if self.on_delete is not None:
+            actions.append(
+                ft.TextButton(
+                    "Eliminar Alumno",
+                    icon=ft.Icons.DELETE_OUTLINE,
+                    style=ft.ButtonStyle(color=ft.Colors.RED_600, shape=ft.RoundedRectangleBorder(radius=8)),
+                    on_click=lambda e: self._ejecutar_eliminacion(),
+                )
+            )
+
+        actions.append(
             ft.TextButton(
                 "Listo / Cerrar",
                 style=ft.ButtonStyle(color=tok.text_muted, shape=ft.RoundedRectangleBorder(radius=8)),
                 on_click=lambda e: self._cerrar(),
-            ),
-        ]
+            )
+        )
 
         if modo_continuo:
             actions.append(
@@ -213,6 +226,11 @@ class StudentFormDialog(ft.AlertDialog):
             self.lbl_error.visible = True
             if self.app_page:
                 self.app_page.update()
+
+    def _ejecutar_eliminacion(self):
+        self._cerrar()
+        if self.on_delete:
+            self.on_delete()
 
     def _cerrar(self):
         self.open = False
