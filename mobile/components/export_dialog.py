@@ -278,7 +278,7 @@ class ExportDialog(ft.AlertDialog):
             title=ft.Row(
                 [
                     ft.Icon(ft.Icons.SCHOOL, color=tok.primary, size=24),
-                    ft.Text(titulo_str, weight=ft.FontWeight.BOLD, size=16, color=tok.text_main),
+                    ft.Text(titulo_str, weight=ft.FontWeight.BOLD, size=16, color=tok.text_main, expand=True),
                 ],
                 spacing=8,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,

@@ -373,7 +373,7 @@ class GruposView(ft.Container):
                                 controls=[
                                     ft.Row(
                                         spacing=8,
-                                        tight=True,
+                                        expand=True,
                                         controls=[
                                             ft.Container(
                                                 width=26,
@@ -388,7 +388,15 @@ class GruposView(ft.Container):
                                                     color=fg_av,
                                                 ),
                                             ),
-                                            ft.Text(nom_al, size=12, weight=ft.FontWeight.W_500, color=tok.text_main),
+                                            ft.Text(
+                                                nom_al,
+                                                size=12,
+                                                weight=ft.FontWeight.W_500,
+                                                color=tok.text_main,
+                                                expand=True,
+                                                max_lines=1,
+                                                overflow=ft.TextOverflow.ELLIPSIS,
+                                            ),
                                         ],
                                     ),
                                     ft.IconButton(
@@ -647,7 +655,7 @@ class GruposView(ft.Container):
                 spacing=8,
                 controls=[
                     ft.Icon(ft.Icons.WARNING_AMBER_ROUNDED, color=tok.danger, size=24),
-                    ft.Text("Eliminar Trabajo", size=16, weight=ft.FontWeight.BOLD, color=tok.text_main),
+                    ft.Text("Eliminar Trabajo", size=16, weight=ft.FontWeight.BOLD, color=tok.text_main, expand=True),
                 ],
             ),
             content=ft.Text("¿Estás seguro de que deseas eliminar este trabajo en grupo? Esta acción no se puede deshacer.", size=13, color=tok.text_muted),

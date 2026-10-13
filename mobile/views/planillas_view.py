@@ -449,7 +449,7 @@ class PlanillasView(ft.Container):
             title=ft.Row(
                 [
                     ft.Icon(ft.Icons.DELETE_OUTLINE, color=tok.danger, size=22),
-                    ft.Text("¿Eliminar planilla?", size=15, weight=ft.FontWeight.BOLD),
+                    ft.Text("¿Eliminar planilla?", size=15, weight=ft.FontWeight.BOLD, expand=True),
                 ],
                 spacing=8,
             ),

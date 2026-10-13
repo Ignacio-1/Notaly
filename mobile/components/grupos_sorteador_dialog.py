@@ -109,6 +109,7 @@ class SorteadorGruposDialog(ft.AlertDialog):
                     ft.Icon(ft.Icons.CASINO, color=tok.primary, size=24),
                     ft.Column(
                         spacing=1,
+                        expand=True,
                         controls=[
                             ft.Text("Sortear Grupos de Trabajo", size=16, weight=ft.FontWeight.BOLD, color=tok.text_main),
                             ft.Text(f"{curso} • {self.total_alumnos} alumnos", size=12, color=tok.text_muted),
@@ -501,9 +502,10 @@ class ReasignarAlumnoDialog(ft.AlertDialog):
                     ft.Icon(ft.Icons.SWAP_HORIZ, color=tok.primary, size=22),
                     ft.Column(
                         spacing=1,
+                        expand=True,
                         controls=[
                             ft.Text("Reasignar Alumno", size=15, weight=ft.FontWeight.BOLD, color=tok.text_main),
-                            ft.Text(alumno_nombre, size=12, color=tok.text_muted),
+                            ft.Text(alumno_nombre, size=12, color=tok.text_muted, no_wrap=False),
                         ],
                     ),
                 ],

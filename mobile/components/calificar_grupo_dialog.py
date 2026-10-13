@@ -83,6 +83,7 @@ class CalificarGrupoDialog(ft.AlertDialog):
                     ft.Icon(ft.Icons.GRADE, color=tok.primary, size=24),
                     ft.Column(
                         spacing=1,
+                        expand=True,
                         controls=[
                             ft.Text(grupo.get("nombre") or "Calificar Grupo", size=16, weight=ft.FontWeight.BOLD, color=tok.text_main),
                             ft.Text(

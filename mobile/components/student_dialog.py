@@ -31,7 +31,7 @@ def logo_dialog_title(texto: str, color_texto=None, icon_color=None, tokens: The
     return ft.Row(
         [
             ft.Icon(ft.Icons.SCHOOL, color=icon_color or tok.primary, size=24),
-            ft.Text(texto, weight=ft.FontWeight.BOLD, size=16, color=color_texto or tok.text_main),
+            ft.Text(texto, weight=ft.FontWeight.BOLD, size=16, color=color_texto or tok.text_main, expand=True),
         ],
         spacing=8,
         vertical_alignment=ft.CrossAxisAlignment.CENTER,

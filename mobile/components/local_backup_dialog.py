@@ -100,7 +100,7 @@ class LocalBackupDialog(ft.AlertDialog):
             title=ft.Row(
                 [
                     ft.Icon(ft.Icons.SETTINGS_BACKUP_RESTORE_ROUNDED, color=tok.primary, size=24),
-                    ft.Text("Copia de Seguridad", weight=ft.FontWeight.BOLD, size=16, color=tok.text_main),
+                    ft.Text("Copia de Seguridad", weight=ft.FontWeight.BOLD, size=16, color=tok.text_main, expand=True),
                 ],
                 spacing=8,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
@@ -558,7 +558,7 @@ class LocalBackupDialog(ft.AlertDialog):
             title=ft.Row(
                 [
                     ft.Icon(ft.Icons.RESTORE_ROUNDED, color=tok.primary, size=22),
-                    ft.Text("Confirmar Restauración", weight=ft.FontWeight.BOLD, size=16, color=tok.text_main),
+                    ft.Text("Confirmar Restauración", weight=ft.FontWeight.BOLD, size=16, color=tok.text_main, expand=True),
                 ],
                 spacing=8,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,

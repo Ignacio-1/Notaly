@@ -111,7 +111,7 @@ class DatePickerDialog(ft.AlertDialog):
             title=ft.Row(
                 [
                     ft.Icon(ft.Icons.EVENT, color=tok.primary),
-                    ft.Text("Seleccionar Fecha", weight=ft.FontWeight.BOLD, size=18, color=tok.text_main),
+                    ft.Text("Seleccionar Fecha", weight=ft.FontWeight.BOLD, size=18, color=tok.text_main, expand=True),
                 ],
                 spacing=8,
             ),

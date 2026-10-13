@@ -643,7 +643,7 @@ class EstadisticasView(ft.Container):
             title=ft.Row(
                 [
                     ft.Icon(ft.Icons.TUNE, color=tok.primary, size=20),
-                    ft.Text("Seleccionar Institución y Curso", size=15, weight=ft.FontWeight.BOLD),
+                    ft.Text("Seleccionar Institución y Curso", size=15, weight=ft.FontWeight.BOLD, expand=True),
                 ],
                 spacing=8,
             ),
@@ -1431,6 +1431,7 @@ class EstadisticasView(ft.Container):
                     controls=[
                         ft.Row(
                             spacing=10,
+                            expand=True,
                             controls=[
                                 ft.Container(
                                     width=32,
@@ -1445,7 +1446,15 @@ class EstadisticasView(ft.Container):
                                         color=text_avatar,
                                     ),
                                 ),
-                                ft.Text(al["nombre"], size=13, weight=ft.FontWeight.W_500, color=tok.text_main),
+                                ft.Text(
+                                    al["nombre"],
+                                    size=13,
+                                    weight=ft.FontWeight.W_500,
+                                    color=tok.text_main,
+                                    expand=True,
+                                    max_lines=1,
+                                    overflow=ft.TextOverflow.ELLIPSIS,
+                                ),
                             ],
                         ),
                         ft.Container(
@@ -2362,6 +2371,7 @@ class EstadisticasView(ft.Container):
                             controls=[
                                 ft.Row(
                                     spacing=10,
+                                    expand=True,
                                     controls=[
                                         ft.Container(
                                             width=32,
@@ -2376,7 +2386,15 @@ class EstadisticasView(ft.Container):
                                                 color=text_avatar,
                                             ),
                                         ),
-                                        ft.Text(al["nombre"], size=13, weight=ft.FontWeight.W_500, color=tok.text_main),
+                                        ft.Text(
+                                            al["nombre"],
+                                            size=13,
+                                            weight=ft.FontWeight.W_500,
+                                            color=tok.text_main,
+                                            expand=True,
+                                            max_lines=1,
+                                            overflow=ft.TextOverflow.ELLIPSIS,
+                                        ),
                                     ],
                                 ),
                                 ft.Row(spacing=8, controls=trailing_controls),
@@ -2448,9 +2466,18 @@ class EstadisticasView(ft.Container):
                                     controls=[
                                         ft.Row(
                                             spacing=6,
+                                            expand=True,
                                             controls=[
                                                 ft.Icon(ft.Icons.CLASS_, size=15, color=tok.primary),
-                                                ft.Text(nombre_curso, size=13, weight=ft.FontWeight.BOLD, color=tok.text_main),
+                                                ft.Text(
+                                                    nombre_curso,
+                                                    size=13,
+                                                    weight=ft.FontWeight.BOLD,
+                                                    color=tok.text_main,
+                                                    expand=True,
+                                                    max_lines=1,
+                                                    overflow=ft.TextOverflow.ELLIPSIS,
+                                                ),
                                                 ft.Text(f"({c_tot} al. · {clases} cl.)", size=11, color=tok.text_muted),
                                             ],
                                         ),

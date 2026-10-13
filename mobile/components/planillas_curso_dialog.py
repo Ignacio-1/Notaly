@@ -68,6 +68,7 @@ class PlanillasCursoDialog(ft.AlertDialog):
                         color=tok.text_main,
                         max_lines=1,
                         overflow=ft.TextOverflow.ELLIPSIS,
+                        expand=True,
                     ),
                 ],
                 spacing=8,
@@ -273,7 +274,7 @@ class PlanillasCursoDialog(ft.AlertDialog):
             title=ft.Row(
                 [
                     ft.Icon(ft.Icons.DELETE_OUTLINE, color=tok.danger, size=20),
-                    ft.Text("¿Eliminar archivo?", size=14, weight=ft.FontWeight.BOLD),
+                    ft.Text("¿Eliminar archivo?", size=14, weight=ft.FontWeight.BOLD, expand=True),
                 ],
                 spacing=6,
             ),

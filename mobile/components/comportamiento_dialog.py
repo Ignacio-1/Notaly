@@ -199,7 +199,7 @@ class ComportamientoDialog(ft.AlertDialog):
                 ft.Row(
                     spacing=10,
                     vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                    tight=True,
+                    expand=True,
                     controls=[
                         ft.Container(
                             width=38,
@@ -212,6 +212,7 @@ class ComportamientoDialog(ft.AlertDialog):
                         ft.Column(
                             spacing=1,
                             tight=True,
+                            expand=True,
                             controls=[
                                 ft.Text(
                                     f"#{self.id_alumno} {self.nombre_alumno}",

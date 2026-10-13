@@ -100,7 +100,7 @@ def build_app_header(
     )
 
     title_controls = [
-        ft.Text(title, size=17, weight=ft.FontWeight.BOLD, color=tok.text_main, no_wrap=True, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS),
+        ft.Text(title, size=17, weight=ft.FontWeight.BOLD, color=tok.text_main, no_wrap=True, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS, expand=True),
     ]
     if status_indicator is not None:
         title_controls.append(status_indicator)
@@ -113,7 +113,7 @@ def build_app_header(
             spacing=1,
             expand=True,
             controls=[
-                ft.Text(eyebrow.upper(), size=11, weight=ft.FontWeight.BOLD, color=tok.text_subtle),
+                ft.Text(eyebrow.upper(), size=11, weight=ft.FontWeight.BOLD, color=tok.text_subtle, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS),
                 ft.Row(
                     spacing=8,
                     vertical_alignment=ft.CrossAxisAlignment.CENTER,

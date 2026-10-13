@@ -163,6 +163,7 @@ class ExportEstadisticasDialog(ft.AlertDialog):
                                     size=13,
                                     weight=ft.FontWeight.W_500,
                                     color=tok.text_main,
+                                    expand=True,
                                 ),
                             ],
                         ),
@@ -216,12 +217,13 @@ class ExportEstadisticasDialog(ft.AlertDialog):
                 spacing=10,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
                 controls=[
-                    ft.Icon(icono_titulo, color=tok.primary, size=24),
+                    ft.Icon(icono_titulo, color=tok.primary, size=22),
                     ft.Text(
                         titulo_texto,
-                        size=18,
+                        size=16,
                         weight=ft.FontWeight.BOLD,
                         color=tok.text_main,
+                        expand=True,
                     ),
                 ],
             ),
