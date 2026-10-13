@@ -18,6 +18,7 @@ from core.constants import (
     K_ALUMNOS,
     FORMATO_FECHA,
 )
+from mobile.components.share_helper import compartir_archivo
 from mobile.state import AppState
 from mobile.theme import (
     PRIMARY,
@@ -214,11 +215,12 @@ class LocalBackupDialog(ft.AlertDialog):
         def compartir_copia(e):
             ruta = self.app_state.get_latest_auto_backup_path()
             if ruta and ruta.exists():
-                try:
-                    self.app_page.set_clipboard(str(ruta.resolve()))
-                except Exception:
-                    pass
-                self._mostrar_snackbar(f"Copia lista: {ruta.name}\nRuta copiada al portapapeles para transferir por WhatsApp o Drive.")
+                compartir_archivo(
+                    self.app_page,
+                    str(ruta.resolve()),
+                    titulo="Copia de seguridad - Notaly",
+                    on_error=lambda msg: self._mostrar_snackbar(msg, error=True),
+                )
             else:
                 self._mostrar_snackbar("Aún no hay una copia automática creada para compartir.", error=True)
 

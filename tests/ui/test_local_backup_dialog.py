@@ -187,12 +187,15 @@ def test_local_backup_dialog_summary_display(populated_state, mock_page):
     assert any("automáticamente" in t.lower() for t in textos_visibles)
 
 
-def test_local_backup_dialog_create_backup_action(populated_state, mock_page, tmp_path):
-    """Verifica que el diálogo unificado permita compartir la copia con retroalimentación visible."""
+@patch("mobile.components.local_backup_dialog.compartir_archivo")
+def test_local_backup_dialog_create_backup_action(mock_compartir, populated_state, mock_page, tmp_path):
+    """Verifica que el diálogo invoque la hoja nativa de compartir sin tocar el portapapeles ni mostrar snackbars innecesarios."""
     downloads_dir = tmp_path / "Downloads"
     downloads_dir.mkdir(parents=True, exist_ok=True)
     auto_backup_file = downloads_dir / "copia de seguridad automatica notaly.json"
     auto_backup_file.write_text(json.dumps({K_COLEGIOS: {}}), encoding="utf-8")
+
+    mock_compartir.return_value = True
 
     def _buscar_botones(control):
         res = []
@@ -212,9 +215,40 @@ def test_local_backup_dialog_create_backup_action(populated_state, mock_page, tm
         assert btn_share is not None
         btn_share.on_click(None)
 
-    # Comportamiento esperado: retroalimentación visible al usuario y copia en portapapeles
-    assert len(mock_page.overlay) > 0
-    assert mock_page.clipboard_data == str(auto_backup_file.resolve())
+    # 1. Se invoca compartir_archivo con la ruta del archivo y título
+    mock_compartir.assert_called_once()
+    args, kwargs = mock_compartir.call_args
+    assert args[0] == mock_page
+    assert args[1] == str(auto_backup_file.resolve())
+    assert kwargs.get("titulo") == "Copia de seguridad - Notaly"
+
+    # 2. No se toca el portapapeles ni se envían snackbars de portapapeles
+    assert mock_page.clipboard_data == ""
+    assert len(mock_page.overlay) == 0
+
+
+def test_local_backup_dialog_share_backup_missing_shows_error(populated_state, mock_page):
+    """Verifica que si no existe una copia automática, se muestre el SnackBar de error correspondiente."""
+    dlg = LocalBackupDialog(populated_state, mock_page)
+    with patch.object(populated_state, "get_latest_auto_backup_path", return_value=None):
+        dlg._mostrar_vista_unificada()
+
+        def _buscar_btn(c):
+            if isinstance(c, ft.OutlinedButton) and "compartir" in _obtener_texto_boton(c).lower():
+                return c
+            for sub in getattr(c, "controls", []) or ([getattr(c, "content", None)] if getattr(c, "content", None) else []):
+                res = _buscar_btn(sub)
+                if res:
+                    return res
+            return None
+
+        btn = _buscar_btn(dlg.tabs_content_container.content)
+        assert btn is not None
+        btn.on_click(None)
+
+        assert len(mock_page.overlay) == 1
+        assert "Aún no hay una copia automática creada" in mock_page.overlay[0].content.value
+        assert mock_page.overlay[0].bgcolor == ft.Colors.ERROR
 
 
 def test_local_backup_dialog_restore_confirm_decision(populated_state, mock_page):
