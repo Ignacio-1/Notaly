@@ -1075,8 +1075,9 @@ def test_estadisticas_view_render_colegio(isolated_app_state, mock_page_mobile):
     assert view.header_container.content is not None
     assert view.kpi_container.content is not None
     assert view.donut_container.content is not None
+    assert view.histograma_container.content is not None
     assert view.dynamic_content_container.content is not None
-    assert len(view.list_view.controls) == 7
+    assert len(view.list_view.controls) == 8
 
 
 def test_estadisticas_view_render_curso(isolated_app_state, mock_page_mobile):
@@ -1366,6 +1367,38 @@ def test_cursos_view_planificacion_popup_menu_and_cards(isolated_app_state, mock
 
     assert "6to B" in isolated_app_state.get_cursos("Colegio Nacional")
     assert isolated_app_state.get_horario_curso("Colegio Nacional", "6to B") == "Vie 14:00 - 18:00"
+
+
+def test_cursos_view_planificacion_actualizacion_en_tiempo_real(isolated_app_state, mock_page_mobile):
+    """Verifica que al añadir/eliminar una planificación el pie de la tarjeta en CursosView se actualice al instante."""
+    isolated_app_state.selected_colegio = "Colegio Nacional"
+
+    view = CursosView(isolated_app_state, mock_page_mobile, on_navigate=lambda x: None)
+    card_5to_a = view.content.controls[1].content.controls[1]
+    assert card_5to_a.content.controls[-1].controls[1].value == "Ciclo Lectivo Activo"
+
+    # 1. Abrir diálogo de institución consolidado y desde allí añadir una clase
+    view._abrir_planificaciones_institucion("5to A")
+    inst_dlg = mock_page_mobile.active_dialog
+    inst_dlg._abrir_adicion_planificacion("5to A")
+    plan_dlg = mock_page_mobile.active_dialog
+
+    # Añadir clase
+    plan_dlg._on_dia_click("2026-03-20")
+
+    # Verificar que tanto la tarjeta del diálogo como la tarjeta en CursosView reflejen '1 clase planificada' al instante
+    card_5to_a_actualizada = view.content.controls[1].content.controls[1]
+    assert card_5to_a_actualizada.content.controls[-1].controls[1].value == "1 clase planificada"
+
+    # Añadir otra clase
+    plan_dlg._on_dia_click("2026-03-22")
+    card_5to_a_actualizada = view.content.controls[1].content.controls[1]
+    assert card_5to_a_actualizada.content.controls[-1].controls[1].value == "2 clases planificadas"
+
+    # Eliminar clase
+    plan_dlg._on_delete_clase("2026-03-20")
+    card_5to_a_actualizada = view.content.controls[1].content.controls[1]
+    assert card_5to_a_actualizada.content.controls[-1].controls[1].value == "1 clase planificada"
 
 
 def test_notas_and_asistencias_view_headers_planificacion(isolated_app_state, mock_page_mobile):

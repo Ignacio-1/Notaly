@@ -6,6 +6,7 @@ from core.calculos import (
     procesar_calificaciones_alumno,
     obtener_estadisticas_curso,
     obtener_estadisticas_colegio,
+    calcular_distribucion_notas,
 )
 from core.constants import *
 
@@ -521,6 +522,151 @@ def test_estadisticas_curso_alumnos_con_nombre_pila():
     assert stats["total_alumnos"] == 2
     assert stats["alumnos_detalle"][0]["nombre"] == "Gómez, Martín"
     assert stats["alumnos_detalle"][1]["nombre"] == "Alumno #2"
+
+
+# --- Tests para calcular_distribucion_notas e histograma (SPEC-018: T1) ---
+
+def test_calcular_distribucion_notas_vacio_y_none():
+    """Verifica manejo seguro ante None y listas vacías sin arrojar excepciones."""
+    for entrada in [None, [], {}]:
+        dist = calcular_distribucion_notas(entrada)
+        assert dist["total_evaluados"] == 0
+        assert dist["max_frecuencia_rango"] == 0
+        assert dist["max_frecuencia_nota"] == 0
+        assert all(cant == 0 for cant in dist["por_nota"].values())
+        assert set(dist["por_nota"].keys()) == set(range(1, 11))
+        assert dist["por_rango"] == {"1-3": 0, "4-5": 0, "6-7": 0, "8-10": 0}
+        assert dist["porcentajes_rango"] == {"1-3": 0.0, "4-5": 0.0, "6-7": 0.0, "8-10": 0.0}
+
+
+def test_calcular_distribucion_notas_solo_pendientes():
+    """Verifica que los alumnos en condición pendiente sean excluidos del histograma."""
+    alumnos = [
+        {"id": "1", "nombre": "A1", "condicion": "pendiente", "nota_final": None},
+        {"id": "2", "nombre": "A2", "condicion": "pendiente", "nota_final": 7},
+    ]
+    dist = calcular_distribucion_notas(alumnos)
+    assert dist["total_evaluados"] == 0
+    assert dist["max_frecuencia_rango"] == 0
+    assert dist["max_frecuencia_nota"] == 0
+    assert dist["porcentajes_rango"]["6-7"] == 0.0
+
+
+def test_calcular_distribucion_notas_criterio_aceptacion_gherkin():
+    """
+    Escenario Gherkin SPEC-018:
+    Notas finales [2, 4, 7, 7, 10] y 2 pendientes.
+    total_evaluados = 5, max_frecuencia_rango = 2, max_frecuencia_nota = 2.
+    """
+    alumnos = [
+        {"id": "1", "condicion": "desaprobado", "nota_final": 2},
+        {"id": "2", "condicion": "desaprobado", "nota_final": 4},
+        {"id": "3", "condicion": "aprobado", "nota_final": 7},
+        {"id": "4", "condicion": "aprobado", "nota_final": 7},
+        {"id": "5", "condicion": "aprobado", "nota_final": 10},
+        {"id": "6", "condicion": "pendiente", "nota_final": None},
+        {"id": "7", "condicion": "pendiente", "nota_final": None},
+    ]
+    dist = calcular_distribucion_notas(alumnos)
+
+    assert dist["total_evaluados"] == 5
+    assert dist["max_frecuencia_rango"] == 2
+    assert dist["max_frecuencia_nota"] == 2
+
+    assert dist["por_rango"] == {"1-3": 1, "4-5": 1, "6-7": 2, "8-10": 1}
+    assert dist["porcentajes_rango"] == {"1-3": 20.0, "4-5": 20.0, "6-7": 40.0, "8-10": 20.0}
+
+    assert dist["por_nota"][7] == 2
+    assert dist["por_nota"][2] == 1
+    assert dist["por_nota"][4] == 1
+    assert dist["por_nota"][10] == 1
+    assert dist["por_nota"][1] == 0
+    assert dist["por_nota"][3] == 0
+
+
+def test_calcular_distribucion_notas_escala_completa_1_a_10():
+    """Verifica que cada una de las 10 notas se ubique exactamente en su rango respectivo."""
+    alumnos = [
+        {"condicion": "desaprobado", "nota_final": 1},
+        {"condicion": "desaprobado", "nota_final": 2},
+        {"condicion": "desaprobado", "nota_final": 3},
+        {"condicion": "desaprobado", "nota_final": 4},
+        {"condicion": "desaprobado", "nota_final": 5},
+        {"condicion": "aprobado", "nota_final": 6},
+        {"condicion": "aprobado", "nota_final": 7},
+        {"condicion": "aprobado", "nota_final": 8},
+        {"condicion": "aprobado", "nota_final": 9},
+        {"condicion": "aprobado", "nota_final": 10},
+    ]
+    dist = calcular_distribucion_notas(alumnos)
+
+    assert dist["total_evaluados"] == 10
+    assert all(dist["por_nota"][i] == 1 for i in range(1, 11))
+    assert dist["max_frecuencia_nota"] == 1
+    assert dist["por_rango"] == {"1-3": 3, "4-5": 2, "6-7": 2, "8-10": 3}
+    assert dist["max_frecuencia_rango"] == 3
+    assert dist["porcentajes_rango"] == {"1-3": 30.0, "4-5": 20.0, "6-7": 20.0, "8-10": 30.0}
+
+
+def test_estadisticas_curso_incluye_histograma():
+    """Verifica que obtener_estadisticas_curso retorne la clave 'histograma' poblada."""
+    curso_data = {
+        K_ALUMNOS: {
+            "1": {
+                K_NOMBRE: "Alumno A",
+                K_TRIMESTRES: {TRIM_1: {K_PRINCIPALES: [9, 9], K_EXTRAS: [], K_RECUPERATORIO: None}},
+            },
+            "2": {
+                K_NOMBRE: "Alumno B",
+                K_TRIMESTRES: {TRIM_1: {K_PRINCIPALES: [5, 5], K_EXTRAS: [], K_RECUPERATORIO: None}},
+            },
+            "3": {
+                K_NOMBRE: "Alumno C",
+                K_TRIMESTRES: {TRIM_1: {K_PRINCIPALES: [], K_EXTRAS: [], K_RECUPERATORIO: None}},
+            },
+        }
+    }
+    stats = obtener_estadisticas_curso(curso_data, periodo_idx=0)
+    assert "histograma" in stats
+    hist = stats["histograma"]
+    assert hist["total_evaluados"] == 2
+    assert hist["por_rango"]["8-10"] == 1
+    assert hist["por_rango"]["4-5"] == 1
+    assert hist["porcentajes_rango"]["8-10"] == 50.0
+    assert hist["porcentajes_rango"]["4-5"] == 50.0
+
+
+def test_estadisticas_colegio_incluye_histograma_consolidado():
+    """Verifica que obtener_estadisticas_colegio consolide el histograma de todos los cursos."""
+    colegio_data = {
+        K_CURSOS: {
+            "1° A": {
+                K_ALUMNOS: {
+                    "1": {
+                        K_NOMBRE: "A1",
+                        K_TRIMESTRES: {TRIM_1: {K_PRINCIPALES: [10], K_EXTRAS: [], K_RECUPERATORIO: None}},
+                    }
+                }
+            },
+            "1° B": {
+                K_ALUMNOS: {
+                    "2": {
+                        K_NOMBRE: "B1",
+                        K_TRIMESTRES: {TRIM_1: {K_PRINCIPALES: [2], K_EXTRAS: [], K_RECUPERATORIO: None}},
+                    }
+                }
+            },
+        }
+    }
+    stats = obtener_estadisticas_colegio(colegio_data, periodo_idx=0)
+    assert "histograma" in stats
+    hist = stats["histograma"]
+    assert hist["total_evaluados"] == 2
+    assert hist["por_rango"]["8-10"] == 1
+    assert hist["por_rango"]["1-3"] == 1
+    assert hist["porcentajes_rango"]["8-10"] == 50.0
+    assert hist["porcentajes_rango"]["1-3"] == 50.0
+
 
 
 

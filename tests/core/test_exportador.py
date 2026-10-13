@@ -1,6 +1,11 @@
 import pytest
 import csv
-from core.exportador import exportar_a_csv, exportar_a_pdf
+from core.exportador import (
+    exportar_a_csv,
+    exportar_a_pdf,
+    exportar_estadisticas_a_pdf,
+    _sanitizar_texto_fpdf,
+)
 from core.constants import *
 
 @pytest.fixture
@@ -293,4 +298,219 @@ def test_formatear_notas_whatsapp_curso_vacio():
     assert res == "El curso no tiene alumnos registrados."
     res_anual = formatear_notas_anual_whatsapp(curso, "3° A")
     assert res_anual == "El curso no tiene alumnos registrados."
+
+
+def test_sanitizar_texto_fpdf():
+    """Verifica que caracteres tipográficos o emojis se limpien o conviertan a latin-1 seguro."""
+    raw = "Observación • “Excelente” – ‘Participativo’ — 100% 👍"
+    limpio = _sanitizar_texto_fpdf(raw)
+    # Debe ser codificable en latin-1 sin lanzar UnicodeEncodeError
+    limpio.encode("latin-1")
+    assert "•" not in limpio
+    assert '"Excelente"' in limpio or "'Excelente'" in limpio
+
+
+def test_exportar_estadisticas_a_pdf_guard_clause(tmp_path):
+    """Verifica que rechace la exportación si ambas secciones están deseleccionadas."""
+    out_file = tmp_path / "reporte.pdf"
+    ok, err = exportar_estadisticas_a_pdf(
+        datos_estadisticas={},
+        file_path=str(out_file),
+        nombre_colegio="Colegio Test",
+        incluir_calificaciones=False,
+        incluir_comportamiento=False,
+    )
+    assert ok is False
+    assert "Debe seleccionarse al menos una sección" in err
+    assert not out_file.exists()
+
+
+def test_exportar_estadisticas_a_pdf_institucional_completo(tmp_path):
+    """Verifica la generación de reporte institucional con calificaciones y comportamiento."""
+    datos = {
+        "rendimiento": {
+            "total_alumnos": 40,
+            "aprobados_cant": 30,
+            "aprobados_pct": 75.0,
+            "desaprobados_cant": 8,
+            "desaprobados_pct": 20.0,
+            "pendientes_cant": 2,
+            "pendientes_pct": 5.0,
+            "promedio": 7.5,
+            "histograma": {
+                "por_rango": {"1-3": 2, "4-5": 6, "6-7": 18, "8-10": 12},
+                "porcentajes_rango": {"1-3": 5.3, "4-5": 15.8, "6-7": 47.4, "8-10": 31.6},
+                "total_evaluados": 38,
+            },
+            "por_curso": {
+                "1° A": {"total": 20, "aprobados": 16, "desaprobados": 3, "pendientes": 1, "promedio": 7.8},
+                "2° B": {"total": 20, "aprobados": 14, "desaprobados": 5, "pendientes": 1, "promedio": 7.2},
+            },
+        },
+        "comportamiento": {
+            "total_observaciones": 5,
+            "positivos": 3,
+            "positivos_pct": 60.0,
+            "regulares": 1,
+            "regulares_pct": 20.0,
+            "negativos": 1,
+            "negativos_pct": 20.0,
+            "por_subtipo": {"Participación": 2, "Compañerismo": 1, "Inconducta": 1, "Falta de Material": 1},
+            "por_alumno": [
+                {
+                    "id": "1",
+                    "nombre": "Perez, Juan",
+                    "positivos": 2,
+                    "regulares": 0,
+                    "negativos": 0,
+                    "observaciones": [
+                        {"fecha": "10-10-2026", "tipo": "positivo", "subtipo": "Participación", "observacion": "Aportó activamente"}
+                    ],
+                }
+            ],
+        },
+    }
+
+    out_file = tmp_path / "Reporte San Martín - 12-10-2026.pdf"
+    ok, path_res = exportar_estadisticas_a_pdf(
+        datos_estadisticas=datos,
+        file_path=str(out_file),
+        nombre_colegio="San Martín",
+        nombre_curso=None,
+        periodo_nombre="1° Trimestre",
+        incluir_calificaciones=True,
+        incluir_comportamiento=True,
+    )
+
+    assert ok is True
+    assert out_file.exists()
+    assert out_file.stat().st_size > 1000
+
+
+def test_exportar_estadisticas_a_pdf_curso_completo(tmp_path):
+    """Verifica la generación de reporte de curso específico con lista de alumnos y enteros 1 a 10."""
+    datos = {
+        "rendimiento": {
+            "total_alumnos": 2,
+            "aprobados_cant": 1,
+            "aprobados_pct": 50.0,
+            "desaprobados_cant": 1,
+            "desaprobados_pct": 50.0,
+            "pendientes_cant": 0,
+            "pendientes_pct": 0.0,
+            "promedio": 6.5,
+            "histograma": {
+                "por_rango": {"1-3": 0, "4-5": 1, "6-7": 0, "8-10": 1},
+                "porcentajes_rango": {"1-3": 0.0, "4-5": 50.0, "6-7": 0.0, "8-10": 50.0},
+                "total_evaluados": 2,
+            },
+            "alumnos_detalle": [
+                {"id": "1", "nombre": "ALVAREZ, ANA", "nota_final": 8, "condicion": "aprobado"},
+                {"id": "2", "nombre": "BENITEZ, CARLOS", "nota_final": 5, "condicion": "desaprobado"},
+            ],
+        },
+        "comportamiento": {
+            "total_observaciones": 1,
+            "positivos": 1,
+            "positivos_pct": 100.0,
+            "regulares": 0,
+            "regulares_pct": 0.0,
+            "negativos": 0,
+            "negativos_pct": 0.0,
+            "por_subtipo": {"Participación": 1},
+            "por_alumno": [
+                {
+                    "id": "1",
+                    "nombre": "ALVAREZ, ANA",
+                    "positivos": 1,
+                    "regulares": 0,
+                    "negativos": 0,
+                    "observaciones": [
+                        {"fecha": "05-10-2026", "tipo": "positivo", "subtipo": "Participación", "observacion": "Excelente trabajo"}
+                    ],
+                }
+            ],
+        },
+    }
+
+    out_file = tmp_path / "Reporte San Martín 3° A - 12-10-2026.pdf"
+    ok, path_res = exportar_estadisticas_a_pdf(
+        datos_estadisticas=datos,
+        file_path=str(out_file),
+        nombre_colegio="San Martín",
+        nombre_curso="3° A",
+        periodo_nombre="2° Trimestre",
+        incluir_calificaciones=True,
+        incluir_comportamiento=True,
+    )
+
+    assert ok is True
+    assert out_file.exists()
+    assert out_file.stat().st_size > 1000
+
+
+def test_exportar_estadisticas_a_pdf_solo_calificaciones(tmp_path):
+    """Verifica generación cuando solo se exportan calificaciones."""
+    datos = {
+        "rendimiento": {
+            "total_alumnos": 10,
+            "aprobados_cant": 8,
+            "aprobados_pct": 80.0,
+            "desaprobados_cant": 2,
+            "desaprobados_pct": 20.0,
+            "pendientes_cant": 0,
+            "pendientes_pct": 0.0,
+            "promedio": 7.0,
+        }
+    }
+    out_file = tmp_path / "solo_calif.pdf"
+    ok, _ = exportar_estadisticas_a_pdf(
+        datos_estadisticas=datos,
+        file_path=str(out_file),
+        nombre_colegio="Colegio",
+        incluir_calificaciones=True,
+        incluir_comportamiento=False,
+    )
+    assert ok is True
+    assert out_file.exists()
+
+
+def test_exportar_estadisticas_a_pdf_solo_comportamiento(tmp_path):
+    """Verifica generación cuando solo se exporta comportamiento."""
+    datos = {
+        "comportamiento": {
+            "total_observaciones": 2,
+            "positivos": 2,
+            "positivos_pct": 100.0,
+            "regulares": 0,
+            "regulares_pct": 0.0,
+            "negativos": 0,
+            "negativos_pct": 0.0,
+        }
+    }
+    out_file = tmp_path / "solo_comp.pdf"
+    ok, _ = exportar_estadisticas_a_pdf(
+        datos_estadisticas=datos,
+        file_path=str(out_file),
+        nombre_colegio="Colegio",
+        incluir_calificaciones=False,
+        incluir_comportamiento=True,
+    )
+    assert ok is True
+    assert out_file.exists()
+
+
+def test_exportar_estadisticas_a_pdf_datos_vacios(tmp_path):
+    """Verifica que con datos vacíos se genere el PDF mostrando estados informativos sin caerse."""
+    out_file = tmp_path / "vacio.pdf"
+    ok, _ = exportar_estadisticas_a_pdf(
+        datos_estadisticas={},
+        file_path=str(out_file),
+        nombre_colegio="",
+        nombre_curso="",
+        incluir_calificaciones=True,
+        incluir_comportamiento=True,
+    )
+    assert ok is True
+    assert out_file.exists()
 

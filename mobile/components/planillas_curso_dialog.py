@@ -154,10 +154,22 @@ class PlanillasCursoDialog(ft.AlertDialog):
         pid = planilla.get("id", "")
 
         es_asistencia = (tipo == "asistencias")
-        icono_color = tok.primary if formato == "pdf" else ("#10B981" if formato == "csv" else tok.text_muted)
-        icono = ft.Icons.PICTURE_AS_PDF if formato == "pdf" else (ft.Icons.TABLE_CHART if formato == "csv" else ft.Icons.DESCRIPTION)
+        es_estadistica = (tipo == "estadisticas")
 
-        subtitulo = f"{'Asistencias' if es_asistencia else 'Notas'} · {fecha} {hora} · {tamano}"
+        if es_estadistica:
+            tipo_label = "Estadísticas"
+            icono_color = "#6366F1" if formato == "pdf" else tok.primary
+            icono = ft.Icons.BAR_CHART
+        elif es_asistencia:
+            tipo_label = "Asistencias"
+            icono_color = tok.primary if formato == "pdf" else ("#10B981" if formato == "csv" else tok.text_muted)
+            icono = ft.Icons.PICTURE_AS_PDF if formato == "pdf" else (ft.Icons.TABLE_CHART if formato == "csv" else ft.Icons.DESCRIPTION)
+        else:
+            tipo_label = "Notas"
+            icono_color = tok.primary if formato == "pdf" else ("#10B981" if formato == "csv" else tok.text_muted)
+            icono = ft.Icons.PICTURE_AS_PDF if formato == "pdf" else (ft.Icons.TABLE_CHART if formato == "csv" else ft.Icons.DESCRIPTION)
+
+        subtitulo = f"{tipo_label} · {fecha} {hora} · {tamano}"
 
         return ft.Container(
             bgcolor=tok.surface_variant,

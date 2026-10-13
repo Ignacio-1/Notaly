@@ -72,6 +72,20 @@ def obtener_directorio_exportaciones() -> Path:
     return fallback
 
 
+def sanitizar_nombre(nombre: str | None, default: str = "General") -> str:
+    """
+    Sanitiza un nombre eliminando secuencias de path traversal (..)
+    y caracteres inválidos en sistemas de archivos (\\, /, :, *, ?, \", <, >, |).
+    Preserva acentos y espacios.
+    Si el resultado queda vacío o con solo espacios, retorna `default`.
+    """
+    if not nombre:
+        return default
+    texto = str(nombre).replace("..", "")
+    limpio = re.sub(r'[\\/:*?"<>|]', "", texto).strip()
+    return limpio if limpio else default
+
+
 def sanitizar_nombre_curso(nombre: str | None) -> str:
     """
     Sanitiza el nombre del curso eliminando secuencias de path traversal (..)
@@ -79,11 +93,7 @@ def sanitizar_nombre_curso(nombre: str | None) -> str:
     Preserva acentos y espacios.
     Si el resultado queda vacío o con solo espacios, retorna 'Curso'.
     """
-    if not nombre:
-        return "Curso"
-    texto = str(nombre).replace("..", "")
-    limpio = re.sub(r'[\\/:*?"<>|]', "", texto).strip()
-    return limpio if limpio else "Curso"
+    return sanitizar_nombre(nombre, default="Curso")
 
 
 def generar_nombre_planilla(
@@ -92,23 +102,36 @@ def generar_nombre_planilla(
     formato: str = "pdf",
     fecha_str: str | None = None,
     directorio: Path | None = None,
+    colegio: str | None = None,
 ) -> str:
     """
     Genera el nombre de archivo respetando el Art. 8 Constitucional:
     - Notas: 'Planilla {curso} - {dd-mm-aaaa}.{ext}'
     - Asistencias: 'Planilla Asistencias {curso} - {dd-mm-aaaa}.{ext}'
+    - Estadísticas:
+      * Sin curso (o curso vacío): 'Reporte {colegio} - {dd-mm-aaaa}.{ext}'
+      * Con curso: 'Reporte {colegio} {curso} - {dd-mm-aaaa}.{ext}'
     Si ya existe un archivo con dicho nombre en el directorio, calcula el correlativo
     incremental diario: '... (1).{ext}', '... (2).{ext}', etc.
     """
-    curso_sanitizado = sanitizar_nombre_curso(curso)
     ext = formato.lower().lstrip(".")
 
     if not fecha_str:
         fecha_str = datetime.now().strftime("%d-%m-%Y")
 
     if tipo == "notas":
+        curso_sanitizado = sanitizar_nombre_curso(curso)
         base = f"Planilla {curso_sanitizado} - {fecha_str}"
+    elif tipo == "estadisticas":
+        colegio_sanitizado = sanitizar_nombre(colegio, default="Colegio")
+        tiene_curso = bool(curso and str(curso).strip())
+        if tiene_curso:
+            curso_sanitizado = sanitizar_nombre_curso(curso)
+            base = f"Reporte {colegio_sanitizado} {curso_sanitizado} - {fecha_str}"
+        else:
+            base = f"Reporte {colegio_sanitizado} - {fecha_str}"
     else:
+        curso_sanitizado = sanitizar_nombre_curso(curso)
         base = f"Planilla Asistencias {curso_sanitizado} - {fecha_str}"
 
     nombre_candidato = f"{base}.{ext}"

@@ -217,3 +217,38 @@ def test_planificaciones_dialog_modo_oscuro_y_tokens(temp_state):
     assert dlg_light.bgcolor == LIGHT_TOKENS.surface
     assert dlg_light.title.controls[1].controls[0].color == LIGHT_TOKENS.text_main
 
+
+def test_planificaciones_dialog_actualizacion_en_tiempo_real(temp_state):
+    page = MockMobilePage()
+    on_change_parent = MagicMock()
+    dlg = PlanificacionesInstitucionDialog(
+        state=temp_state,
+        colegio="Colegio San Martin",
+        on_change=on_change_parent,
+        page=page,
+    )
+    page.show_dialog(dlg)
+
+    # 2° B inicialmente no tiene clases planificadas
+    c2 = dlg.cursos_content_col.controls[1]
+    header_col2 = c2.content.controls[0].controls[0]
+    assert header_col2.controls[0].value == "2° B"
+    assert "Sin clases planificadas" in header_col2.controls[2].value
+
+    # Abrir sub-diálogo de añadir planificación para 2° B
+    dlg._abrir_adicion_planificacion("2° B")
+    sub_dlg = page.active_dialog
+    assert isinstance(sub_dlg, PlanificacionCursoDialog)
+
+    # Añadir clase interactiva en el subdiálogo
+    sub_dlg._on_dia_click("2026-03-24")
+
+    # Debe haberse invocado on_change_parent al instante
+    assert on_change_parent.called
+
+    # Y la tarjeta de 2° B en el diálogo consolidado debe reflejar 1 clase planificada al instante
+    c2_actualizado = dlg.cursos_content_col.controls[1]
+    header_col2_actualizado = c2_actualizado.content.controls[0].controls[0]
+    assert "1 clase planificada" in header_col2_actualizado.controls[2].value
+
+

@@ -118,6 +118,10 @@ class AppState:
         self.asistencia_fecha: str = datetime.now().strftime("%Y-%m-%d")
         self.footer_tab: str = "inicio"  # "inicio", "planillas", "estadisticas"
 
+        # Pila LIFO de historial de navegación (SPEC-020 / PLAN-020)
+        self.navigation_history: list[dict] = []
+        self.MAX_HISTORY_DEPTH: int = 30
+
         # Filtros de búsqueda
         self.search_query_colegios: str = ""
         self.search_query_cursos: str = ""
@@ -273,6 +277,100 @@ class AppState:
     @curso_activo.setter
     def curso_activo(self, valor: str | None):
         self.selected_curso = valor
+
+    # =========================================================================
+    # --- GESTIÓN DE HISTORIAL DE NAVEGACIÓN LIFO (SPEC-020) ---
+    # =========================================================================
+
+    def push_history(self, screen: str | None = None) -> None:
+        """
+        Captura el estado docente activo saliente en la pila cronológica LIFO.
+        Evita apilar si el último cuadro es idéntico al actual y trunca la base
+        si se excede MAX_HISTORY_DEPTH (30 cuadros).
+        """
+        frame = {
+            "screen": screen if screen is not None else self.current_screen,
+            "selected_colegio": self.selected_colegio,
+            "selected_curso": self.selected_curso,
+            "selected_alumno_id": self.selected_alumno_id,
+            "footer_tab": self.footer_tab,
+            "active_trimestre": self.active_trimestre,
+            "asistencia_fecha": self.asistencia_fecha,
+            "estadisticas_nivel": self.estadisticas_nivel,
+            "estadisticas_periodo": self.estadisticas_periodo,
+            "origen_pantalla": self.origen_pantalla,
+        }
+
+        if self.navigation_history and self.navigation_history[-1] == frame:
+            return
+
+        if len(self.navigation_history) >= self.MAX_HISTORY_DEPTH:
+            self.navigation_history.pop(0)
+
+        self.navigation_history.append(frame)
+
+    def pop_history(self) -> dict | None:
+        """
+        Extrae y restaura el último cuadro de la pila LIFO.
+        Aplica fallback defensivo si la entidad referenciada (colegio o curso)
+        ya no existe en self.data, restableciendo el contexto docente.
+        Retorna el cuadro restaurado o None si la pila está vacía.
+        """
+        if not self.navigation_history:
+            return None
+
+        frame = self.navigation_history.pop()
+
+        # Fallback defensivo ante entidades eliminadas
+        colegios_existentes = self.data.get(K_COLEGIOS, {})
+        col = frame.get("selected_colegio")
+        cur = frame.get("selected_curso")
+
+        if col and col not in colegios_existentes:
+            frame["screen"] = "colegios"
+            frame["selected_colegio"] = None
+            frame["selected_curso"] = None
+            frame["selected_alumno_id"] = None
+        elif col and cur:
+            cursos_existentes = colegios_existentes.get(col, {}).get(K_CURSOS, {})
+            if cur not in cursos_existentes:
+                frame["screen"] = "cursos"
+                frame["selected_curso"] = None
+                frame["selected_alumno_id"] = None
+
+        # Restaurar variables de AppState
+        self.current_screen = frame["screen"]
+        self.selected_colegio = frame.get("selected_colegio")
+        self.selected_curso = frame.get("selected_curso")
+        self.selected_alumno_id = frame.get("selected_alumno_id")
+        if "footer_tab" in frame:
+            self.footer_tab = frame["footer_tab"]
+        if "active_trimestre" in frame:
+            self.active_trimestre = frame["active_trimestre"]
+        if "asistencia_fecha" in frame:
+            self.asistencia_fecha = frame["asistencia_fecha"]
+        if "estadisticas_nivel" in frame:
+            self.estadisticas_nivel = frame["estadisticas_nivel"]
+        if "estadisticas_periodo" in frame:
+            self.estadisticas_periodo = frame["estadisticas_periodo"]
+        if "origen_pantalla" in frame:
+            self.origen_pantalla = frame["origen_pantalla"]
+
+        return frame
+
+    def can_pop(self) -> bool:
+        """Indica si existen cuadros previos en la pila de navegación."""
+        return len(self.navigation_history) > 0
+
+    def clear_history(self) -> None:
+        """Vacía completamente la pila de navegación."""
+        self.navigation_history = []
+
+    def peek_history(self) -> dict | None:
+        """Consulta el cuadro superior sin extraerlo, o None si está vacía."""
+        if not self.navigation_history:
+            return None
+        return self.navigation_history[-1]
 
     def buscar_global(self, query: str, limite: int = 15) -> list[dict]:
         """

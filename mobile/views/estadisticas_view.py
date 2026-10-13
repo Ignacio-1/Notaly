@@ -29,6 +29,7 @@ from core.constants import (
     formatear_fecha,
 )
 from mobile.components.comportamiento_dialog import get_comportamiento_style
+from mobile.components.export_estadisticas_dialog import ExportEstadisticasDialog
 
 COLOR_APROBADO = "#10B981"    # Emerald 500
 COLOR_DESAPROBADO = "#EF4444" # Red 500
@@ -67,11 +68,13 @@ class EstadisticasView(ft.Container):
         self.period_selector_container = ft.Container()
         self.kpi_container = ft.Container()
         self.donut_container = ft.Container()
+        self.histograma_container = ft.Container()
         self.dynamic_content_container = ft.Container()
         self.comportamiento_container = ft.Container(visible=False)
 
         # Estado del módulo de estadísticas
         self.seccion_activa = "rendimiento"  # "rendimiento" o "comportamiento"
+        self.histograma_modo = "rangos"  # "rangos" o "notas"
         self.filtro_comportamiento = "todos"  # "todos", "positivo", "regular", "negativo"
         self.alumnos_expandidos_comp: set[str] = set()
 
@@ -102,6 +105,7 @@ class EstadisticasView(ft.Container):
             self.period_selector_container,
             self.kpi_container,
             self.donut_container,
+            self.histograma_container,
             self.dynamic_content_container,
             self.comportamiento_container,
         ]
@@ -129,11 +133,21 @@ class EstadisticasView(ft.Container):
             titulo = f"{self.state.selected_colegio or 'Colegio'} · Estadísticas"
             eyebrow = "RENDIMIENTO INSTITUCIONAL"
 
-        # 1. Cabecera
+        # 1. Cabecera con botón de exportación a PDF (REQ-EXP-004)
+        btn_exportar = ft.IconButton(
+            icon=ft.Icons.PICTURE_AS_PDF_OUTLINED,
+            icon_color=self.state.tokens.primary,
+            icon_size=22,
+            tooltip="Exportar Estadísticas a PDF",
+            on_click=self._abrir_modal_exportar,
+            style=ft.ButtonStyle(shape=ft.CircleBorder()),
+        )
+
         self.header_container.content = build_app_header(
             eyebrow=eyebrow,
             title=titulo,
             on_back=self._al_volver,
+            trailing=btn_exportar,
             tokens=self.state.tokens,
         )
 
@@ -147,6 +161,7 @@ class EstadisticasView(ft.Container):
             self.period_selector_container.visible = True
             self.kpi_container.visible = True
             self.donut_container.visible = True
+            self.histograma_container.visible = True
             self.dynamic_content_container.visible = True
             self.comportamiento_container.visible = False
 
@@ -159,6 +174,9 @@ class EstadisticasView(ft.Container):
             # 5. Gráfico de Dona y Leyendas
             self.donut_container.content = self._build_donut_section(stats)
 
+            # 5.5 Gráfico de Histograma de Rendimiento
+            self.histograma_container.content = self._build_histograma_section(stats)
+
             # 6. Contenido Dinámico (Barras de Cursos para Colegio ó Desglose de Alumnos para Curso)
             if nivel == "curso" and self.state.selected_curso:
                 self.dynamic_content_container.content = self._build_curso_alumnos_section(stats)
@@ -168,6 +186,7 @@ class EstadisticasView(ft.Container):
             self.period_selector_container.visible = False
             self.kpi_container.visible = False
             self.donut_container.visible = False
+            self.histograma_container.visible = False
             self.dynamic_content_container.visible = False
             self.comportamiento_container.visible = True
 
@@ -181,6 +200,63 @@ class EstadisticasView(ft.Container):
             destino = "colegios"
         self.on_navigate(destino)
 
+    def _mostrar_snackbar(self, mensaje: str, error: bool = False):
+        if not self.app_page:
+            return
+        sb = ft.SnackBar(
+            content=ft.Text(mensaje, color=ft.Colors.WHITE),
+            bgcolor=ft.Colors.ERROR if error else ft.Colors.GREEN_700,
+        )
+        if hasattr(self.app_page, "overlay") and isinstance(self.app_page.overlay, list):
+            self.app_page.overlay.append(sb)
+        sb.open = True
+        try:
+            self.app_page.update()
+        except Exception:
+            pass
+
+    def _abrir_modal_exportar(self, e=None):
+        nivel = self.state.estadisticas_nivel
+        colegio = self.state.selected_colegio or ""
+        curso = self.state.selected_curso if (nivel == "curso" and self.state.selected_curso) else None
+        periodo_idx = self._get_active_periodo()
+        periodo_nombre = NOMBRES_PERIODOS[periodo_idx]
+
+        if curso:
+            stats_rend = self.state.get_estadisticas_curso(colegio=colegio, curso=curso, periodo_idx=periodo_idx)
+            stats_comp = self.state.get_estadisticas_comportamiento(colegio=colegio, curso=curso)
+        else:
+            stats_rend = self.state.get_estadisticas_colegio(colegio=colegio, periodo_idx=periodo_idx)
+            stats_comp = self.state.get_estadisticas_comportamiento(colegio=colegio, curso=None)
+
+        datos_stats = {
+            "rendimiento": stats_rend,
+            "comportamiento": stats_comp,
+        }
+
+        def al_terminar(exito: bool, detalle: str):
+            if exito:
+                self._mostrar_snackbar("Reporte de estadísticas exportado con éxito.")
+            else:
+                self._mostrar_snackbar(f"Error al exportar reporte: {detalle}", error=True)
+
+        dlg = ExportEstadisticasDialog(
+            colegio_nombre=colegio,
+            curso_nombre=curso,
+            periodo_nombre=periodo_nombre,
+            datos_estadisticas=datos_stats,
+            on_success=al_terminar,
+            page=self.app_page,
+            state=self.state,
+            tokens=self.state.tokens,
+        )
+        if self.app_page:
+            try:
+                self.app_page.show_dialog(dlg)
+                self.app_page.update()
+            except Exception:
+                pass
+
     def _conmutar_periodo(self, nuevo_idx: int):
         """In-place update estricto al cambiar de trimestre: no altera el scroll."""
         if self.state.estadisticas_periodo == nuevo_idx:
@@ -193,7 +269,19 @@ class EstadisticasView(ft.Container):
             self.period_selector_container.update()
             self.kpi_container.update()
             self.donut_container.update()
+            self.histograma_container.update()
             self.dynamic_content_container.update()
+        except RuntimeError:
+            pass
+
+    def _conmutar_modo_histograma(self, stats: dict, nuevo_modo: str):
+        """In-place update estricto al alternar modo del histograma: no altera el scroll."""
+        if self.histograma_modo == nuevo_modo:
+            return
+        self.histograma_modo = nuevo_modo
+        self.histograma_container.content = self._build_histograma_section(stats)
+        try:
+            self.histograma_container.update()
         except RuntimeError:
             pass
 
@@ -208,6 +296,7 @@ class EstadisticasView(ft.Container):
             self.period_selector_container.update()
             self.kpi_container.update()
             self.donut_container.update()
+            self.histograma_container.update()
             self.dynamic_content_container.update()
             self.comportamiento_container.update()
         except RuntimeError:
@@ -230,6 +319,7 @@ class EstadisticasView(ft.Container):
             self.period_selector_container.update()
             self.kpi_container.update()
             self.donut_container.update()
+            self.histograma_container.update()
             self.dynamic_content_container.update()
             self.comportamiento_container.update()
         except RuntimeError:
@@ -251,6 +341,7 @@ class EstadisticasView(ft.Container):
             self.period_selector_container.update()
             self.kpi_container.update()
             self.donut_container.update()
+            self.histograma_container.update()
             self.dynamic_content_container.update()
             self.comportamiento_container.update()
         except RuntimeError:
@@ -617,6 +708,296 @@ class EstadisticasView(ft.Container):
                         spacing=12,
                         controls=[donut_stack, legend_col],
                     ),
+                ],
+            ),
+        )
+
+    def _build_histograma_section(self, stats: dict) -> ft.Container:
+        """
+        Gráfico de Barras Verticales (Histograma) - Calidad del Rendimiento.
+        Permite visualizar la distribución de calificaciones evaluadas tanto por
+        rangos pedagógicos (1-3, 4-5, 6-7, 8-10) como por notas discretas (1 a 10),
+        con alternancia in-place, escala responsiva y exclusión estricta de pendientes.
+        Conforme a SPEC-018 y PLAN-018.
+        """
+        tok = self.state.tokens
+        hist = stats.get("histograma", {})
+        total_evaluados = hist.get("total_evaluados", 0)
+        por_rango = hist.get("por_rango", {"1-3": 0, "4-5": 0, "6-7": 0, "8-10": 0})
+        pcts_rango = hist.get("porcentajes_rango", {"1-3": 0.0, "4-5": 0.0, "6-7": 0.0, "8-10": 0.0})
+        por_nota = hist.get("por_nota", {i: 0 for i in range(1, 11)})
+        max_frec_rango = hist.get("max_frecuencia_rango", 0)
+        max_frec_nota = hist.get("max_frecuencia_nota", 0)
+
+        es_modo_rangos = (self.histograma_modo == "rangos")
+
+        # 1. Cabecera con título y selector tipo segmented button
+        def _btn_modo(etiqueta: str, modo: str):
+            activo = (self.histograma_modo == modo)
+            return ft.Container(
+                content=ft.Text(
+                    etiqueta,
+                    size=11,
+                    weight=ft.FontWeight.BOLD if activo else ft.FontWeight.NORMAL,
+                    color=ft.Colors.WHITE if activo else tok.text_muted,
+                ),
+                bgcolor=tok.primary if activo else ft.Colors.TRANSPARENT,
+                border_radius=7,
+                padding=ft.Padding(left=10, right=10, top=4, bottom=4),
+                on_click=lambda _, m=modo: self._conmutar_modo_histograma(stats, m),
+            )
+
+        selector_modo = ft.Container(
+            bgcolor=tok.bg_page,
+            border=ft.Border.all(1, tok.border_color),
+            border_radius=9,
+            padding=2,
+            content=ft.Row(
+                spacing=2,
+                controls=[
+                    _btn_modo("Rangos", "rangos"),
+                    _btn_modo("1-10", "notas"),
+                ],
+            ),
+        )
+
+        header_row = ft.Row(
+            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            controls=[
+                ft.Row(
+                    spacing=6,
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                    controls=[
+                        ft.Icon(ft.Icons.BAR_CHART_ROUNDED, size=18, color=tok.primary),
+                        ft.Text(
+                            "Calidad del Rendimiento",
+                            size=14,
+                            weight=ft.FontWeight.BOLD,
+                            color=tok.text_main,
+                        ),
+                    ],
+                ),
+                selector_modo,
+            ],
+        )
+
+        # 2. Contenido del Gráfico
+        if total_evaluados == 0:
+            cuerpo_grafico = ft.Container(
+                padding=ft.Padding(top=24, bottom=24, left=12, right=12),
+                alignment=ft.Alignment.CENTER,
+                content=ft.Column(
+                    spacing=6,
+                    horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                    controls=[
+                        ft.Icon(ft.Icons.BAR_CHART_OUTLINED, size=32, color=tok.text_subtle),
+                        ft.Text(
+                            "Sin calificaciones registradas",
+                            size=13,
+                            weight=ft.FontWeight.BOLD,
+                            color=tok.text_main,
+                        ),
+                        ft.Text(
+                            "No hay alumnos con nota numérica final para este período.",
+                            size=11,
+                            color=tok.text_muted,
+                        ),
+                    ],
+                ),
+            )
+        else:
+            bar_max_h = 100  # Altura máxima de la barra en píxeles
+
+            # Colores semánticos según especificación
+            color_rango = {
+                "1-3": "#EF4444",
+                "4-5": "#F59E0B",
+                "6-7": "#34D399",
+                "8-10": "#10B981",
+            }
+
+            def _color_para_nota(n: int) -> str:
+                if n <= 3:
+                    return "#EF4444"
+                elif n <= 5:
+                    return "#F59E0B"
+                elif n <= 7:
+                    return "#34D399"
+                else:
+                    return "#10B981"
+
+            columnas_barras = []
+
+            if es_modo_rangos:
+                max_frec = max_frec_rango if max_frec_rango > 0 else 1
+                items_rangos = [
+                    ("1-3", "Crítico"),
+                    ("4-5", "En riesgo"),
+                    ("6-7", "Bueno"),
+                    ("8-10", "Destacado"),
+                ]
+                for rango_k, _ in items_rangos:
+                    cant = por_rango.get(rango_k, 0)
+                    pct = pcts_rango.get(rango_k, 0.0)
+                    color = color_rango[rango_k]
+
+                    if cant > 0:
+                        bar_h = max(6, int((cant / max_frec) * bar_max_h))
+                        bar_color = color
+                    else:
+                        bar_h = 3  # Base mínima estética para alineación
+                        bar_color = tok.border_color
+
+                    col_barra = ft.Column(
+                        expand=True,
+                        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                        alignment=ft.MainAxisAlignment.END,
+                        spacing=4,
+                        controls=[
+                            # Conteo superior
+                            ft.Text(
+                                f"{cant}",
+                                size=12,
+                                weight=ft.FontWeight.BOLD if cant > 0 else ft.FontWeight.NORMAL,
+                                color=tok.text_main if cant > 0 else tok.text_muted,
+                            ),
+                            # Barra vertical
+                            ft.Container(
+                                width=38,
+                                height=bar_h,
+                                bgcolor=bar_color,
+                                border_radius=ft.BorderRadius(
+                                    top_left=6,
+                                    top_right=6,
+                                    bottom_left=2,
+                                    bottom_right=2,
+                                ),
+                            ),
+                            # Separador horizontal de base
+                            ft.Container(height=1, bgcolor=tok.border_color),
+                            # Rótulo de rango y porcentaje
+                            ft.Column(
+                                spacing=1,
+                                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                                controls=[
+                                    ft.Text(
+                                        rango_k,
+                                        size=11,
+                                        weight=ft.FontWeight.BOLD,
+                                        color=tok.text_main,
+                                    ),
+                                    ft.Text(
+                                        f"{pct}%",
+                                        size=10,
+                                        color=tok.text_muted,
+                                    ),
+                                ],
+                            ),
+                        ],
+                    )
+                    columnas_barras.append(col_barra)
+            else:
+                max_frec = max_frec_nota if max_frec_nota > 0 else 1
+                for nota_i in range(1, 11):
+                    cant = por_nota.get(nota_i, 0)
+                    color = _color_para_nota(nota_i)
+
+                    if cant > 0:
+                        bar_h = max(6, int((cant / max_frec) * bar_max_h))
+                        bar_color = color
+                    else:
+                        bar_h = 3
+                        bar_color = tok.border_color
+
+                    col_barra = ft.Column(
+                        expand=True,
+                        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                        alignment=ft.MainAxisAlignment.END,
+                        spacing=4,
+                        controls=[
+                            # Conteo superior
+                            ft.Text(
+                                f"{cant}",
+                                size=11,
+                                weight=ft.FontWeight.BOLD if cant > 0 else ft.FontWeight.NORMAL,
+                                color=tok.text_main if cant > 0 else tok.text_muted,
+                            ),
+                            # Barra vertical
+                            ft.Container(
+                                width=16,
+                                height=bar_h,
+                                bgcolor=bar_color,
+                                border_radius=ft.BorderRadius(
+                                    top_left=5,
+                                    top_right=5,
+                                    bottom_left=2,
+                                    bottom_right=2,
+                                ),
+                            ),
+                            # Separador horizontal de base
+                            ft.Container(height=1, bgcolor=tok.border_color),
+                            # Rótulo inferior de nota
+                            ft.Text(
+                                f"{nota_i}",
+                                size=11,
+                                weight=ft.FontWeight.BOLD,
+                                color=tok.text_main,
+                            ),
+                        ],
+                    )
+                    columnas_barras.append(col_barra)
+
+            # Área del gráfico con altura holgada de 165dp
+            cuerpo_grafico = ft.Container(
+                height=165,
+                padding=ft.Padding(top=8, bottom=4, left=4, right=4),
+                content=ft.Row(
+                    expand=True,
+                    alignment=ft.MainAxisAlignment.SPACE_EVENLY,
+                    vertical_alignment=ft.CrossAxisAlignment.END,
+                    spacing=2 if not es_modo_rangos else 8,
+                    controls=columnas_barras,
+                ),
+            )
+
+        # 3. Pie de tarjeta con total de alumnos evaluados
+        pie_info = ft.Row(
+            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            controls=[
+                ft.Row(
+                    spacing=4,
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                    controls=[
+                        ft.Icon(ft.Icons.INFO_OUTLINE, size=12, color=tok.text_muted),
+                        ft.Text(
+                            f"Total evaluados: {total_evaluados} alumno{'s' if total_evaluados != 1 else ''}",
+                            size=11,
+                            color=tok.text_muted,
+                        ),
+                    ],
+                ),
+                ft.Text(
+                    "Excluye sin calificar",
+                    size=10,
+                    color=tok.text_subtle,
+                ),
+            ],
+        )
+
+        return ft.Container(
+            bgcolor=tok.surface,
+            border=ft.Border.all(1, tok.border_color),
+            border_radius=14,
+            padding=ft.Padding(left=14, right=14, top=14, bottom=14),
+            content=ft.Column(
+                spacing=12,
+                controls=[
+                    header_row,
+                    cuerpo_grafico,
+                    ft.Container(height=1, bgcolor=tok.border_color),
+                    pie_info,
                 ],
             ),
         )

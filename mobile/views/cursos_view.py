@@ -299,24 +299,50 @@ class CursosView(ft.Container):
         self.app_page.update()
 
     def _abrir_planificaciones_institucion(self, curso_foco: str | None = None):
+        def refrescar():
+            self._build_ui()
+            try:
+                self.update()
+            except Exception:
+                pass
+            if self.app_page:
+                try:
+                    self.app_page.update()
+                except Exception:
+                    pass
+
         dlg = PlanificacionesInstitucionDialog(
             state=self.state,
             colegio=self.state.selected_colegio,
             curso_inicial=curso_foco,
             page=self.app_page,
             tokens=self.state.tokens,
-            on_close=lambda: (self._build_ui(), self.app_page.update()),
+            on_change=refrescar,
+            on_close=refrescar,
         )
         self.app_page.show_dialog(dlg)
         self.app_page.update()
 
     def _abrir_planificacion_curso(self, cur: str):
+        def refrescar():
+            self._build_ui()
+            try:
+                self.update()
+            except Exception:
+                pass
+            if self.app_page:
+                try:
+                    self.app_page.update()
+                except Exception:
+                    pass
+
         dlg = PlanificacionCursoDialog(
             state=self.state,
             colegio=self.state.selected_colegio,
             curso=cur,
             tokens=self.state.tokens,
-            on_close=lambda: (self._build_ui(), self.app_page.update()),
+            on_change=refrescar,
+            on_close=refrescar,
             page=self.app_page,
         )
         self.app_page.show_dialog(dlg)

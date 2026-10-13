@@ -265,3 +265,32 @@ def test_planificacion_dialog_modo_oscuro_y_tokens(temp_state):
     assert dlg_light.tokens == LIGHT_TOKENS
     assert dlg_light.bgcolor == LIGHT_TOKENS.surface
 
+
+def test_planificacion_dialog_on_change_callbacks(temp_state):
+    page = MockMobilePage()
+    on_change_mock = MagicMock()
+    dlg = PlanificacionCursoDialog(
+        state=temp_state,
+        colegio="Escuela 1",
+        curso="3A",
+        on_change=on_change_mock,
+        page=page,
+    )
+
+    # 1. Añadir clase via clic de día
+    dlg._on_dia_click("2026-03-25")
+    assert on_change_mock.call_count == 1
+
+    # 2. Modificar tema
+    dlg._on_tema_change("2026-03-25", "Nuevo tema")
+    assert on_change_mock.call_count == 2
+
+    # 3. Modificar horario
+    dlg._on_horario_change("Vie 08:00 - 09:20")
+    assert on_change_mock.call_count == 3
+
+    # 4. Eliminar clase
+    dlg._on_delete_clase("2026-03-25")
+    assert on_change_mock.call_count == 4
+
+

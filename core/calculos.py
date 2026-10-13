@@ -241,6 +241,95 @@ def resumen_asistencia_curso(curso_data: dict) -> dict:
     }
 
 
+def calcular_distribucion_notas(alumnos_detalle: list[dict] | None) -> dict:
+    """
+    Calcula la distribución de frecuencias y porcentajes por rangos de calidad
+    y por notas individuales (1-10) para un conjunto de alumnos calificados.
+    Función pura conforme a SPEC-018 (Sección 2.2).
+
+    Args:
+        alumnos_detalle: Lista de diccionarios con claves 'condicion' y 'nota_final'.
+
+    Returns:
+        Diccionario con la distribución:
+        - total_evaluados: int
+        - max_frecuencia_rango: int
+        - max_frecuencia_nota: int
+        - por_nota: dict[int, int] (claves 1 a 10)
+        - por_rango: dict[str, int] ("1-3", "4-5", "6-7", "8-10")
+        - porcentajes_rango: dict[str, float] ("1-3", "4-5", "6-7", "8-10")
+    """
+    por_nota = {i: 0 for i in range(1, 11)}
+    por_rango = {
+        "1-3": 0,
+        "4-5": 0,
+        "6-7": 0,
+        "8-10": 0,
+    }
+    porcentajes_rango = {
+        "1-3": 0.0,
+        "4-5": 0.0,
+        "6-7": 0.0,
+        "8-10": 0.0,
+    }
+
+    if not isinstance(alumnos_detalle, list) or not alumnos_detalle:
+        return {
+            "total_evaluados": 0,
+            "max_frecuencia_rango": 0,
+            "max_frecuencia_nota": 0,
+            "por_nota": por_nota,
+            "por_rango": por_rango,
+            "porcentajes_rango": porcentajes_rango,
+        }
+
+    total_evaluados = 0
+
+    for al in alumnos_detalle:
+        if not isinstance(al, dict):
+            continue
+        condicion = al.get("condicion")
+        nota = al.get("nota_final")
+
+        # Excluir alumnos con condición "pendiente" o sin nota final
+        if condicion == "pendiente" or nota is None:
+            continue
+
+        if not isinstance(nota, (int, float)):
+            continue
+
+        nota_int = int(round(nota))
+        if 1 <= nota_int <= 10:
+            por_nota[nota_int] += 1
+            total_evaluados += 1
+
+            if 1 <= nota_int <= 3:
+                por_rango["1-3"] += 1
+            elif 4 <= nota_int <= 5:
+                por_rango["4-5"] += 1
+            elif 6 <= nota_int <= 7:
+                por_rango["6-7"] += 1
+            elif 8 <= nota_int <= 10:
+                por_rango["8-10"] += 1
+
+    if total_evaluados > 0:
+        for rango_k in por_rango:
+            cant = por_rango[rango_k]
+            porcentajes_rango[rango_k] = round((cant / total_evaluados) * 100, 1)
+
+    max_frecuencia_rango = max(por_rango.values()) if total_evaluados > 0 else 0
+    max_frecuencia_nota = max(por_nota.values()) if total_evaluados > 0 else 0
+
+    return {
+        "total_evaluados": total_evaluados,
+        "max_frecuencia_rango": max_frecuencia_rango,
+        "max_frecuencia_nota": max_frecuencia_nota,
+        "por_nota": por_nota,
+        "por_rango": por_rango,
+        "porcentajes_rango": porcentajes_rango,
+    }
+
+
 def obtener_estadisticas_curso(curso_data: dict, periodo_idx: int = 0) -> dict:
     """
     Calcula las estadísticas de rendimiento académico para un curso en un período dado.
@@ -278,6 +367,7 @@ def obtener_estadisticas_curso(curso_data: dict, periodo_idx: int = 0) -> dict:
             "pendientes_pct": 0.0,
             "promedio_curso": None,
             "alumnos_detalle": [],
+            "histograma": calcular_distribucion_notas([]),
         }
 
     def _clave_orden_id(item_tuple):
@@ -375,6 +465,7 @@ def obtener_estadisticas_curso(curso_data: dict, periodo_idx: int = 0) -> dict:
         "pendientes_pct": pendientes_pct,
         "promedio_curso": promedio_curso,
         "alumnos_detalle": alumnos_detalle,
+        "histograma": calcular_distribucion_notas(alumnos_detalle),
     }
 
 
@@ -417,6 +508,7 @@ def obtener_estadisticas_colegio(colegio_data: dict, periodo_idx: int = 0) -> di
             "pendientes_pct": 0.0,
             "promedio_colegio": None,
             "por_curso": {},
+            "histograma": calcular_distribucion_notas([]),
         }
 
     por_curso = {}
@@ -425,6 +517,7 @@ def obtener_estadisticas_colegio(colegio_data: dict, periodo_idx: int = 0) -> di
     desaprobados_cant = 0
     pendientes_cant = 0
     todas_notas = []
+    todos_alumnos_detalle = []
 
     for nombre_curso in sorted(cursos_dict.keys()):
         cur_data = cursos_dict.get(nombre_curso, {})
@@ -437,6 +530,7 @@ def obtener_estadisticas_colegio(colegio_data: dict, periodo_idx: int = 0) -> di
         pendientes_cant += stats_curso["pendientes_cant"]
 
         for al in stats_curso["alumnos_detalle"]:
+            todos_alumnos_detalle.append(al)
             if al["condicion"] in ("aprobado", "desaprobado") and al["nota_final"] is not None:
                 todas_notas.append(al["nota_final"])
 
@@ -461,6 +555,7 @@ def obtener_estadisticas_colegio(colegio_data: dict, periodo_idx: int = 0) -> di
         "pendientes_pct": pendientes_pct,
         "promedio_colegio": promedio_colegio,
         "por_curso": por_curso,
+        "histograma": calcular_distribucion_notas(todos_alumnos_detalle),
     }
 
 

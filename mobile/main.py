@@ -8,6 +8,8 @@ import sys
 from pathlib import Path
 import json
 import logging
+import time
+import inspect
 import flet as ft
 
 from mobile.state import AppState
@@ -93,7 +95,124 @@ def main(page: ft.Page):
     footer = AppFooter(state=state, on_navigate=lambda v: navigate(v), tokens=tokens)
     page.navigation_bar = footer
 
-    def navigate(view_name: str):
+    global_search = None
+    _last_back_time: float = 0.0
+    _in_transition: bool = False
+    EXIT_WINDOW_SECONDS: float = 2.0
+
+    def _mostrar_snackbar_doble_back():
+        t = state.tokens
+        if hasattr(page, "overlay") and isinstance(page.overlay, list):
+            page.overlay = [c for c in page.overlay if not isinstance(c, ft.SnackBar)]
+            sb = ft.SnackBar(
+                content=ft.Text(
+                    "Presiona o haz el gesto de volver otra vez para salir",
+                    color=t.surface if t else ft.Colors.WHITE,
+                    size=13,
+                    weight=ft.FontWeight.W_500,
+                ),
+                bgcolor=t.text_main if t else ft.Colors.SURFACE_CONTAINER_HIGHEST,
+                duration=2000,
+            )
+            page.overlay.append(sb)
+            sb.open = True
+            page.update()
+
+    def _gestionar_retroceso_sistema(e=None):
+        nonlocal _last_back_time, _in_transition
+        ahora = time.time()
+
+        # Nivel 0: Anti-bouncing / Reentrancia (< 200 ms o durante transición activa)
+        if _in_transition or (_last_back_time > 0 and (ahora - _last_back_time < 0.2) and state.can_pop()):
+            return
+
+        # Nivel 1: Búsqueda Omnibox Abierta
+        if global_search is not None and getattr(global_search, "is_open", False):
+            if global_search.cerrar_vista_si_abierta():
+                _last_back_time = 0.0
+                return
+
+        # Nivel 2: Modales o Diálogos Abiertos
+        try:
+            closed_dlg = page.pop_dialog()
+            if closed_dlg is not None:
+                _last_back_time = 0.0
+                if hasattr(closed_dlg, "on_dismiss") and callable(closed_dlg.on_dismiss):
+                    try:
+                        closed_dlg.on_dismiss(None)
+                    except Exception:
+                        pass
+                page.update()
+                return
+        except Exception as err:
+            logger.debug("Aviso al intentar pop_dialog: %s", err)
+
+        # Nivel 3: Historial LIFO con persistencia previa
+        if state.can_pop():
+            _in_transition = True
+            try:
+                state.flush_auto_save()
+                frame = state.pop_history()
+                if frame and "screen" in frame:
+                    navigate(frame["screen"], push_history=False)
+            finally:
+                _in_transition = False
+            _last_back_time = 0.0
+            return
+        elif state.current_screen != "colegios":
+            # Fallback defensivo si no estamos en la raíz pero la pila estaba vacía
+            _in_transition = True
+            try:
+                state.flush_auto_save()
+                if state.current_screen in ("notas", "asistencias", "grupos"):
+                    navigate("cursos", push_history=False)
+                else:
+                    navigate("colegios", push_history=False)
+            finally:
+                _in_transition = False
+            _last_back_time = 0.0
+            return
+
+        # Nivel 4: Pantalla Raíz ("Double Back to Exit")
+        if _last_back_time > 0 and (ahora - _last_back_time) <= EXIT_WINDOW_SECONDS:
+            # Segundo toque dentro de la ventana de 2.0s: Salida
+            state.flush_auto_save()
+            # En dispositivos móviles (Flet / Flutter)
+            try:
+                if e and hasattr(e, "control") and hasattr(e.control, "confirm_pop"):
+                    if inspect.iscoroutinefunction(e.control.confirm_pop):
+                        page.run_task(e.control.confirm_pop, True)
+                    else:
+                        e.control.confirm_pop(True)
+            except Exception:
+                pass
+            # Fallback en entorno de pruebas o escritorio
+            win = getattr(page, "window", None)
+            if win is not None and hasattr(win, "close"):
+                try:
+                    win.close()
+                except Exception:
+                    pass
+        else:
+            # Primer toque en pantalla raíz
+            _last_back_time = ahora
+            _mostrar_snackbar_doble_back()
+
+    def navigate(view_name: str, push_history: bool = True):
+        nonlocal _last_back_time
+        _last_back_time = 0.0
+
+        if view_name == "back":
+            _gestionar_retroceso_sistema()
+            return
+
+        if push_history and view_name != state.current_screen:
+            if state.can_pop() and state.peek_history() and state.peek_history().get("screen") == view_name:
+                state.flush_auto_save()
+                state.pop_history()
+            else:
+                state.push_history()
+
         state.current_screen = view_name
         if view_name == "colegios":
             main_container.content = ColegiosView(state, page, on_navigate=navigate)
@@ -114,6 +233,7 @@ def main(page: ft.Page):
 
     def al_restaurar_copia():
         # Validar consistencia tras la restauración (combinar o reemplazar)
+        state.clear_history()
         colegios = state.get_colegios()
         if not state.selected_colegio or state.selected_colegio not in colegios:
             state.selected_colegio = None
@@ -287,6 +407,22 @@ def main(page: ft.Page):
             logger.warning("Error al procesar cambio de ciclo de vida: %s", err)
 
     page.on_app_lifecycle_state_change = _gestionar_ciclo_vida
+
+    # Enlace a eventos de retroceso del sistema (Android, iOS y Escritorio - SPEC-020)
+    page.on_view_pop = _gestionar_retroceso_sistema
+
+    def _al_presionar_teclado(e: ft.KeyboardEvent):
+        if e.key == "Escape":
+            _gestionar_retroceso_sistema(e)
+
+    page.on_keyboard_event = _al_presionar_teclado
+
+    if hasattr(page, "views") and page.views:
+        try:
+            page.views[0].can_pop = False
+            page.views[0].on_confirm_pop = _gestionar_retroceso_sistema
+        except Exception as err:
+            logger.debug("Aviso al configurar can_pop en root view: %s", err)
 
     # Iniciar en la pantalla de colegios
     navigate("colegios")

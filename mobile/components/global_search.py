@@ -83,6 +83,29 @@ class GlobalSearchBar(ft.SearchBar):
             ],
             controls=self._build_placeholder_controls(),
         )
+        self.is_open: bool = False
+
+    def cerrar_vista_si_abierta(self) -> bool:
+        """Cierra la vista de búsqueda si se encuentra abierta. Retorna True si cerró la vista."""
+        if getattr(self, "is_open", False):
+            self.is_open = False
+            if hasattr(self, "close_view"):
+                try:
+                    if self.app_page and hasattr(self.app_page, "run_task"):
+                        self.app_page.run_task(self.close_view, "")
+                    else:
+                        res = self.close_view("")
+                        if inspect.isawaitable(res):
+                            res.close()
+                except Exception as err:
+                    logger.debug("Aviso al invocar close_view en retroceso: %s", err)
+            if self.app_page:
+                try:
+                    self.app_page.update()
+                except Exception:
+                    pass
+            return True
+        return False
 
     def _build_placeholder_controls(self) -> list[ft.Control]:
         """Genera el mensaje inicial de sugerencia para la vista de búsqueda."""
@@ -110,6 +133,7 @@ class GlobalSearchBar(ft.SearchBar):
 
     async def _handle_tap(self, e):
         """Manejador táctil asíncrono para abrir la vista de búsqueda."""
+        self.is_open = True
         if hasattr(self, "open_view"):
             try:
                 res = self.open_view()
@@ -120,6 +144,7 @@ class GlobalSearchBar(ft.SearchBar):
 
     async def _handle_close_click(self, e):
         """Cierra la vista de búsqueda."""
+        self.is_open = False
         if hasattr(self, "close_view"):
             try:
                 res = self.close_view("")
@@ -157,6 +182,7 @@ class GlobalSearchBar(ft.SearchBar):
 
     async def _handle_result_click(self, resultado: dict):
         """Cierra la vista de búsqueda asíncronamente y navega a la entidad seleccionada."""
+        self.is_open = False
         self.value = ""
         if hasattr(self, "close_view"):
             try:

@@ -7,6 +7,8 @@ incluyendo notas, promedios trimestrales y promedio final.
 
 import csv
 import math
+from datetime import datetime
+from pathlib import Path
 from fpdf import FPDF  # type: ignore
 
 from typing import Any
@@ -21,6 +23,7 @@ from .constants import (
     K_TRIMESTRES,
     NOMBRES_TRIMESTRES,
     NOMBRES_COLUMNAS_DEFAULT,
+    formatear_fecha,
 )
 
 
@@ -805,3 +808,713 @@ def generar_texto_notas_whatsapp(
     except ValueError:
         pass
     return formatear_notas_trimestre_whatsapp(curso_data, 0, nombre_curso, nombre_colegio)
+
+
+# =========================================================================
+# --- EXPORTACIÓN DE ESTADÍSTICAS A PDF (SPEC-019: T1) ---
+# =========================================================================
+
+def _sanitizar_texto_fpdf(txt: Any) -> str:
+    """
+    Limpia caracteres Unicode incompatibles con la codificación Latin-1 de las fuentes estándar de FPDF2.
+    Reemplaza viñetas por '-', comillas tipográficas por estándar ASCII, guiones largos por simples
+    y remueve emojis o caracteres que no pertenezcan al juego de caracteres Latin-1.
+    """
+    if txt is None:
+        return ""
+    s = str(txt)
+    reemplazos = {
+        "•": "-",
+        "–": "-",
+        "—": "-",
+        "“": '"',
+        "”": '"',
+        "„": '"',
+        "‘": "'",
+        "’": "'",
+        "…": "...",
+        "✔": "[OK]",
+        "✓": "[OK]",
+        "❌": "[X]",
+        "✗": "[X]",
+        "➜": "->",
+        "➔": "->",
+        "→": "->",
+        "←": "<-",
+        "⭐": "*",
+        "👍": "(+)",
+        "⚠️": "(!)",
+        "❗": "(!)",
+    }
+    for k, v in reemplazos.items():
+        s = s.replace(k, v)
+
+    chars_validos = []
+    for ch in s:
+        try:
+            ch.encode("latin-1")
+            chars_validos.append(ch)
+        except UnicodeEncodeError:
+            continue
+    return "".join(chars_validos)
+
+
+class ReporteEstadisticasPDF(FPDF):
+    """
+    Documento PDF para el Reporte Estadístico Institucional y de Curso (A4 Vertical).
+    Genera cabecera institucional formal y pie de página con paginación 'Página X de Y'.
+    """
+
+    def __init__(
+        self,
+        nombre_colegio: str,
+        nombre_curso: str | None,
+        periodo_nombre: str,
+        fecha_hora_emision: str,
+    ):
+        super().__init__(orientation="P", unit="mm", format="A4")
+        self.nombre_colegio = _sanitizar_texto_fpdf(nombre_colegio or "Institución Educativa")
+        self.nombre_curso = _sanitizar_texto_fpdf(nombre_curso) if nombre_curso else None
+        self.periodo_nombre = _sanitizar_texto_fpdf(periodo_nombre)
+        self.fecha_hora_emision = _sanitizar_texto_fpdf(fecha_hora_emision)
+
+    def header(self):
+        self.set_draw_color(226, 232, 240)
+        self.set_line_width(0.3)
+
+        if self.page_no() == 1:
+            self.set_fill_color(248, 250, 252)
+            self.rect(self.l_margin, 10, self.w - self.l_margin - self.r_margin, 24, "F")
+            self.rect(self.l_margin, 10, self.w - self.l_margin - self.r_margin, 24, "D")
+
+            self.set_xy(self.l_margin, 12)
+            self.set_font("helvetica", "B", 12)
+            self.set_text_color(30, 41, 59)
+            self.cell(
+                self.w - self.l_margin - self.r_margin,
+                6,
+                "INFORME ESTADÍSTICO DE RENDIMIENTO Y CONVIVENCIA",
+                border=0,
+                align="C",
+            )
+            self.ln(6)
+
+            self.set_font("helvetica", "B", 10)
+            self.set_text_color(71, 85, 105)
+            linea_entidad = f"Institución: {self.nombre_colegio}"
+            if self.nombre_curso:
+                linea_entidad += f"   |   Curso: {self.nombre_curso}"
+            self.cell(
+                self.w - self.l_margin - self.r_margin,
+                5,
+                linea_entidad,
+                border=0,
+                align="C",
+            )
+            self.ln(5)
+
+            self.set_font("helvetica", "", 8)
+            self.set_text_color(100, 116, 139)
+            meta = f"Período: {self.periodo_nombre}   |   Fecha de emisión: {self.fecha_hora_emision}"
+            self.cell(
+                self.w - self.l_margin - self.r_margin,
+                4,
+                meta,
+                border=0,
+                align="C",
+            )
+            self.ln(9)
+        else:
+            self.set_font("helvetica", "I", 8)
+            self.set_text_color(148, 163, 184)
+            resumen_hdr = f"{self.nombre_colegio}"
+            if self.nombre_curso:
+                resumen_hdr += f" - {self.nombre_curso}"
+            resumen_hdr += f" | {self.periodo_nombre} | Informe Estadístico"
+            self.cell(self.w - self.l_margin - self.r_margin, 5, resumen_hdr, border=0, align="L")
+            self.ln(5)
+            self.line(self.l_margin, self.get_y(), self.w - self.r_margin, self.get_y())
+            self.ln(3)
+
+    def footer(self):
+        self.set_y(-15)
+        self.set_draw_color(226, 232, 240)
+        self.set_line_width(0.2)
+        self.line(self.l_margin, self.get_y(), self.w - self.r_margin, self.get_y())
+        self.set_font("helvetica", "I", 8)
+        self.set_text_color(148, 163, 184)
+        texto_pie = f"Página {self.page_no()} de {{nb}}   |   Emitido: {self.fecha_hora_emision}   |   Notaly"
+        self.cell(self.w - self.l_margin - self.r_margin, 10, texto_pie, border=0, align="C")
+
+
+def _dibujar_encabezado_seccion_pdf(pdf: ReporteEstadisticasPDF, titulo: str):
+    """Dibuja una barra de título de sección estilizada con salto preventivo si queda poco espacio."""
+    if pdf.get_y() > 245:
+        pdf.add_page()
+    pdf.set_fill_color(241, 245, 249)
+    pdf.set_draw_color(203, 213, 225)
+    pdf.set_font("helvetica", "B", 10)
+    pdf.set_text_color(30, 41, 59)
+    pdf.cell(180, 7, _sanitizar_texto_fpdf(f"  {titulo.upper()}"), border=1, fill=True, align="L")
+    pdf.ln(9)
+
+
+def exportar_estadisticas_a_pdf(
+    datos_estadisticas: dict,
+    file_path: str,
+    nombre_colegio: str,
+    nombre_curso: str | None = None,
+    periodo_nombre: str = "1° Trimestre",
+    incluir_calificaciones: bool = True,
+    incluir_comportamiento: bool = True,
+) -> tuple[bool, str | None]:
+    """
+    Genera el reporte PDF y retorna (exito, ruta_o_error).
+    Si incluir_calificaciones y incluir_comportamiento son ambos False,
+    retorna (False, 'Debe seleccionarse al menos una sección para exportar.').
+    """
+    if not incluir_calificaciones and not incluir_comportamiento:
+        return False, "Debe seleccionarse al menos una sección para exportar."
+
+    try:
+        ahora = datetime.now()
+        fecha_str = ahora.strftime("%d-%m-%Y")
+        hora_str = ahora.strftime("%H:%M")
+        fecha_hora_emision = f"{fecha_str} {hora_str}"
+
+        colegio_nom = (nombre_colegio or "").strip() or "Institución Educativa"
+        curso_nom = nombre_curso.strip() if nombre_curso and str(nombre_curso).strip() else None
+        periodo_nom = (periodo_nombre or "").strip() or "1° Trimestre"
+
+        pdf = ReporteEstadisticasPDF(
+            nombre_colegio=colegio_nom,
+            nombre_curso=curso_nom,
+            periodo_nombre=periodo_nom,
+            fecha_hora_emision=fecha_hora_emision,
+        )
+        pdf.alias_nb_pages()
+        pdf.set_auto_page_break(auto=True, margin=18)
+        pdf.set_margins(15, 12, 15)
+        pdf.add_page()
+
+        datos = datos_estadisticas or {}
+
+        # ---------------------------------------------------------
+        # SECCIÓN 1: CALIFICACIONES
+        # ---------------------------------------------------------
+        if incluir_calificaciones:
+            _dibujar_encabezado_seccion_pdf(pdf, "1. Rendimiento Académico y Calificaciones")
+            rendimiento = datos.get("rendimiento", {})
+
+            total_alumnos = rendimiento.get("total_alumnos", 0)
+            aprobados_cant = rendimiento.get("aprobados_cant", 0)
+            aprobados_pct = rendimiento.get("aprobados_pct", 0.0)
+            desaprobados_cant = rendimiento.get("desaprobados_cant", 0)
+            desaprobados_pct = rendimiento.get("desaprobados_pct", 0.0)
+            pendientes_cant = rendimiento.get("pendientes_cant", 0)
+            pendientes_pct = rendimiento.get("pendientes_pct", 0.0)
+            prom = rendimiento.get("promedio")
+            if prom is None:
+                prom = rendimiento.get("promedio_curso", rendimiento.get("promedio_colegio"))
+
+            es_vacio_calif = total_alumnos == 0 or (
+                aprobados_cant == 0
+                and desaprobados_cant == 0
+                and pendientes_cant == 0
+                and not rendimiento.get("alumnos_detalle")
+                and not rendimiento.get("por_curso")
+            )
+
+            if es_vacio_calif:
+                pdf.set_fill_color(248, 250, 252)
+                pdf.set_draw_color(226, 232, 240)
+                pdf.set_font("helvetica", "I", 9)
+                pdf.set_text_color(100, 116, 139)
+                pdf.cell(
+                    180,
+                    10,
+                    _sanitizar_texto_fpdf("Sin calificaciones registradas para el período seleccionado."),
+                    border=1,
+                    fill=True,
+                    align="C",
+                )
+                pdf.ln(13)
+            else:
+                # Bloque de KPIs
+                card_w = 36.0
+                card_h = 13.0
+                start_x = pdf.l_margin
+                start_y = pdf.get_y()
+
+                kpis = [
+                    ("TOTAL ALUMNOS", f"{total_alumnos}", (30, 41, 59)),
+                    ("APROBADOS", f"{aprobados_cant} ({aprobados_pct:.1f}%)", (16, 185, 129)),
+                    ("DESAPROBADOS", f"{desaprobados_cant} ({desaprobados_pct:.1f}%)", (239, 68, 68)),
+                    ("PENDIENTES", f"{pendientes_cant} ({pendientes_pct:.1f}%)", (245, 158, 11)),
+                    ("PROMEDIO", f"{prom:.2f}" if prom is not None else "--", (37, 99, 235)),
+                ]
+
+                for i, (label, val, color) in enumerate(kpis):
+                    x = start_x + (i * card_w)
+                    pdf.set_fill_color(248, 250, 252)
+                    pdf.set_draw_color(226, 232, 240)
+                    pdf.rect(x, start_y, card_w, card_h, "DF")
+
+                    pdf.set_xy(x, start_y + 1.5)
+                    pdf.set_font("helvetica", "B", 6.5)
+                    pdf.set_text_color(100, 116, 139)
+                    pdf.cell(card_w, 4, label, border=0, align="C")
+
+                    pdf.set_xy(x, start_y + 5.5)
+                    pdf.set_font("helvetica", "B", 8.5)
+                    pdf.set_text_color(*color)
+                    pdf.cell(card_w, 6, val, border=0, align="C")
+
+                pdf.set_xy(pdf.l_margin, start_y + card_h + 4)
+
+                # Histograma de Calidad (SPEC-018)
+                histograma = rendimiento.get("histograma", {})
+                por_rango = histograma.get("por_rango", {})
+                porcentajes_rango = histograma.get("porcentajes_rango", {})
+                total_eval = histograma.get("total_evaluados", 0)
+                if total_eval == 0:
+                    total_eval = aprobados_cant + desaprobados_cant
+
+                rangos_def = [
+                    ("1-3", "Insuficiente (1 - 3)", (239, 68, 68)),
+                    ("4-5", "Regular (4 - 5)", (245, 158, 11)),
+                    ("6-7", "Bueno (6 - 7)", (52, 211, 153)),
+                    ("8-10", "Destacado (8 - 10)", (16, 185, 129)),
+                ]
+
+                if pdf.get_y() > 240:
+                    pdf.add_page()
+                pdf.set_font("helvetica", "B", 8.5)
+                pdf.set_text_color(51, 65, 85)
+                pdf.cell(180, 5, _sanitizar_texto_fpdf("Distribución de Calificaciones (Histograma):"), border=0, align="L")
+                pdf.ln(5.5)
+
+                pdf.set_fill_color(241, 245, 249)
+                pdf.set_draw_color(226, 232, 240)
+                pdf.set_font("helvetica", "B", 7.5)
+                pdf.set_text_color(71, 85, 105)
+                pdf.cell(48, 5, "Escala / Rango", border=1, fill=True, align="L")
+                pdf.cell(18, 5, "Cantidad", border=1, fill=True, align="C")
+                pdf.cell(20, 5, "Porcentaje", border=1, fill=True, align="C")
+                pdf.cell(94, 5, "Proporción", border=1, fill=True, align="L")
+                pdf.ln(5)
+
+                row_h = 5.5
+                for k, label, (cr, cg, cb) in rangos_def:
+                    cant = por_rango.get(k, 0)
+                    pct = porcentajes_rango.get(k)
+                    if pct is None:
+                        pct = round((cant / total_eval) * 100, 1) if total_eval > 0 else 0.0
+
+                    y_fila = pdf.get_y()
+                    pdf.set_font("helvetica", "", 7.5)
+                    pdf.set_text_color(30, 41, 59)
+                    pdf.cell(48, row_h, _sanitizar_texto_fpdf(label), border=1, align="L")
+                    pdf.cell(18, row_h, str(cant), border=1, align="C")
+                    pdf.cell(20, row_h, f"{pct:.1f}%", border=1, align="C")
+
+                    x_barra = pdf.get_x()
+                    pdf.cell(94, row_h, "", border=1)
+
+                    track_w = 86.0
+                    bar_h = 3.5
+                    bar_y_offset = y_fila + (row_h - bar_h) / 2
+                    pdf.set_fill_color(241, 245, 249)
+                    pdf.rect(x_barra + 4, bar_y_offset, track_w, bar_h, "F")
+
+                    if pct > 0:
+                        ancho_color = max(1.5, (pct / 100.0) * track_w)
+                        pdf.set_fill_color(cr, cg, cb)
+                        pdf.rect(x_barra + 4, bar_y_offset, ancho_color, bar_h, "F")
+
+                    pdf.ln(row_h)
+                pdf.ln(4)
+
+                # Desglose institucional vs curso
+                if not curso_nom:
+                    # Nivel Institucional: Comparativa de cursos
+                    por_curso = rendimiento.get("por_curso", {})
+                    if por_curso:
+                        if pdf.get_y() > 235:
+                            pdf.add_page()
+                        pdf.set_font("helvetica", "B", 8.5)
+                        pdf.set_text_color(51, 65, 85)
+                        pdf.cell(180, 5, _sanitizar_texto_fpdf("Comparativa de Cursos:"), border=0, align="L")
+                        pdf.ln(5.5)
+
+                        pdf.set_fill_color(241, 245, 249)
+                        pdf.set_draw_color(226, 232, 240)
+                        pdf.set_font("helvetica", "B", 7.5)
+                        pdf.set_text_color(71, 85, 105)
+                        pdf.cell(40, 5, "Curso / División", border=1, fill=True, align="L")
+                        pdf.cell(22, 5, "Alumnos", border=1, fill=True, align="C")
+                        pdf.cell(22, 5, "Aprobados", border=1, fill=True, align="C")
+                        pdf.cell(22, 5, "Desaprobados", border=1, fill=True, align="C")
+                        pdf.cell(24, 5, "% Aprobación", border=1, fill=True, align="C")
+                        pdf.cell(50, 5, "Rendimiento", border=1, fill=True, align="L")
+                        pdf.ln(5)
+
+                        for c_nom, c_stats in sorted(por_curso.items()):
+                            if pdf.get_y() > 270:
+                                pdf.add_page()
+                            y_c = pdf.get_y()
+                            c_tot = c_stats.get("total_alumnos", 0)
+                            c_apr = c_stats.get("aprobados_cant", 0)
+                            c_des = c_stats.get("desaprobados_cant", 0)
+                            c_pct = c_stats.get("aprobados_pct", 0.0)
+
+                            pdf.set_font("helvetica", "", 7.5)
+                            pdf.set_text_color(30, 41, 59)
+                            pdf.cell(40, 5.5, _sanitizar_texto_fpdf(c_nom), border=1, align="L")
+                            pdf.cell(22, 5.5, str(c_tot), border=1, align="C")
+                            pdf.cell(22, 5.5, str(c_apr), border=1, align="C")
+                            pdf.cell(22, 5.5, str(c_des), border=1, align="C")
+                            pdf.cell(24, 5.5, f"{c_pct:.1f}%", border=1, align="C")
+
+                            x_bar = pdf.get_x()
+                            pdf.cell(50, 5.5, "", border=1)
+
+                            track_w_c = 44.0
+                            bar_h_c = 3.0
+                            bar_y_c = y_c + (5.5 - bar_h_c) / 2
+                            pdf.set_fill_color(241, 245, 249)
+                            pdf.rect(x_bar + 3, bar_y_c, track_w_c, bar_h_c, "F")
+                            if c_pct > 0:
+                                pdf.set_fill_color(16, 185, 129)
+                                pdf.rect(x_bar + 3, bar_y_c, max(1.0, (c_pct / 100.0) * track_w_c), bar_h_c, "F")
+                            pdf.ln(5.5)
+                        pdf.ln(4)
+                else:
+                    # Nivel Curso: Nómina de alumnos
+                    alumnos_detalle = rendimiento.get("alumnos_detalle", [])
+                    if alumnos_detalle:
+                        if pdf.get_y() > 235:
+                            pdf.add_page()
+                        pdf.set_font("helvetica", "B", 8.5)
+                        pdf.set_text_color(51, 65, 85)
+                        pdf.cell(180, 5, _sanitizar_texto_fpdf("Nómina de Alumnos y Calificación Final:"), border=0, align="L")
+                        pdf.ln(5.5)
+
+                        pdf.set_fill_color(241, 245, 249)
+                        pdf.set_draw_color(226, 232, 240)
+                        pdf.set_font("helvetica", "B", 7.5)
+                        pdf.set_text_color(71, 85, 105)
+                        pdf.cell(15, 5, "N°", border=1, fill=True, align="C")
+                        pdf.cell(95, 5, "Nombre y Apellido", border=1, fill=True, align="L")
+                        pdf.cell(40, 5, "Condición", border=1, fill=True, align="C")
+                        pdf.cell(30, 5, "Nota Final", border=1, fill=True, align="C")
+                        pdf.ln(5)
+
+                        for al in alumnos_detalle:
+                            if pdf.get_y() > 270:
+                                pdf.add_page()
+                            al_id = str(al.get("id", ""))
+                            al_nom = al.get("nombre", f"Alumno #{al_id}")
+                            cond = str(al.get("condicion", "pendiente")).lower()
+                            nota_val = al.get("nota_final")
+                            nota_str = formatear_nota_entera(nota_val, default="-")
+
+                            pdf.set_font("helvetica", "", 7.5)
+                            pdf.set_text_color(30, 41, 59)
+                            pdf.cell(15, 5, al_id, border=1, align="C")
+                            pdf.cell(95, 5, _sanitizar_texto_fpdf(al_nom), border=1, align="L")
+
+                            if cond == "aprobado":
+                                pdf.set_text_color(16, 185, 129)
+                                cond_label = "Aprobado"
+                            elif cond == "desaprobado":
+                                pdf.set_text_color(239, 68, 68)
+                                cond_label = "Desaprobado"
+                            else:
+                                pdf.set_text_color(100, 116, 139)
+                                cond_label = "Pendiente"
+
+                            pdf.set_font("helvetica", "B", 7.5)
+                            pdf.cell(40, 5, cond_label, border=1, align="C")
+
+                            pdf.set_font("helvetica", "B", 8)
+                            if cond == "aprobado":
+                                pdf.set_text_color(16, 185, 129)
+                            elif cond == "desaprobado":
+                                pdf.set_text_color(239, 68, 68)
+                            else:
+                                pdf.set_text_color(100, 116, 139)
+                            pdf.cell(30, 5, nota_str, border=1, align="C")
+                            pdf.ln(5)
+                        pdf.ln(4)
+
+        # ---------------------------------------------------------
+        # SECCIÓN 2: COMPORTAMIENTO
+        # ---------------------------------------------------------
+        if incluir_comportamiento:
+            if incluir_calificaciones and pdf.get_y() > 190:
+                pdf.add_page()
+
+            _dibujar_encabezado_seccion_pdf(pdf, "2. Convivencia y Comportamiento")
+            comportamiento = datos.get("comportamiento", {})
+            total_obs = comportamiento.get("total_observaciones", 0)
+
+            if total_obs == 0:
+                pdf.set_fill_color(248, 250, 252)
+                pdf.set_draw_color(226, 232, 240)
+                pdf.set_font("helvetica", "I", 9)
+                pdf.set_text_color(100, 116, 139)
+                pdf.cell(
+                    180,
+                    10,
+                    _sanitizar_texto_fpdf("Sin observaciones de comportamiento registradas para este período."),
+                    border=1,
+                    fill=True,
+                    align="C",
+                )
+                pdf.ln(13)
+            else:
+                pos_cant = comportamiento.get("positivos_cant")
+                if pos_cant is None:
+                    pos_cant = comportamiento.get("totales_por_tipo", {}).get("positivo", 0)
+                pos_pct = comportamiento.get("positivos_pct")
+                if pos_pct is None:
+                    pos_pct = comportamiento.get("porcentajes_por_tipo", {}).get("positivo", 0.0)
+
+                reg_cant = comportamiento.get("regulares_cant")
+                if reg_cant is None:
+                    reg_cant = comportamiento.get("totales_por_tipo", {}).get("regular", 0)
+                reg_pct = comportamiento.get("regulares_pct")
+                if reg_pct is None:
+                    reg_pct = comportamiento.get("porcentajes_por_tipo", {}).get("regular", 0.0)
+
+                neg_cant = comportamiento.get("negativos_cant")
+                if neg_cant is None:
+                    neg_cant = comportamiento.get("totales_por_tipo", {}).get("negativo", 0)
+                neg_pct = comportamiento.get("negativos_pct")
+                if neg_pct is None:
+                    neg_pct = comportamiento.get("porcentajes_por_tipo", {}).get("negativo", 0.0)
+
+                balance_neto = comportamiento.get("balance_neto")
+                if balance_neto is None:
+                    balance_neto = pos_cant - neg_cant
+
+                # KPIs de Comportamiento
+                card_w_comp = 45.0
+                card_h_comp = 13.0
+                start_x = pdf.l_margin
+                start_y = pdf.get_y()
+
+                balance_color = (16, 185, 129) if balance_neto > 0 else ((239, 68, 68) if balance_neto < 0 else (100, 116, 139))
+                balance_str = f"+{balance_neto}" if balance_neto > 0 else str(balance_neto)
+
+                kpis_comp = [
+                    ("POSITIVAS", f"{pos_cant} ({pos_pct:.1f}%)", (16, 185, 129)),
+                    ("REGULARES", f"{reg_cant} ({reg_pct:.1f}%)", (245, 158, 11)),
+                    ("NEGATIVAS", f"{neg_cant} ({neg_pct:.1f}%)", (239, 68, 68)),
+                    ("BALANCE NETO", balance_str, balance_color),
+                ]
+
+                for i, (label, val, color) in enumerate(kpis_comp):
+                    x = start_x + (i * card_w_comp)
+                    pdf.set_fill_color(248, 250, 252)
+                    pdf.set_draw_color(226, 232, 240)
+                    pdf.rect(x, start_y, card_w_comp, card_h_comp, "DF")
+
+                    pdf.set_xy(x, start_y + 1.5)
+                    pdf.set_font("helvetica", "B", 6.5)
+                    pdf.set_text_color(100, 116, 139)
+                    pdf.cell(card_w_comp, 4, label, border=0, align="C")
+
+                    pdf.set_xy(x, start_y + 5.5)
+                    pdf.set_font("helvetica", "B", 8.5)
+                    pdf.set_text_color(*color)
+                    pdf.cell(card_w_comp, 6, val, border=0, align="C")
+
+                pdf.set_xy(pdf.l_margin, start_y + card_h_comp + 4)
+
+                # Conteo por subtipo
+                por_subtipo = comportamiento.get("por_subtipo", comportamiento.get("totales_por_subtipo", {}))
+                if por_subtipo:
+                    if pdf.get_y() > 235:
+                        pdf.add_page()
+                    pdf.set_font("helvetica", "B", 8.5)
+                    pdf.set_text_color(51, 65, 85)
+                    pdf.cell(180, 5, _sanitizar_texto_fpdf("Distribución por Tipificación / Subtipo:"), border=0, align="L")
+                    pdf.ln(5.5)
+
+                    pdf.set_fill_color(241, 245, 249)
+                    pdf.set_draw_color(226, 232, 240)
+                    pdf.set_font("helvetica", "B", 7.5)
+                    pdf.set_text_color(71, 85, 105)
+                    pdf.cell(70, 5, "Subtipo / Categoría", border=1, fill=True, align="L")
+                    pdf.cell(35, 5, "Cantidad", border=1, fill=True, align="C")
+                    pdf.cell(35, 5, "% del Total", border=1, fill=True, align="C")
+                    pdf.cell(40, 5, "Proporción", border=1, fill=True, align="L")
+                    pdf.ln(5)
+
+                    subtipos_colores = {
+                        "Meritoria": (16, 185, 129),
+                        "Ejemplar": (52, 211, 153),
+                        "Regular": (245, 158, 11),
+                        "Inadecuado": (249, 115, 22),
+                        "Grave": (239, 68, 68),
+                    }
+
+                    for sub_k, sub_cant in por_subtipo.items():
+                        if pdf.get_y() > 270:
+                            pdf.add_page()
+                        sub_pct = round((sub_cant / total_obs) * 100, 1) if total_obs > 0 else 0.0
+                        scolor = subtipos_colores.get(sub_k, (100, 116, 139))
+
+                        y_sub = pdf.get_y()
+                        pdf.set_font("helvetica", "", 7.5)
+                        pdf.set_text_color(30, 41, 59)
+                        pdf.cell(70, 5, _sanitizar_texto_fpdf(sub_k), border=1, align="L")
+                        pdf.cell(35, 5, str(sub_cant), border=1, align="C")
+                        pdf.cell(35, 5, f"{sub_pct:.1f}%", border=1, align="C")
+
+                        x_sbar = pdf.get_x()
+                        pdf.cell(40, 5, "", border=1)
+
+                        track_w_s = 34.0
+                        bar_h_s = 3.0
+                        bar_y_s = y_sub + (5.0 - bar_h_s) / 2
+                        pdf.set_fill_color(241, 245, 249)
+                        pdf.rect(x_sbar + 3, bar_y_s, track_w_s, bar_h_s, "F")
+                        if sub_pct > 0:
+                            pdf.set_fill_color(*scolor)
+                            pdf.rect(x_sbar + 3, bar_y_s, max(1.0, (sub_pct / 100.0) * track_w_s), bar_h_s, "F")
+                        pdf.ln(5)
+                    pdf.ln(4)
+
+                # Detalle de alumnos o comparativa institucional
+                if not curso_nom:
+                    # Nivel Institucional
+                    por_curso_comp = comportamiento.get("por_curso", {})
+                    if por_curso_comp:
+                        if pdf.get_y() > 235:
+                            pdf.add_page()
+                        pdf.set_font("helvetica", "B", 8.5)
+                        pdf.set_text_color(51, 65, 85)
+                        pdf.cell(180, 5, _sanitizar_texto_fpdf("Comparativa Disciplinaria por Curso:"), border=0, align="L")
+                        pdf.ln(5.5)
+
+                        pdf.set_fill_color(241, 245, 249)
+                        pdf.set_draw_color(226, 232, 240)
+                        pdf.set_font("helvetica", "B", 7.5)
+                        pdf.set_text_color(71, 85, 105)
+                        pdf.cell(45, 5, "Curso / División", border=1, fill=True, align="L")
+                        pdf.cell(25, 5, "Positivas", border=1, fill=True, align="C")
+                        pdf.cell(25, 5, "Regulares", border=1, fill=True, align="C")
+                        pdf.cell(25, 5, "Negativas", border=1, fill=True, align="C")
+                        pdf.cell(30, 5, "Total Obs.", border=1, fill=True, align="C")
+                        pdf.cell(30, 5, "Balance", border=1, fill=True, align="C")
+                        pdf.ln(5)
+
+                        for c_nom, c_data in sorted(por_curso_comp.items()):
+                            if pdf.get_y() > 270:
+                                pdf.add_page()
+                            c_pos = c_data.get("positivos_cant", c_data.get("positivos", 0))
+                            c_reg = c_data.get("regulares_cant", c_data.get("regulares", 0))
+                            c_neg = c_data.get("negativos_cant", c_data.get("negativos", 0))
+                            c_tot = c_data.get("total_observaciones", c_data.get("total", c_pos + c_reg + c_neg))
+                            c_bal = c_data.get("balance_neto", c_pos - c_neg)
+
+                            bal_str = f"+{c_bal}" if c_bal > 0 else str(c_bal)
+                            pdf.set_font("helvetica", "", 7.5)
+                            pdf.set_text_color(30, 41, 59)
+                            pdf.cell(45, 5, _sanitizar_texto_fpdf(c_nom), border=1, align="L")
+                            pdf.cell(25, 5, str(c_pos), border=1, align="C")
+                            pdf.cell(25, 5, str(c_reg), border=1, align="C")
+                            pdf.cell(25, 5, str(c_neg), border=1, align="C")
+                            pdf.cell(30, 5, str(c_tot), border=1, align="C")
+
+                            pdf.set_font("helvetica", "B", 7.5)
+                            if c_bal > 0:
+                                pdf.set_text_color(16, 185, 129)
+                            elif c_bal < 0:
+                                pdf.set_text_color(239, 68, 68)
+                            else:
+                                pdf.set_text_color(100, 116, 139)
+                            pdf.cell(30, 5, bal_str, border=1, align="C")
+                            pdf.ln(5)
+                        pdf.ln(4)
+                else:
+                    # Nivel Curso: Detalle por alumno
+                    por_alumno = comportamiento.get("por_alumno", comportamiento.get("todos_los_alumnos", []))
+                    alumnos_comp_lista = []
+                    if isinstance(por_alumno, dict):
+                        for al_k, al_val in por_alumno.items():
+                            if isinstance(al_val, dict):
+                                al_val_copy = dict(al_val)
+                                al_val_copy.setdefault("id", al_k)
+                                alumnos_comp_lista.append(al_val_copy)
+                    elif isinstance(por_alumno, list):
+                        alumnos_comp_lista = por_alumno
+
+                    if alumnos_comp_lista:
+                        if pdf.get_y() > 230:
+                            pdf.add_page()
+                        pdf.set_font("helvetica", "B", 8.5)
+                        pdf.set_text_color(51, 65, 85)
+                        pdf.cell(180, 5, _sanitizar_texto_fpdf("Registro de Observaciones por Estudiante:"), border=0, align="L")
+                        pdf.ln(5.5)
+
+                        for entry in alumnos_comp_lista:
+                            al_nom = entry.get("nombre", f"Alumno #{entry.get('id', '')}")
+                            obs_list = entry.get("observaciones", [])
+                            c_tipo = entry.get("conteo_tipo", {})
+                            n_pos = entry.get("positivos", c_tipo.get("positivo", 0))
+                            n_reg = entry.get("regulares", c_tipo.get("regular", 0))
+                            n_neg = entry.get("negativos", c_tipo.get("negativo", 0))
+
+                            if pdf.get_y() > 260:
+                                pdf.add_page()
+
+                            pdf.set_fill_color(241, 245, 249)
+                            pdf.set_draw_color(203, 213, 225)
+                            pdf.set_font("helvetica", "B", 8)
+                            pdf.set_text_color(30, 41, 59)
+                            al_header = f"{al_nom}  (Positivas: {n_pos} | Regulares: {n_reg} | Negativas: {n_neg})"
+                            pdf.cell(180, 5.5, _sanitizar_texto_fpdf(al_header), border=1, fill=True, align="L")
+                            pdf.ln(5.5)
+
+                            for o in obs_list:
+                                if pdf.get_y() > 270:
+                                    pdf.add_page()
+                                o_fecha = formatear_fecha(str(o.get("fecha", "")).strip())
+                                o_sub = str(o.get("subtipo", "")).strip()
+                                o_desc = str(o.get("observacion", "")).strip()
+                                o_tipo = str(o.get("tipo", "")).lower().strip()
+
+                                tipo_color = (
+                                    (16, 185, 129)
+                                    if o_tipo == "positivo"
+                                    else ((239, 68, 68) if o_tipo == "negativo" else (245, 158, 11))
+                                )
+
+                                pdf.set_font("helvetica", "", 7)
+                                pdf.set_text_color(100, 116, 139)
+                                pdf.cell(24, 4.5, f"  {o_fecha}", border="L")
+                                pdf.set_font("helvetica", "B", 7)
+                                pdf.set_text_color(*tipo_color)
+                                pdf.cell(32, 4.5, _sanitizar_texto_fpdf(f"[{o_sub}]"), border=0)
+                                pdf.set_font("helvetica", "", 7)
+                                pdf.set_text_color(30, 41, 59)
+                                desc_truncada = o_desc[:85] + ("..." if len(o_desc) > 85 else "")
+                                pdf.cell(124, 4.5, _sanitizar_texto_fpdf(desc_truncada), border="R")
+                                pdf.ln(4.5)
+
+                            pdf.set_draw_color(203, 213, 225)
+                            pdf.line(pdf.l_margin, pdf.get_y(), pdf.w - pdf.r_margin, pdf.get_y())
+                            pdf.ln(2)
+                        pdf.ln(4)
+
+        dest_path = Path(file_path)
+        dest_path.parent.mkdir(parents=True, exist_ok=True)
+        pdf.output(str(dest_path))
+        return True, str(dest_path)
+
+    except Exception as e:
+        return False, str(e)

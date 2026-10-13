@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 from core.gestor_planillas import (
     obtener_directorio_exportaciones,
+    sanitizar_nombre,
     sanitizar_nombre_curso,
     generar_nombre_planilla,
     obtener_ruta_indice,
@@ -87,3 +88,71 @@ def test_abrir_archivo_inexistente():
     ok, err = abrir_archivo("archivo_fantasma_xyz.pdf")
     assert ok is False
     assert "no existe" in err.lower()
+
+
+def test_sanitizar_nombre():
+    assert sanitizar_nombre(None) == "General"
+    assert sanitizar_nombre("", default="Colegio") == "Colegio"
+    assert sanitizar_nombre("   ", default="Colegio") == "Colegio"
+    assert sanitizar_nombre("Escuela/Técnica: N°1") == "EscuelaTécnica N°1"
+    assert sanitizar_nombre("../secret/dir") == "secretdir"
+
+
+def test_generar_nombre_planilla_estadisticas_institucional(tmp_path):
+    nombre = generar_nombre_planilla(
+        curso=None,
+        tipo="estadisticas",
+        formato="pdf",
+        fecha_str="12-10-2026",
+        colegio="San Martín",
+        directorio=tmp_path,
+    )
+    assert nombre == "Reporte San Martín - 12-10-2026.pdf"
+
+
+def test_generar_nombre_planilla_estadisticas_curso(tmp_path):
+    nombre = generar_nombre_planilla(
+        curso="3° A",
+        tipo="estadisticas",
+        formato="pdf",
+        fecha_str="12-10-2026",
+        colegio="San Martín",
+        directorio=tmp_path,
+    )
+    assert nombre == "Reporte San Martín 3° A - 12-10-2026.pdf"
+
+
+def test_generar_nombre_planilla_estadisticas_colision(tmp_path):
+    f1 = tmp_path / "Reporte San Martín - 12-10-2026.pdf"
+    f1.write_text("dummy")
+
+    nombre = generar_nombre_planilla(
+        curso=None,
+        tipo="estadisticas",
+        formato="pdf",
+        fecha_str="12-10-2026",
+        colegio="San Martín",
+        directorio=tmp_path,
+    )
+    assert nombre == "Reporte San Martín - 12-10-2026 (1).pdf"
+
+
+def test_registrar_exportacion_estadisticas(tmp_path):
+    pdf_file = tmp_path / "Reporte San Martín - 12-10-2026.pdf"
+    pdf_file.write_text("pdf dummy content")
+
+    entry = registrar_exportacion(
+        ruta_archivo=pdf_file,
+        colegio="San Martín",
+        curso="",
+        tipo="estadisticas",
+        formato="pdf",
+        directorio=tmp_path,
+    )
+
+    assert entry["tipo"] == "estadisticas"
+    assert entry["curso"] == ""
+    assert entry["colegio"] == "San Martín"
+    indice = cargar_indice(tmp_path)
+    assert len(indice) == 1
+    assert indice[0]["tipo"] == "estadisticas"

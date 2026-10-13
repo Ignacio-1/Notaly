@@ -26,6 +26,9 @@ class PlanillasView(ft.Container):
         self.app_page = page
         self.on_navigate = on_navigate
 
+        self.filtro_tipo = "todas"  # "todas", "notas", "asistencias", "estadisticas"
+        self.filter_container = ft.Container()
+
         self.list_view = ft.ListView(
             expand=True,
             spacing=12,
@@ -37,28 +40,107 @@ class PlanillasView(ft.Container):
             spacing=0,
             controls=[
                 build_app_header("DOCUMENTOS Y REPORTES", "Planillas Exportadas", tokens=state.tokens),
+                self.filter_container,
                 ft.Container(content=self.list_view, expand=True),
             ],
         )
 
         self._build_ui()
 
+    def _build_filter_bar(self, tok: ThemeTokens) -> ft.Container:
+        """Barra horizontal de chips de filtrado por tipo de planilla (REQ-EXP-005)."""
+        filtros = [
+            ("todas", "Todas", ft.Icons.ALL_INCLUSIVE),
+            ("notas", "Notas", ft.Icons.GRADE),
+            ("asistencias", "Asistencias", ft.Icons.EVENT_AVAILABLE),
+            ("estadisticas", "Estadísticas", ft.Icons.BAR_CHART),
+        ]
+        chips = []
+        for f_id, f_label, f_icon in filtros:
+            es_sel = (self.filtro_tipo == f_id)
+            chips.append(
+                ft.Container(
+                    content=ft.Row(
+                        [
+                            ft.Icon(f_icon, size=14, color=tok.primary if es_sel else tok.text_muted),
+                            ft.Text(
+                                f_label,
+                                size=12,
+                                weight=ft.FontWeight.BOLD if es_sel else ft.FontWeight.W_500,
+                                color=tok.primary if es_sel else tok.text_muted,
+                            ),
+                        ],
+                        spacing=4,
+                        alignment=ft.MainAxisAlignment.CENTER,
+                    ),
+                    padding=ft.Padding(left=12, right=12, top=6, bottom=6),
+                    bgcolor=tok.primary_light if es_sel else tok.surface,
+                    border=ft.Border.all(1, tok.primary if es_sel else tok.border_color),
+                    border_radius=8,
+                    on_click=lambda _, val=f_id: self._cambiar_filtro_tipo(val),
+                )
+            )
+
+        return ft.Container(
+            padding=ft.Padding(left=16, right=16, top=8, bottom=4),
+            content=ft.Row(
+                chips,
+                scroll=ft.ScrollMode.ADAPTIVE,
+                spacing=8,
+            ),
+        )
+
+    def _cambiar_filtro_tipo(self, nuevo_filtro: str):
+        """Conmuta in-place el filtro de tipo de planilla sin recargar la pantalla."""
+        if self.filtro_tipo == nuevo_filtro:
+            return
+        self.filtro_tipo = nuevo_filtro
+        tok = self.state.tokens
+        self.filter_container.content = self._build_filter_bar(tok)
+        self._actualizar_lista()
+        try:
+            self.filter_container.update()
+            self.list_view.update()
+        except Exception:
+            if self.app_page:
+                try:
+                    self.app_page.update()
+                except Exception:
+                    pass
+
     def _build_ui(self):
         # Limpieza silenciosa de huérfanos al cargar la vista
         self.state.depurar_planillas_huerfanas()
         tok = self.state.tokens
         self.bgcolor = tok.bg_page
+        self.filter_container.content = self._build_filter_bar(tok)
+        self._actualizar_lista()
 
-        planillas = self.state.get_planillas()
+    def _actualizar_lista(self):
+        tok = self.state.tokens
+        todas_planillas = self.state.get_planillas()
+
+        # Filtrar por tipo seleccionado (REQ-EXP-005)
+        if self.filtro_tipo == "todas":
+            planillas = todas_planillas
+        else:
+            planillas = [p for p in todas_planillas if p.get("tipo", "notas") == self.filtro_tipo]
+
         if not planillas:
             self.list_view.controls = [self._build_empty_state(tok)]
             return
 
-        # Agrupación por colegio y curso
+        # Agrupación por colegio y curso / ámbito (REQ-EXP-006)
         colegios_map: dict[str, dict[str, list[dict]]] = {}
         for p in planillas:
             col = p.get("colegio") or "Sin Institución"
-            cur = p.get("curso") or "General"
+            cur_raw = (p.get("curso") or "").strip()
+            tipo = p.get("tipo", "notas")
+            if not cur_raw:
+                cur = "Institucional" if tipo == "estadisticas" else "General"
+            else:
+                cur = cur_raw
+
             if col not in colegios_map:
                 colegios_map[col] = {}
             if cur not in colegios_map[col]:
@@ -77,6 +159,9 @@ class PlanillasView(ft.Container):
                 )
             )
             for cur, items in cursos.items():
+                es_institucional = (cur == "Institucional")
+                header_icon = ft.Icons.ACCOUNT_BALANCE if es_institucional else (ft.Icons.FOLDER_OUTLINED if cur == "General" else ft.Icons.CLASS_)
+                header_label = "Ámbito: Institucional" if es_institucional else (f"Curso: {cur}" if cur != "General" else "General")
                 items_column = ft.Column(spacing=8, controls=[self._build_planilla_card(p, tok) for p in items])
                 cards.append(
                     ft.Container(
@@ -90,8 +175,8 @@ class PlanillasView(ft.Container):
                             controls=[
                                 ft.Row(
                                     [
-                                        ft.Icon(ft.Icons.CLASS_, size=16, color=tok.primary),
-                                        ft.Text(f"Curso: {cur}", size=13, weight=ft.FontWeight.BOLD, color=tok.text_main),
+                                        ft.Icon(header_icon, size=16, color=tok.primary),
+                                        ft.Text(header_label, size=13, weight=ft.FontWeight.BOLD, color=tok.text_main),
                                         ft.Container(expand=True),
                                         ft.Text(f"{len(items)} archivo(s)", size=11, color=tok.text_muted),
                                     ],
@@ -117,10 +202,22 @@ class PlanillasView(ft.Container):
         pid = planilla.get("id", "")
 
         es_asistencia = (tipo == "asistencias")
-        icono_color = tok.primary if formato == "pdf" else ("#10B981" if formato == "csv" else tok.text_muted)
-        icono = ft.Icons.PICTURE_AS_PDF if formato == "pdf" else (ft.Icons.TABLE_CHART if formato == "csv" else ft.Icons.DESCRIPTION)
+        es_estadistica = (tipo == "estadisticas")
 
-        subtitulo = f"{'Asistencias' if es_asistencia else 'Notas'} · {fecha} {hora} · {tamano}"
+        if es_estadistica:
+            tipo_label = "Estadísticas"
+            icono_color = "#6366F1" if formato == "pdf" else tok.primary
+            icono = ft.Icons.BAR_CHART
+        elif es_asistencia:
+            tipo_label = "Asistencias"
+            icono_color = tok.primary if formato == "pdf" else ("#10B981" if formato == "csv" else tok.text_muted)
+            icono = ft.Icons.PICTURE_AS_PDF if formato == "pdf" else (ft.Icons.TABLE_CHART if formato == "csv" else ft.Icons.DESCRIPTION)
+        else:
+            tipo_label = "Notas"
+            icono_color = tok.primary if formato == "pdf" else ("#10B981" if formato == "csv" else tok.text_muted)
+            icono = ft.Icons.PICTURE_AS_PDF if formato == "pdf" else (ft.Icons.TABLE_CHART if formato == "csv" else ft.Icons.DESCRIPTION)
+
+        subtitulo = f"{tipo_label} · {fecha} {hora} · {tamano}"
 
         return ft.Container(
             bgcolor=tok.surface_variant,
@@ -260,6 +357,19 @@ class PlanillasView(ft.Container):
         self.app_page.update()
 
     def _build_empty_state(self, tok: ThemeTokens) -> ft.Container:
+        if self.filtro_tipo != "todas":
+            tipo_map = {
+                "notas": "de Notas",
+                "asistencias": "de Asistencias",
+                "estadisticas": "de Estadísticas",
+            }
+            tipo_label = tipo_map.get(self.filtro_tipo, self.filtro_tipo)
+            titulo = f"No hay planillas {tipo_label}"
+            descripcion = f"No se han encontrado planillas {tipo_label}. Puedes generar nuevas planillas desde su respectiva sección."
+        else:
+            titulo = "No hay planillas generadas"
+            descripcion = "Las planillas que exportes desde Notas, Asistencias o Estadísticas se guardarán automáticamente aquí para verlas, abrirlas o compartirlas."
+
         return ft.Container(
             padding=ft.Padding(left=16, right=16, top=48, bottom=48),
             alignment=ft.Alignment.CENTER,
@@ -276,9 +386,9 @@ class PlanillasView(ft.Container):
                         alignment=ft.Alignment.CENTER,
                         content=ft.Icon(ft.Icons.FOLDER_OFF_OUTLINED, size=36, color=tok.primary),
                     ),
-                    ft.Text("No hay planillas generadas", size=16, weight=ft.FontWeight.BOLD, color=tok.text_main),
+                    ft.Text(titulo, size=16, weight=ft.FontWeight.BOLD, color=tok.text_main),
                     ft.Text(
-                        "Las planillas que exportes desde Notas o Asistencias se guardarán automáticamente aquí para verlas, abrirlas o compartirlas.",
+                        descripcion,
                         size=13,
                         color=tok.text_muted,
                         text_align=ft.TextAlign.CENTER,

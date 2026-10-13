@@ -45,6 +45,7 @@ class PlanificacionesInstitucionDialog(ft.AlertDialog):
         colegio: str,
         curso_inicial: str | None = None,
         on_close: Callable[[], None] | None = None,
+        on_change: Callable[[], None] | None = None,
         page: ft.Page | None = None,
         tokens: ThemeTokens | None = None,
     ):
@@ -52,6 +53,8 @@ class PlanificacionesInstitucionDialog(ft.AlertDialog):
         self.colegio = colegio
         self.filtro_curso = curso_inicial
         self.on_close_cb = on_close
+        self.on_change_cb = on_change
+        self._closed = False
         self.app_page = page
         self.tokens = _resolve_tokens(tokens, page, state)
         tok = self.tokens
@@ -121,6 +124,15 @@ class PlanificacionesInstitucionDialog(ft.AlertDialog):
             )
         ]
 
+        def _on_dismiss_wrapper(e=None):
+            if not getattr(self, "_closed", False):
+                self._closed = True
+                if self.on_close_cb:
+                    try:
+                        self.on_close_cb()
+                    except Exception:
+                        pass
+
         super().__init__(
             title=title,
             content=self.dialog_container,
@@ -128,6 +140,7 @@ class PlanificacionesInstitucionDialog(ft.AlertDialog):
             actions_alignment=ft.MainAxisAlignment.END,
             modal=True,
             bgcolor=tok.surface,
+            on_dismiss=_on_dismiss_wrapper,
         )
 
     def _render_chips(self):
@@ -373,11 +386,28 @@ class PlanificacionesInstitucionDialog(ft.AlertDialog):
 
     def _abrir_adicion_planificacion(self, curso: str):
         """Abre PlanificacionCursoDialog pasando page y tokens para desapilar y refrescar reactivamente."""
-        def on_subdialog_close():
+        def refrescar_subdialog():
             self._render_content()
+            try:
+                self.cursos_content_col.update()
+            except Exception:
+                pass
+            try:
+                self.dialog_container.update()
+            except Exception:
+                pass
+            try:
+                self.update()
+            except Exception:
+                pass
             if self.app_page:
                 try:
                     self.app_page.update()
+                except Exception:
+                    pass
+            if self.on_change_cb:
+                try:
+                    self.on_change_cb()
                 except Exception:
                     pass
 
@@ -385,7 +415,8 @@ class PlanificacionesInstitucionDialog(ft.AlertDialog):
             state=self.state,
             colegio=self.colegio,
             curso=curso,
-            on_close=on_subdialog_close,
+            on_change=refrescar_subdialog,
+            on_close=refrescar_subdialog,
             page=self.app_page,
             tokens=self.tokens,
         )
@@ -395,6 +426,9 @@ class PlanificacionesInstitucionDialog(ft.AlertDialog):
 
     def _cerrar(self):
         """Cierre del diálogo con desapilamiento en app_page y notificación a on_close_cb."""
+        if getattr(self, "_closed", False):
+            return
+        self._closed = True
         self.open = False
         if self.app_page:
             try:
@@ -403,4 +437,7 @@ class PlanificacionesInstitucionDialog(ft.AlertDialog):
             except Exception:
                 pass
         if self.on_close_cb:
-            self.on_close_cb()
+            try:
+                self.on_close_cb()
+            except Exception:
+                pass

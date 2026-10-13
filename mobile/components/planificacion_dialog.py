@@ -65,6 +65,7 @@ class PlanificacionCursoDialog(ft.AlertDialog):
         colegio: str,
         curso: str,
         on_close: Callable[[], None] | None = None,
+        on_change: Callable[[], None] | None = None,
         page: ft.Page | None = None,
         tokens: ThemeTokens | None = None,
     ):
@@ -72,6 +73,8 @@ class PlanificacionCursoDialog(ft.AlertDialog):
         self.colegio = colegio
         self.curso = curso
         self.on_close_cb = on_close
+        self.on_change_cb = on_change
+        self._closed = False
         self.app_page = page
         self.tokens = _resolve_tokens(tokens, page, state)
         tok = self.tokens
@@ -217,6 +220,16 @@ class PlanificacionCursoDialog(ft.AlertDialog):
             )
         ]
 
+        def _on_dismiss_wrapper(e=None):
+            if not getattr(self, "_closed", False):
+                self._closed = True
+                self.state.flush_auto_save()
+                if self.on_close_cb:
+                    try:
+                        self.on_close_cb()
+                    except Exception:
+                        pass
+
         super().__init__(
             title=title,
             content=content,
@@ -224,6 +237,7 @@ class PlanificacionCursoDialog(ft.AlertDialog):
             actions_alignment=ft.MainAxisAlignment.END,
             modal=True,
             bgcolor=tok.surface,
+            on_dismiss=_on_dismiss_wrapper,
         )
 
     def _focus_control(self, control):
@@ -247,6 +261,11 @@ class PlanificacionCursoDialog(ft.AlertDialog):
     def _on_horario_change(self, val: str):
         """Actualiza el horario con auto-guardado debounce."""
         self.state.set_horario_curso(val, self.colegio, self.curso, auto_save=True)
+        if self.on_change_cb:
+            try:
+                self.on_change_cb()
+            except Exception:
+                pass
 
     def _cambiar_mes(self, delta: int):
         """Navega entre meses actualizando la grilla del calendario."""
@@ -358,6 +377,11 @@ class PlanificacionCursoDialog(ft.AlertDialog):
                     self.app_page.update()
                 except Exception:
                     pass
+            if self.on_change_cb:
+                try:
+                    self.on_change_cb()
+                except Exception:
+                    pass
             input_control = self.tema_inputs.get(fecha_iso)
             if input_control:
                 self._focus_control(input_control)
@@ -449,6 +473,11 @@ class PlanificacionCursoDialog(ft.AlertDialog):
     def _on_tema_change(self, fecha_iso: str, nuevo_tema: str):
         """Actualiza el tema de la clase con auto-guardado debounce."""
         self.state.set_clase_tema(fecha_iso, nuevo_tema, self.colegio, self.curso, auto_save=True)
+        if self.on_change_cb:
+            try:
+                self.on_change_cb()
+            except Exception:
+                pass
 
     def _on_delete_clase(self, fecha_iso: str):
         """Elimina una clase y actualiza reactivamente el calendario y la lista."""
@@ -460,9 +489,17 @@ class PlanificacionCursoDialog(ft.AlertDialog):
                 self.app_page.update()
             except Exception:
                 pass
+        if self.on_change_cb:
+            try:
+                self.on_change_cb()
+            except Exception:
+                pass
 
     def _cerrar(self):
         """Cierre forzado con flush inmediato de auto-save y notificación de callback."""
+        if getattr(self, "_closed", False):
+            return
+        self._closed = True
         self.state.flush_auto_save()
         self.open = False
         if self.app_page:
@@ -472,4 +509,7 @@ class PlanificacionCursoDialog(ft.AlertDialog):
             except Exception:
                 pass
         if self.on_close_cb:
-            self.on_close_cb()
+            try:
+                self.on_close_cb()
+            except Exception:
+                pass
