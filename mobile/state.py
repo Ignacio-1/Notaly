@@ -77,6 +77,8 @@ from core.calculos import (
     obtener_estadisticas_curso,
     obtener_estadisticas_colegio,
     procesar_estadisticas_comportamiento,
+    obtener_estadisticas_asistencia_curso,
+    obtener_estadisticas_asistencia_colegio,
 )
 from mobile.theme import ThemeTokens, get_tokens
 
@@ -117,6 +119,11 @@ class AppState:
         self.active_trimestre: int = 0  # 0: 1° Trim, 1: 2° Trim, 2: 3° Trim, 3: Resumen Anual
         self.asistencia_fecha: str = datetime.now().strftime("%Y-%m-%d")
         self.footer_tab: str = "inicio"  # "inicio", "planillas", "estadisticas"
+
+        # Filtros de asistencia en estadísticas (SPEC-022 / REQ-EVT-001 / REQ-EVT-002)
+        self.estadisticas_asistencia_fecha_desde: str | None = None
+        self.estadisticas_asistencia_fecha_hasta: str | None = None
+        self.estadisticas_asistencia_todas_fechas: bool = True
 
         # Pila LIFO de historial de navegación (SPEC-020 / PLAN-020)
         self.navigation_history: list[dict] = []
@@ -224,7 +231,8 @@ class AppState:
             self.has_unsaved_asistencias = False
             self.set_save_status("saved")
             self.notify()
-            self.verificar_y_ejecutar_auto_backup_en_background(tiene_cambios_recientes=True)
+            if "PYTEST_CURRENT_TEST" not in os.environ:
+                self.verificar_y_ejecutar_auto_backup_en_background(tiene_cambios_recientes=True)
             return True
         except Exception as e:
             logger.error("Error al persistir datos automáticamente: %s", e)
@@ -250,7 +258,8 @@ class AppState:
         self.has_unsaved_asistencias = False
         self.set_save_status("saved")
         self.notify()
-        self.verificar_y_ejecutar_auto_backup_en_background(tiene_cambios_recientes=False)
+        if "PYTEST_CURRENT_TEST" not in os.environ:
+            self.verificar_y_ejecutar_auto_backup_en_background(tiene_cambios_recientes=False)
 
     def save_data(self) -> bool:
         """Guarda los datos en disco de forma segura e inmediata."""
@@ -2096,6 +2105,54 @@ class AppState:
         curso_data = self.get_curso_data(col, cur)
         p_idx = self.estadisticas_periodo if periodo_idx is None else periodo_idx
         return obtener_estadisticas_curso(curso_data, p_idx)
+
+    def get_estadisticas_asistencia_curso(
+        self,
+        colegio: str | None = None,
+        curso: str | None = None,
+        fecha_desde: str | None = None,
+        fecha_hasta: str | None = None,
+    ) -> dict:
+        """
+        Retorna las estadísticas de asistencia agregadas y detalladas por alumno para un curso.
+        Si fecha_desde y fecha_hasta no son pasados, y not self.estadisticas_asistencia_todas_fechas,
+        utiliza el rango retenido en el estado. Delega en core.calculos.obtener_estadisticas_asistencia_curso.
+        """
+        col = colegio or self.selected_colegio
+        cur = curso or self.selected_curso
+        curso_data = self.get_curso_data(col, cur)
+
+        desde = fecha_desde
+        hasta = fecha_hasta
+        if desde is None and hasta is None and not self.estadisticas_asistencia_todas_fechas:
+            desde = self.estadisticas_asistencia_fecha_desde
+            hasta = self.estadisticas_asistencia_fecha_hasta
+
+        return obtener_estadisticas_asistencia_curso(curso_data, desde, hasta)
+
+    def get_estadisticas_asistencia_colegio(
+        self,
+        colegio: str | None = None,
+        fecha_desde: str | None = None,
+        fecha_hasta: str | None = None,
+    ) -> dict:
+        """
+        Retorna las estadísticas agregadas institucionales de asistencia para un colegio.
+        Si fecha_desde y fecha_hasta no son pasados, y not self.estadisticas_asistencia_todas_fechas,
+        utiliza el rango retenido en el estado. Delega en core.calculos.obtener_estadisticas_asistencia_colegio.
+        """
+        col = colegio or self.selected_colegio
+        if not col or col not in self.data.get(K_COLEGIOS, {}):
+            return obtener_estadisticas_asistencia_colegio({}, None, None)
+
+        desde = fecha_desde
+        hasta = fecha_hasta
+        if desde is None and hasta is None and not self.estadisticas_asistencia_todas_fechas:
+            desde = self.estadisticas_asistencia_fecha_desde
+            hasta = self.estadisticas_asistencia_fecha_hasta
+
+        colegio_data = self.data[K_COLEGIOS][col]
+        return obtener_estadisticas_asistencia_colegio(colegio_data, desde, hasta)
 
     # =========================================================================
     # --- GESTIÓN CENTRALIZADA DE PLANILLAS EXPORTADAS (SPEC-016) ---

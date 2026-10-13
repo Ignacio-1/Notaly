@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Callable, Any
 import flet as ft
 
-from core.exportador import exportar_estadisticas_a_pdf
+from core.exportador import exportar_estadisticas_a_pdf, exportar_estadisticas_asistencia_a_pdf
 from core import gestor_planillas
 from mobile.components.share_helper import compartir_archivo
 from mobile.theme import (
@@ -45,6 +45,8 @@ class ExportEstadisticasDialog(ft.AlertDialog):
         curso_nombre: str | None = None,
         periodo_nombre: str = "1° Trimestre",
         datos_estadisticas: dict | None = None,
+        tipo_estadistica: str = "academica",
+        rango_fechas_str: str = "Todas las fechas",
         on_success: Callable[[bool, str], None] | None = None,
         page: ft.Page | None = None,
         state: Any = None,
@@ -55,13 +57,15 @@ class ExportEstadisticasDialog(ft.AlertDialog):
         self.curso_nombre = curso_nombre.strip() if curso_nombre and str(curso_nombre).strip() else None
         self.periodo_nombre = (periodo_nombre or "1° Trimestre").strip()
         self.datos_estadisticas = datos_estadisticas or {}
+        self.tipo_estadistica = tipo_estadistica
+        self.rango_fechas_str = (rango_fechas_str or "Todas las fechas").strip()
         self.on_success = on_success
         self.app_page = page
         self.state = state
         self.tokens = _resolve_tokens(tokens, page, state)
         tok = self.tokens
 
-        # Checkboxes para seleccionar secciones
+        # Checkboxes para seleccionar secciones (modo académica)
         self.chk_calificaciones = ft.Checkbox(
             label="Rendimiento y Calificaciones",
             value=True,
@@ -100,6 +104,36 @@ class ExportEstadisticasDialog(ft.AlertDialog):
 
         ambito_str = f"Curso: {self.curso_nombre}" if self.curso_nombre else "Institucional (Todos los cursos)"
 
+        info_controls = [
+            ft.Text(
+                f"🏫 {self.colegio_nombre or 'Institución'}",
+                size=13,
+                weight=ft.FontWeight.BOLD,
+                color=tok.text_main,
+            ),
+            ft.Text(
+                f"📚 {ambito_str}",
+                size=12,
+                color=tok.text_muted,
+            ),
+        ]
+        if self.tipo_estadistica == "asistencias":
+            info_controls.append(
+                ft.Text(
+                    f"🗓️ Fechas: {self.rango_fechas_str}",
+                    size=12,
+                    color=tok.text_muted,
+                )
+            )
+        else:
+            info_controls.append(
+                ft.Text(
+                    f"🗓️ Período: {self.periodo_nombre}",
+                    size=12,
+                    color=tok.text_muted,
+                )
+            )
+
         info_card = ft.Container(
             bgcolor=tok.surface_variant,
             border=ft.Border.all(1, tok.border_color),
@@ -108,26 +142,54 @@ class ExportEstadisticasDialog(ft.AlertDialog):
             content=ft.Column(
                 spacing=3,
                 tight=True,
-                controls=[
-                    ft.Text(
-                        f"🏫 {self.colegio_nombre or 'Institución'}",
-                        size=13,
-                        weight=ft.FontWeight.BOLD,
-                        color=tok.text_main,
-                    ),
-                    ft.Text(
-                        f"📚 {ambito_str}",
-                        size=12,
-                        color=tok.text_muted,
-                    ),
-                    ft.Text(
-                        f"🗓️ Período: {self.periodo_nombre}",
-                        size=12,
-                        color=tok.text_muted,
-                    ),
-                ],
+                controls=info_controls,
             ),
         )
+
+        if self.tipo_estadistica == "asistencias":
+            titulo_texto = "Exportar Estadísticas de Asistencia"
+            icono_titulo = ft.Icons.EVENT_AVAILABLE
+            seccion_selector = ft.Container(
+                content=ft.Column(
+                    spacing=6,
+                    tight=True,
+                    controls=[
+                        ft.Row(
+                            spacing=8,
+                            controls=[
+                                ft.Icon(ft.Icons.CHECK_CIRCLE, size=16, color=tok.primary),
+                                ft.Text(
+                                    "Resumen Estadístico de Asistencias",
+                                    size=13,
+                                    weight=ft.FontWeight.W_500,
+                                    color=tok.text_main,
+                                ),
+                            ],
+                        ),
+                        ft.Text(
+                            "Incluye KPIs, distribución P/A/T/J y desglose por alumno o comparativo.",
+                            size=11,
+                            color=tok.text_muted,
+                        ),
+                    ],
+                ),
+                padding=ft.Padding(left=4, right=4, top=2, bottom=2),
+            )
+        else:
+            titulo_texto = "Exportar Estadísticas"
+            icono_titulo = ft.Icons.BAR_CHART
+            seccion_selector = ft.Container(
+                content=ft.Column(
+                    spacing=6,
+                    tight=True,
+                    controls=[
+                        self.chk_calificaciones,
+                        self.chk_comportamiento,
+                        self.lbl_error,
+                    ],
+                ),
+                padding=ft.Padding(left=4, right=4, top=2, bottom=2),
+            )
 
         content_col = ft.Column(
             tight=True,
@@ -135,22 +197,11 @@ class ExportEstadisticasDialog(ft.AlertDialog):
             controls=[
                 info_card,
                 ft.Text(
-                    "Selecciona el contenido que deseas incluir en el documento:",
+                    "Contenido del documento a exportar:" if self.tipo_estadistica == "asistencias" else "Selecciona el contenido que deseas incluir en el documento:",
                     size=13,
                     color=tok.text_muted,
                 ),
-                ft.Container(
-                    content=ft.Column(
-                        spacing=6,
-                        tight=True,
-                        controls=[
-                            self.chk_calificaciones,
-                            self.chk_comportamiento,
-                            self.lbl_error,
-                        ],
-                    ),
-                    padding=ft.Padding(left=4, right=4, top=2, bottom=2),
-                ),
+                seccion_selector,
                 ft.Text(
                     "📄 Formato A4 Vertical · Gráficos vectoriales de alta definición",
                     size=11,
@@ -165,9 +216,9 @@ class ExportEstadisticasDialog(ft.AlertDialog):
                 spacing=10,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
                 controls=[
-                    ft.Icon(ft.Icons.BAR_CHART, color=tok.primary, size=24),
+                    ft.Icon(icono_titulo, color=tok.primary, size=24),
                     ft.Text(
-                        "Exportar Estadísticas",
+                        titulo_texto,
                         size=18,
                         weight=ft.FontWeight.BOLD,
                         color=tok.text_main,
@@ -217,6 +268,71 @@ class ExportEstadisticasDialog(ft.AlertDialog):
                 pass
 
     def _exportar(self):
+        if self.tipo_estadistica == "asistencias":
+            try:
+                carpeta_destino = gestor_planillas.obtener_directorio_exportaciones()
+                nombre_archivo = gestor_planillas.generar_nombre_planilla(
+                    curso=self.curso_nombre,
+                    tipo="estadisticas_asistencia",
+                    formato="pdf",
+                    colegio=self.colegio_nombre,
+                    directorio=carpeta_destino,
+                )
+                ruta_archivo = carpeta_destino / nombre_archivo
+                ruta_str = str(ruta_archivo)
+
+                exito, error_msg = exportar_estadisticas_asistencia_a_pdf(
+                    datos_estadisticas=self.datos_estadisticas,
+                    file_path=ruta_str,
+                    nombre_colegio=self.colegio_nombre,
+                    nombre_curso=self.curso_nombre,
+                    rango_fechas_str=self.rango_fechas_str,
+                )
+
+                if not exito:
+                    raise RuntimeError(error_msg or "Error durante la generación del reporte PDF.")
+
+                if self.state and hasattr(self.state, "registrar_planilla_exportada"):
+                    self.state.registrar_planilla_exportada(
+                        ruta_archivo=ruta_archivo,
+                        colegio=self.colegio_nombre,
+                        curso=self.curso_nombre or "",
+                        tipo="estadisticas_asistencia",
+                        formato="pdf",
+                        directorio=carpeta_destino,
+                    )
+                else:
+                    gestor_planillas.registrar_exportacion(
+                        ruta_archivo=ruta_archivo,
+                        colegio=self.colegio_nombre,
+                        curso=self.curso_nombre or "",
+                        tipo="estadisticas_asistencia",
+                        formato="pdf",
+                        directorio=carpeta_destino,
+                    )
+                    if self.state and hasattr(self.state, "notify"):
+                        try:
+                            self.state.notify()
+                        except Exception:
+                            pass
+
+                self._cerrar()
+
+                compartir_archivo(
+                    self.app_page,
+                    ruta_str,
+                    texto=f"Reporte Estadístico de Asistencias: {nombre_archivo}",
+                )
+
+                if self.on_success:
+                    self.on_success(True, ruta_str)
+
+            except Exception as e:
+                self._cerrar()
+                if self.on_success:
+                    self.on_success(False, str(e))
+            return
+
         inc_calif = bool(self.chk_calificaciones.value)
         inc_comp = bool(self.chk_comportamiento.value)
         if not inc_calif and not inc_comp:

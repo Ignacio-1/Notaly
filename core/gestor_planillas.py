@@ -130,6 +130,13 @@ def generar_nombre_planilla(
             base = f"Reporte {colegio_sanitizado} {curso_sanitizado} - {fecha_str}"
         else:
             base = f"Reporte {colegio_sanitizado} - {fecha_str}"
+    elif tipo == "estadisticas_asistencia":
+        curso_limpio = sanitizar_nombre(curso, default="") if curso else ""
+        if curso_limpio:
+            base = f"Planilla Asistencias Estadisticas {curso_limpio} - {fecha_str}"
+        else:
+            colegio_sanitizado = sanitizar_nombre(colegio, default="Colegio")
+            base = f"Planilla Asistencias Estadisticas {colegio_sanitizado} - {fecha_str}"
     else:
         curso_sanitizado = sanitizar_nombre_curso(curso)
         base = f"Planilla Asistencias {curso_sanitizado} - {fecha_str}"

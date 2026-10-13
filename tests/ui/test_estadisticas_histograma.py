@@ -81,7 +81,7 @@ def test_histograma_renderizado_en_rendimiento_y_oculto_en_comportamiento(isolat
     assert view.seccion_activa == "rendimiento"
     assert view.histograma_container.visible is True
     assert view.histograma_container.content is not None
-    assert len(view.list_view.controls) == 8
+    assert len(view.list_view.controls) == 12
     # El histograma debe estar inmediatamente después del donut y antes del dynamic_content
     idx_donut = view.list_view.controls.index(view.donut_container)
     idx_hist = view.list_view.controls.index(view.histograma_container)
@@ -115,12 +115,12 @@ def test_histograma_conmutacion_modo_in_place(isolated_app_state, mock_page_mobi
     # Alternar a notas 1-10
     view._conmutar_modo_histograma(stats, "notas")
     assert view.histograma_modo == "notas"
-    assert len(view.list_view.controls) == 8  # Sin alterar lista ni reiniciar scroll
+    assert len(view.list_view.controls) == 12  # Sin alterar lista ni reiniciar scroll
 
     # Alternar a rangos nuevamente
     view._conmutar_modo_histograma(stats, "rangos")
     assert view.histograma_modo == "rangos"
-    assert len(view.list_view.controls) == 8
+    assert len(view.list_view.controls) == 12
 
 
 def test_histograma_render_estado_vacio(isolated_app_state, mock_page_mobile):
@@ -161,10 +161,10 @@ def test_histograma_in_place_al_cambiar_periodo_y_nivel(isolated_app_state, mock
     view._conmutar_periodo(1)
     assert view.state.estadisticas_periodo == 1
     assert view.histograma_container.visible is True
-    assert len(view.list_view.controls) == 8
+    assert len(view.list_view.controls) == 12
 
     # Cambiar de nivel a colegio
     view._conmutar_nivel("colegio")
     assert view.state.estadisticas_nivel == "colegio"
     assert view.histograma_container.visible is True
-    assert len(view.list_view.controls) == 8
+    assert len(view.list_view.controls) == 12

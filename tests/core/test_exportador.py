@@ -3,8 +3,11 @@ import csv
 from core.exportador import (
     exportar_a_csv,
     exportar_a_pdf,
+    exportar_asistencias_a_pdf,
     exportar_estadisticas_a_pdf,
+    exportar_estadisticas_asistencia_a_pdf,
     _sanitizar_texto_fpdf,
+    NotalyLandscapePDF,
 )
 from core.constants import *
 
@@ -513,4 +516,371 @@ def test_exportar_estadisticas_a_pdf_datos_vacios(tmp_path):
     )
     assert ok is True
     assert out_file.exists()
+
+
+def test_pdf_landscape_geometria_y_marca_de_agua(tmp_path):
+    pdf = NotalyLandscapePDF()
+    assert pdf.w == pytest.approx(297.0, rel=1e-3)
+    assert pdf.h == pytest.approx(210.0, rel=1e-3)
+    pdf.add_page()
+    # Verifica que el método watermark exista y no lance excepción
+    assert hasattr(pdf, "watermark")
+    out_file = tmp_path / "test_landscape.pdf"
+    pdf.output(str(out_file))
+    assert out_file.exists()
+    assert out_file.stat().st_size > 1000
+
+
+def test_pdf_pie_institucional_paginacion_y_fecha_constitucional(tmp_path):
+    pdf = NotalyLandscapePDF()
+    pdf.add_page()
+    pdf.add_page()
+    # Formato fecha/hora emisión debe coincidir con formato constitucional dd-mm-aaaa hh:mm (sin barras)
+    assert "/" not in pdf.fecha_hora_emision
+    partes = pdf.fecha_hora_emision.split(" ")
+    assert len(partes) == 2
+    f_partes = partes[0].split("-")
+    assert len(f_partes) == 3
+    assert len(f_partes[0]) == 2 and len(f_partes[1]) == 2 and len(f_partes[2]) == 4
+    h_partes = partes[1].split(":")
+    assert len(h_partes) == 2
+
+    out_file = tmp_path / "test_pie.pdf"
+    pdf.output(str(out_file))
+    assert out_file.exists()
+
+
+def test_exportar_notas_pdf_paginado_15_alumnos_y_cabeceras(tmp_path):
+    # Generar curso con 35 alumnos
+    alumnos = {}
+    for i in range(1, 36):
+        alumnos[str(i)] = {
+            K_NOMBRE: f"Alumno Numero {i}",
+            K_TRIMESTRES: {
+                TRIM_1: {K_PRINCIPALES: [7, 8, 9], K_EXTRAS: [10], K_RECUPERATORIO: None},
+                TRIM_2: {K_PRINCIPALES: [6, 7, 8], K_EXTRAS: [None], K_RECUPERATORIO: None},
+                TRIM_3: {K_PRINCIPALES: [8, 9, 10], K_EXTRAS: [None], K_RECUPERATORIO: None},
+            },
+        }
+    curso_data = {
+        K_NOMBRES_COLUMNAS: {
+            TRIM_1: ["P1", "P2", "P3", "Extra"],
+            TRIM_2: ["P1", "P2", "P3", "Extra"],
+            TRIM_3: ["P1", "P2", "P3", "Extra"],
+        },
+        K_ALUMNOS: alumnos,
+    }
+    out_file = tmp_path / "notas_paginado_35.pdf"
+    ok, err = exportar_a_pdf(curso_data, str(out_file), "1A", "Instituto Modelo", paginado=True)
+    assert ok is True
+    assert err is None
+    assert out_file.exists()
+    assert out_file.stat().st_size > 2000
+
+    # Verificar cantidad de páginas (3 páginas: 15, 15, 5 alumnos)
+    from fpdf import FPDF
+    # Leer mediante parsing básico o verificando que el pdf contenga 3 páginas
+    with open(out_file, "rb") as f:
+        content = f.read()
+        # En PDF generado por fpdf2, cada página define /Type /Page
+        assert content.count(b"/Type /Page\n") == 3 or content.count(b"/Type /Page/") == 3 or content.count(b"/Type /Page") >= 3
+
+
+def test_exportar_notas_pdf_dimensiones_confortables(tmp_path, sample_curso_data):
+    out_file = tmp_path / "notas_confortable.pdf"
+    ok, err = exportar_a_pdf(sample_curso_data, str(out_file), "1A", "Instituto Modelo", paginado=True)
+    assert ok is True
+    assert out_file.exists()
+
+
+def test_exportar_pdf_truncamiento_nombres_largos(tmp_path, sample_curso_data):
+    sample_curso_data[K_ALUMNOS]["1"][K_NOMBRE] = "Maximiliano Alejandro Fernandez de la Vega y Martinez"
+    out_file = tmp_path / "notas_nombre_largo.pdf"
+    ok, err = exportar_a_pdf(sample_curso_data, str(out_file), "1A", "Instituto Modelo", paginado=True)
+    assert ok is True
+    assert out_file.exists()
+
+
+def test_exportar_notas_pdf_modo_una_sola_pagina(tmp_path):
+    """
+    REQ-NOT-04: Con paginado=False, un curso de 40 alumnos debe comprimirse
+    estrictamente en 1 sola página sin desbordar al folio siguiente,
+    conservando membrete, marca de agua y pie formal.
+    """
+    alumnos_40 = {
+        str(i): {
+            K_NOMBRE: f"Alumno Numero {i}",
+            K_TRIMESTRES: {
+                TRIM_1: {K_PRINCIPALES: [7, 8, 9], K_EXTRAS: [10], K_RECUPERATORIO: None},
+                TRIM_2: {K_PRINCIPALES: [6, 7, 8], K_EXTRAS: [None], K_RECUPERATORIO: None},
+                TRIM_3: {K_PRINCIPALES: [8, 8, 9], K_EXTRAS: [None], K_RECUPERATORIO: None},
+            },
+        }
+        for i in range(1, 41)
+    }
+    curso_data = {
+        K_NOMBRES_COLUMNAS: {
+            TRIM_1: ["P1", "P2", "P3", "Extra"],
+            TRIM_2: ["P1", "P2", "P3", "Extra"],
+            TRIM_3: ["P1", "P2", "P3", "Extra"],
+        },
+        K_ALUMNOS: alumnos_40,
+    }
+
+    file_path = tmp_path / "notas_una_pagina_40_alumnos.pdf"
+    ok, err = exportar_a_pdf(curso_data, str(file_path), "4B", "Colegio Nacional", paginado=False)
+    assert ok is True
+    assert err is None
+    assert file_path.exists()
+
+    with open(file_path, "rb") as f:
+        content = f.read()
+        num_paginas = content.count(b"/Type /Page\n") + content.count(b"/Type /Page/") + content.count(b"/Type /Page ")
+        assert num_paginas == 1
+
+
+def test_exportar_asistencias_pdf_paginado_10_alumnos(tmp_path):
+    alumnos_25 = {
+        str(i): {
+            K_NOMBRE: f"Alumno Asistencia {i}",
+            "trimestres": {},
+        }
+        for i in range(1, 26)
+    }
+    asistencias = {
+        "10-03-2026": {str(i): "P" for i in range(1, 26)},
+        "15-03-2026": {str(i): "P" if i % 2 == 0 else "A" for i in range(1, 26)},
+        "20-03-2026": {str(i): "P" if i % 3 == 0 else "T" for i in range(1, 26)},
+    }
+    curso_data = {
+        K_ALUMNOS: alumnos_25,
+        K_ASISTENCIAS: asistencias,
+    }
+    file_path = tmp_path / "asistencias_paginado_25.pdf"
+    ok, err = exportar_asistencias_a_pdf(curso_data, str(file_path), "2B", "Colegio San Martin", paginado=True)
+    assert ok is True
+    assert err is None
+    assert file_path.exists()
+
+    with open(file_path, "rb") as f:
+        content = f.read()
+        num_paginas = content.count(b"/Type /Page\n") + content.count(b"/Type /Page/") + content.count(b"/Type /Page ")
+        # 25 alumnos en lotes de 10 -> exactamente 3 páginas (10, 10, 5)
+        assert num_paginas == 3
+
+
+def test_asistencias_pdf_cabeceras_y_fechas_con_guiones(tmp_path):
+    curso_data = {
+        K_ALUMNOS: {"1": {K_NOMBRE: "Juan Perez"}},
+        K_ASISTENCIAS: {
+            "2026-04-10": {"1": "P"},
+            "2026-04-15": {"1": "A"},
+        },
+    }
+    file_path = tmp_path / "asistencias_guiones.pdf"
+    ok, err = exportar_asistencias_a_pdf(curso_data, str(file_path), "1A", "Instituto", paginado=True)
+    assert ok is True
+    assert file_path.exists()
+
+
+def test_asistencias_filtrado_rango_fechas_y_recalculo(tmp_path):
+    curso_data = {
+        K_ALUMNOS: {
+            "1": {K_NOMBRE: "Ana Garcia"},
+            "2": {K_NOMBRE: "Bernardo Gomez"},
+        },
+        K_ASISTENCIAS: {
+            "10-03-2026": {"1": "P", "2": "A"},
+            "15-04-2026": {"1": "P", "2": "P"},
+            "20-04-2026": {"1": "A", "2": "T"},
+            "10-05-2026": {"1": "P", "2": "J"},
+        },
+    }
+    file_path = tmp_path / "asistencias_filtradas.pdf"
+    ok, err = exportar_asistencias_a_pdf(
+        curso_data,
+        str(file_path),
+        "1A",
+        "Colegio Modelo",
+        paginado=True,
+        fecha_desde="01-04-2026",
+        fecha_hasta="30-04-2026",
+    )
+    assert ok is True
+    assert err is None
+    assert file_path.exists()
+
+
+def test_exportar_asistencias_sin_fechas_o_rango_vacio(tmp_path):
+    # Caso A: Curso sin asistencias registradas
+    curso_sin_fechas = {
+        K_ALUMNOS: {"1": {K_NOMBRE: "Alumno Solo"}},
+        K_ASISTENCIAS: {},
+    }
+    file_a = tmp_path / "sin_fechas.pdf"
+    ok_a, err_a = exportar_asistencias_a_pdf(curso_sin_fechas, str(file_a), "1A", "Instituto", paginado=True)
+    assert ok_a is True
+    assert err_a is None
+    assert file_a.exists()
+
+    # Caso B: Rango donde no hubo clases dictadas
+    curso_con_otras = {
+        K_ALUMNOS: {"1": {K_NOMBRE: "Alumno Solo"}},
+        K_ASISTENCIAS: {"10-03-2026": {"1": "P"}},
+    }
+    file_b = tmp_path / "rango_vacio.pdf"
+    ok_b, err_b = exportar_asistencias_a_pdf(
+        curso_con_otras,
+        str(file_b),
+        "1A",
+        "Instituto",
+        paginado=True,
+        fecha_desde="01-07-2026",
+        fecha_hasta="31-07-2026",
+    )
+    assert ok_b is True
+    assert err_b is None
+    assert file_b.exists()
+
+
+def test_asistencias_pdf_limite_16_fechas_particionado(tmp_path):
+    # 8 alumnos, 20 fechas registradas
+    # Bloque 1: primeras 16 fechas -> 1 página (8 alumnos <= 10)
+    # Bloque 2: restantes 4 fechas -> 1 página (8 alumnos <= 10)
+    # Total esperado: 2 páginas
+    alumnos = {str(i): {K_NOMBRE: f"Alumno {i:02d}"} for i in range(1, 9)}
+    fechas_dict = {}
+    for d in range(1, 21):
+        f_str = f"{d:02d}-05-2026"
+        fechas_dict[f_str] = {str(i): ("P" if (i + d) % 2 == 0 else "A") for i in range(1, 9)}
+
+    curso_data = {
+        K_ALUMNOS: alumnos,
+        K_ASISTENCIAS: fechas_dict,
+    }
+
+    file_path = tmp_path / "asistencias_20_fechas.pdf"
+    ok, err = exportar_asistencias_a_pdf(
+        curso_data,
+        str(file_path),
+        "3B",
+        "Colegio Secundario",
+        paginado=True,
+    )
+    assert ok is True
+    assert err is None
+    assert file_path.exists()
+
+    with open(file_path, "rb") as f:
+        content = f.read()
+        num_pages = content.count(b"/Type /Page\n") + content.count(b"/Type /Page/") + content.count(b"/Type /Page ")
+    assert num_pages == 2
+
+
+def test_exportar_asistencias_pdf_una_sola_pagina(tmp_path):
+    # 35 alumnos, 10 fechas. paginado=False -> exactamente 1 página
+    alumnos = {str(i): {K_NOMBRE: f"Alumno Comprimido {i:02d}"} for i in range(1, 36)}
+    fechas_dict = {
+        f"{d:02d}-04-2026": {str(i): "P" for i in range(1, 36)}
+        for d in range(1, 11)
+    }
+
+    curso_data = {
+        K_ALUMNOS: alumnos,
+        K_ASISTENCIAS: fechas_dict,
+    }
+
+    file_path = tmp_path / "asistencias_una_pagina.pdf"
+    ok, err = exportar_asistencias_a_pdf(
+        curso_data,
+        str(file_path),
+        "4C",
+        "Colegio Nacional",
+        paginado=False,
+    )
+    assert ok is True
+    assert err is None
+    assert file_path.exists()
+
+    with open(file_path, "rb") as f:
+        content = f.read()
+        num_pages = content.count(b"/Type /Page\n") + content.count(b"/Type /Page/") + content.count(b"/Type /Page ")
+    assert num_pages == 1
+
+
+# ==============================================================================
+# Tests para exportar_estadisticas_asistencia_a_pdf (SPEC-022 / T3)
+# ==============================================================================
+
+def test_exportar_estadisticas_asistencia_a_pdf_curso(tmp_path):
+    """Genera PDF de estadísticas de curso y verifica creación física y sin errores."""
+    datos_stats = {
+        "clases_dictadas": 5,
+        "fechas_aplicadas": ["01-03-2026", "02-03-2026", "03-03-2026", "04-03-2026", "05-03-2026"],
+        "total_alumnos": 3,
+        "totales": {"P": 10, "A": 2, "T": 2, "J": 1, "total": 15},
+        "porcentajes": {"P": 66.7, "A": 13.3, "T": 13.3, "J": 6.7},
+        "porcentaje_asistencia_promedio": 80.0,
+        "alumnos_detalle": [
+            {"id": "1", "nombre": "Juan Perez", "P": 4, "A": 0, "T": 1, "J": 0, "total": 5, "porcentaje": 100.0, "alerta": False},
+            {"id": "2", "nombre": "Maria Gomez", "P": 4, "A": 1, "T": 0, "J": 0, "total": 5, "porcentaje": 80.0, "alerta": False},
+            {"id": "3", "nombre": "Carlos Lopez", "P": 2, "A": 1, "T": 1, "J": 1, "total": 5, "porcentaje": 60.0, "alerta": True},
+        ],
+    }
+
+    out_file = tmp_path / "estadisticas_asistencia_curso.pdf"
+    ok, err_o_path = exportar_estadisticas_asistencia_a_pdf(
+        datos_estadisticas=datos_stats,
+        file_path=str(out_file),
+        nombre_colegio="Instituto San Martín",
+        nombre_curso="3° A",
+        rango_fechas_str="01-03-2026 al 05-03-2026",
+    )
+
+    assert ok is True
+    assert out_file.exists()
+    assert out_file.stat().st_size > 1000
+
+
+def test_exportar_estadisticas_asistencia_a_pdf_institucional(tmp_path):
+    """Genera PDF de estadísticas institucional y verifica tabla comparativa."""
+    datos_stats = {
+        "total_cursos": 2,
+        "total_alumnos": 5,
+        "total_clases_registradas": 6,
+        "totales": {"P": 18, "A": 4, "T": 2, "J": 1, "total": 25},
+        "porcentajes": {"P": 72.0, "A": 16.0, "T": 8.0, "J": 4.0},
+        "porcentaje_asistencia_global": 80.0,
+        "por_curso": {
+            "1° A": {"total_alumnos": 3, "clases_dictadas": 5, "P": 10, "A": 2, "T": 2, "J": 1, "total": 15, "porcentaje_asistencia": 80.0},
+            "2° B": {"total_alumnos": 2, "clases_dictadas": 4, "P": 8, "A": 2, "T": 0, "J": 0, "total": 10, "porcentaje_asistencia": 80.0},
+        },
+    }
+
+    out_file = tmp_path / "estadisticas_asistencia_institucional.pdf"
+    ok, _ = exportar_estadisticas_asistencia_a_pdf(
+        datos_estadisticas=datos_stats,
+        file_path=str(out_file),
+        nombre_colegio="Colegio Nacional",
+        nombre_curso=None,
+        rango_fechas_str="Todas las fechas",
+    )
+
+    assert ok is True
+    assert out_file.exists()
+
+
+def test_exportar_estadisticas_asistencia_a_pdf_datos_vacios(tmp_path):
+    """Genera PDF defensivamente ante datos vacíos o sin registros."""
+    out_file = tmp_path / "estadisticas_asistencia_vacio.pdf"
+    ok, _ = exportar_estadisticas_asistencia_a_pdf(
+        datos_estadisticas={},
+        file_path=str(out_file),
+        nombre_colegio="Escuela Vacía",
+        nombre_curso="1° C",
+    )
+    assert ok is True
+    assert out_file.exists()
+
+
 

@@ -117,10 +117,10 @@ def test_app_footer_structure_and_navigation(sample_state):
     assert nav_targets[-1] == "colegios"
     assert state.footer_tab == "inicio"
 
-    # 2. Con colegio seleccionado: Inicio navega a cursos
+    # 2. Con colegio seleccionado: Inicio siempre navega al inicio de la app (colegios)
     state.selected_colegio = "Colegio Belgrano"
     footer._on_change(event_mock)
-    assert nav_targets[-1] == "cursos"
+    assert nav_targets[-1] == "colegios"
 
     # 3. Pestaña 1 navega a planillas
     event_mock.control.selected_index = 1
@@ -179,6 +179,9 @@ def test_planillas_view_empty_and_populated(sample_state, mock_page):
         )
 
         view._build_ui()
+        # Con SPEC-024 colegios inician colapsados por defecto (REQ-STA-024-001)
+        assert len(view.list_view.controls) == 1  # Encabezado colegio
+        view._toggle_colegio("Colegio Belgrano")
         assert len(view.list_view.controls) >= 2  # Encabezado colegio + Tarjeta curso
 
 

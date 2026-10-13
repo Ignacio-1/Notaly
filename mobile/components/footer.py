@@ -104,11 +104,7 @@ class AppFooter(ft.NavigationBar):
         idx = self.selected_index
         if idx == 0:
             self.state.footer_tab = "inicio"
-            colegios = self.state.get_colegios()
-            if self.state.selected_colegio and self.state.selected_colegio in colegios:
-                self.on_navigate_callback("cursos")
-            else:
-                self.on_navigate_callback("colegios")
+            self.on_navigate_callback("colegios")
         elif idx == 1:
             self.state.footer_tab = "planillas"
             self.on_navigate_callback("planillas")

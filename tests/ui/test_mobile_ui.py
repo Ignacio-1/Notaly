@@ -609,7 +609,7 @@ class TestExportModalIsolation:
             tipo_exportacion="notas",
             colegio_nombre="Colegio Nacional",
             curso_nombre="5to A",
-            curso_data={},
+            curso_data={"alumnos": {"1": {"nombre": "Alumno 1"}}},
             on_success=MagicMock(),
             page=mock_page_mobile,
         )
@@ -1077,7 +1077,7 @@ def test_estadisticas_view_render_colegio(isolated_app_state, mock_page_mobile):
     assert view.donut_container.content is not None
     assert view.histograma_container.content is not None
     assert view.dynamic_content_container.content is not None
-    assert len(view.list_view.controls) == 8
+    assert len(view.list_view.controls) == 12
 
 
 def test_estadisticas_view_render_curso(isolated_app_state, mock_page_mobile):

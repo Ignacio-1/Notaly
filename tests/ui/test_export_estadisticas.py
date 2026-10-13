@@ -333,13 +333,15 @@ def test_planillas_view_filtro_por_tipo_y_agrupacion(mock_page_mobile, isolated_
         # 2. Conmutar a filtro 'Estadísticas': solo debe quedar la planilla de estadísticas
         view._cambiar_filtro_tipo("estadisticas")
         assert view.filtro_tipo == "estadisticas"
-        # Verificar que esté la sección Institucional (REQ-EXP-006)
+        # Con SPEC-024 colegios inician colapsados; al expandir se visualiza el Ámbito Institucional (REQ-EVT-024-001)
+        view._toggle_colegio("Colegio San Martín")
         controles_str = str(view.list_view.controls)
         assert "Institucional" in controles_str
 
         # 3. Conmutar a filtro 'Notas': no debe figurar la de estadísticas
         view._cambiar_filtro_tipo("notas")
         assert view.filtro_tipo == "notas"
+        view._toggle_colegio("Colegio San Martín")
         controles_notas_str = str(view.list_view.controls)
         assert "Reporte Colegio San Martín" not in controles_notas_str
 

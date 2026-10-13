@@ -8,7 +8,11 @@ import tkinter as tk
 from tkinter import messagebox
 import customtkinter as ctk
 
-from core.cloud_drive import cloud_drive, extraer_codigo_oauth
+try:
+    from core.cloud_drive import cloud_drive, extraer_codigo_oauth
+except ImportError:
+    cloud_drive = None
+    extraer_codigo_oauth = None
 from core import gestor_datos
 
 
@@ -47,7 +51,7 @@ class CloudBackupModal(ctk.CTkToplevel):
 
         self._crear_interfaz()
         self._refrescar_ui()
-        if cloud_drive.is_authenticated():
+        if cloud_drive and cloud_drive.is_authenticated():
             self._consultar_info_backup_async()
 
     def _crear_interfaz(self):

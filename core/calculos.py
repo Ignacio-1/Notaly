@@ -14,6 +14,7 @@ from .constants import (
     K_RECUPERATORIO,
     K_ALUMNOS,
     K_CURSOS,
+    K_ASISTENCIAS,
     K_NOMBRE,
     K_APELLIDO,
     K_NOMBRE_PILA,
@@ -165,18 +166,26 @@ def resumen_asistencia_dia(asistencias_dia: dict) -> dict:
     return conteos
 
 
-def resumen_asistencia_curso(curso_data: dict) -> dict:
+def resumen_asistencia_curso_filtrado(
+    curso_data: dict,
+    fecha_desde: str | None = None,
+    fecha_hasta: str | None = None,
+) -> dict:
     """
-    Calcula las estadísticas globales de asistencia para cada alumno del curso.
+    Calcula las estadísticas de asistencia para cada alumno del curso filtrando
+    exclusivamente por las fechas comprendidas en el rango [fecha_desde, fecha_hasta].
+    Utiliza filtrar_fechas_asistencia para ordenamiento cronológico y normalización defensiva.
 
     Args:
         curso_data: Diccionario del curso con claves 'alumnos' y 'asistencias'.
+        fecha_desde: Fecha inicial del rango (opcional).
+        fecha_hasta: Fecha final del rango (opcional).
 
     Returns:
         Diccionario con estructura:
         {
             "total_fechas": int,
-            "fechas": list[str] (ordenadas cronológicamente),
+            "fechas": list[str] (ordenadas cronológicamente y filtradas),
             "por_alumno": {
                 id_alumno: {
                     "nombre": str,
@@ -192,23 +201,25 @@ def resumen_asistencia_curso(curso_data: dict) -> dict:
     """
     from .constants import K_ALUMNOS, K_ASISTENCIAS, K_NOMBRE
 
-    alumnos = curso_data.get(K_ALUMNOS, {})
-    asistencias = curso_data.get(K_ASISTENCIAS, {})
+    alumnos = curso_data.get(K_ALUMNOS, {}) if isinstance(curso_data, dict) else {}
+    asistencias = curso_data.get(K_ASISTENCIAS, {}) if isinstance(curso_data, dict) else {}
 
-    fechas_ordenadas = sorted(asistencias.keys())
-    total_fechas = len(fechas_ordenadas)
+    todas_las_fechas = list(asistencias.keys())
+    fechas_filtradas = filtrar_fechas_asistencia(todas_las_fechas, fecha_desde, fecha_hasta)
+    total_fechas = len(fechas_filtradas)
 
     resumen_alumnos = {}
 
     for id_alumno, datos_alumno in alumnos.items():
-        nombre = datos_alumno.get(K_NOMBRE, "")
+        nombre = datos_alumno.get(K_NOMBRE, "") if isinstance(datos_alumno, dict) else ""
         p = 0
         a = 0
         t = 0
         j = 0
 
-        for fecha in fechas_ordenadas:
-            estado = asistencias.get(fecha, {}).get(str(id_alumno))
+        for fecha in fechas_filtradas:
+            dia_dict = asistencias.get(fecha, {})
+            estado = dia_dict.get(str(id_alumno)) if isinstance(dia_dict, dict) else None
             if estado == "P":
                 p += 1
             elif estado == "A":
@@ -236,9 +247,17 @@ def resumen_asistencia_curso(curso_data: dict) -> dict:
 
     return {
         "total_fechas": total_fechas,
-        "fechas": fechas_ordenadas,
+        "fechas": fechas_filtradas,
         "por_alumno": resumen_alumnos,
     }
+
+
+def resumen_asistencia_curso(curso_data: dict) -> dict:
+    """
+    Calcula las estadísticas globales de asistencia para cada alumno del curso.
+    Delega en resumen_asistencia_curso_filtrado sin filtro de fechas.
+    """
+    return resumen_asistencia_curso_filtrado(curso_data, None, None)
 
 
 def calcular_distribucion_notas(alumnos_detalle: list[dict] | None) -> dict:
@@ -680,5 +699,284 @@ def procesar_estadisticas_comportamiento(alumnos: dict) -> dict:
         "alumnos_por_tipo": alumnos_por_tipo,
         "todos_los_alumnos": todos_alumnos_con_obs,
     }
+
+
+def ordenar_fechas_cronologicamente(fechas: list[str]) -> list[str]:
+    """
+    Ordena una lista de cadenas de fecha de forma cronológica ascendente
+    utilizando tuplas (año, mes, día), admitiendo formatos dd-mm-aaaa y yyyy-mm-dd.
+    """
+    if not fechas:
+        return []
+    return sorted(fechas, key=lambda f: parsear_fecha_para_orden(f))
+
+
+def filtrar_fechas_asistencia(
+    fechas: list[str],
+    fecha_desde: str | None = None,
+    fecha_hasta: str | None = None,
+) -> list[str]:
+    """
+    Filtra una lista de fechas restringiéndolas al intervalo cerrado [desde, hasta].
+    Si fecha_desde es posterior a fecha_hasta, normaliza automáticamente a (min, max).
+    Retorna la sublista ordenada cronológicamente.
+    """
+    fechas_ordenadas = ordenar_fechas_cronologicamente(fechas)
+    if not fecha_desde and not fecha_hasta:
+        return fechas_ordenadas
+
+    t_desde = parsear_fecha_para_orden(fecha_desde) if fecha_desde else None
+    t_hasta = parsear_fecha_para_orden(fecha_hasta) if fecha_hasta else None
+
+    if t_desde and t_hasta and t_desde > t_hasta:
+        t_desde, t_hasta = t_hasta, t_desde
+
+    filtradas = []
+    for f in fechas_ordenadas:
+        tf = parsear_fecha_para_orden(f)
+        if t_desde and tf < t_desde:
+            continue
+        if t_hasta and tf > t_hasta:
+            continue
+        filtradas.append(f)
+
+    return filtradas
+
+
+def obtener_estadisticas_asistencia_curso(
+    curso_data: dict,
+    fecha_desde: str | None = None,
+    fecha_hasta: str | None = None,
+) -> dict:
+    """
+    Calcula las estadísticas de asistencia agregadas y detalladas por alumno para un curso,
+    con soporte opcional para filtro de rango cronológico [fecha_desde, fecha_hasta].
+    Conforme a SPEC-022 (REQ-UBI-001, REQ-UBI-002, REQ-EST-002, REQ-OPC-001, REQ-OPC-002, REQ-EXC-001, REQ-EXC-002).
+
+    Args:
+        curso_data: Diccionario del curso con claves 'alumnos' y 'asistencias'.
+        fecha_desde: Cadena 'dd-mm-aaaa' inicial del rango (opcional).
+        fecha_hasta: Cadena 'dd-mm-aaaa' final del rango (opcional).
+
+    Returns:
+        Diccionario con estructura:
+        {
+            "clases_dictadas": int,
+            "fechas_aplicadas": list[str],
+            "total_alumnos": int,
+            "totales": {"P": int, "A": int, "T": int, "J": int, "total": int},
+            "porcentajes": {"P": float, "A": float, "T": float, "J": float},
+            "porcentaje_asistencia_promedio": float | None,
+            "alumnos_detalle": list[dict],
+        }
+    """
+    if not isinstance(curso_data, dict):
+        curso_data = {}
+
+    alumnos_dict = curso_data.get(K_ALUMNOS, {})
+    if not isinstance(alumnos_dict, dict):
+        alumnos_dict = {}
+
+    asistencias_dict = curso_data.get(K_ASISTENCIAS, {})
+    if not isinstance(asistencias_dict, dict):
+        asistencias_dict = {}
+
+    todas_fechas = list(asistencias_dict.keys())
+    fechas_filtradas = filtrar_fechas_asistencia(todas_fechas, fecha_desde, fecha_hasta)
+
+    def _clave_orden_id(item_tuple):
+        id_str = str(item_tuple[0])
+        return (0, int(id_str)) if id_str.isdigit() else (1, id_str)
+
+    alumnos_ordenados = sorted(alumnos_dict.items(), key=_clave_orden_id)
+
+    # Identificar fechas con clases efectivamente dictadas (al menos una marca registrada P, A, T, J)
+    fechas_aplicadas = []
+    for f in fechas_filtradas:
+        dia_dict = asistencias_dict.get(f)
+        if isinstance(dia_dict, dict):
+            tiene_marca = False
+            for aid, _ in alumnos_ordenados:
+                marca = str(dia_dict.get(str(aid), "")).upper()
+                if not marca and aid in dia_dict:
+                    marca = str(dia_dict.get(aid, "")).upper()
+                if marca in ("P", "A", "T", "J"):
+                    tiene_marca = True
+                    break
+            if tiene_marca:
+                fechas_aplicadas.append(f)
+
+    clases_dictadas = len(fechas_aplicadas)
+
+    totales_curso = {"P": 0, "A": 0, "T": 0, "J": 0, "total": 0}
+    alumnos_detalle = []
+
+    for id_al, datos_al in alumnos_ordenados:
+        if not isinstance(datos_al, dict):
+            datos_al = {}
+
+        nombre = datos_al.get(K_NOMBRE)
+        if not nombre:
+            ap = datos_al.get(K_APELLIDO, "")
+            nom = datos_al.get(K_NOMBRE_PILA, "")
+            nombre = formatear_nombre_completo(ap, nom)
+        if not nombre:
+            nombre = f"Alumno #{id_al}"
+
+        p = 0
+        a = 0
+        t = 0
+        j = 0
+
+        for f in fechas_aplicadas:
+            dia_dict = asistencias_dict.get(f, {})
+            if isinstance(dia_dict, dict):
+                marca = str(dia_dict.get(str(id_al), "")).upper()
+                if not marca and id_al in dia_dict:
+                    marca = str(dia_dict.get(id_al, "")).upper()
+
+                if marca == "P":
+                    p += 1
+                elif marca == "A":
+                    a += 1
+                elif marca == "T":
+                    t += 1
+                elif marca == "J":
+                    j += 1
+
+        total_al = p + a + t + j
+        porcentaje_al = round(((p + t) / total_al) * 100, 1) if total_al > 0 else None
+        alerta_al = bool(porcentaje_al is not None and porcentaje_al < 75.0)
+
+        totales_curso["P"] += p
+        totales_curso["A"] += a
+        totales_curso["T"] += t
+        totales_curso["J"] += j
+        totales_curso["total"] += total_al
+
+        alumnos_detalle.append({
+            "id": str(id_al),
+            "nombre": nombre,
+            "P": p,
+            "A": a,
+            "T": t,
+            "J": j,
+            "total": total_al,
+            "porcentaje": porcentaje_al,
+            "alerta": alerta_al,
+        })
+
+    total_marcas = totales_curso["total"]
+    porcentajes_curso = {
+        "P": round((totales_curso["P"] / total_marcas) * 100, 1) if total_marcas > 0 else 0.0,
+        "A": round((totales_curso["A"] / total_marcas) * 100, 1) if total_marcas > 0 else 0.0,
+        "T": round((totales_curso["T"] / total_marcas) * 100, 1) if total_marcas > 0 else 0.0,
+        "J": round((totales_curso["J"] / total_marcas) * 100, 1) if total_marcas > 0 else 0.0,
+    }
+
+    if total_marcas > 0:
+        porcentaje_promedio = round(((totales_curso["P"] + totales_curso["T"]) / total_marcas) * 100, 1)
+    else:
+        porcentaje_promedio = None
+
+    return {
+        "clases_dictadas": clases_dictadas,
+        "fechas_aplicadas": fechas_aplicadas,
+        "total_alumnos": len(alumnos_detalle),
+        "totales": totales_curso,
+        "porcentajes": porcentajes_curso,
+        "porcentaje_asistencia_promedio": porcentaje_promedio,
+        "alumnos_detalle": alumnos_detalle,
+    }
+
+
+def obtener_estadisticas_asistencia_colegio(
+    colegio_data: dict,
+    fecha_desde: str | None = None,
+    fecha_hasta: str | None = None,
+) -> dict:
+    """
+    Calcula las estadísticas agregadas de asistencia para todos los cursos de un colegio.
+    Conforme a SPEC-022 (REQ-EST-001, REQ-UBI-002, REQ-EXC-001).
+
+    Args:
+        colegio_data: Diccionario del colegio con clave 'cursos'.
+        fecha_desde: Cadena 'dd-mm-aaaa' inicial del rango (opcional).
+        fecha_hasta: Cadena 'dd-mm-aaaa' final del rango (opcional).
+
+    Returns:
+        Diccionario con estructura:
+        {
+            "total_cursos": int,
+            "total_alumnos": int,
+            "total_clases_registradas": int,
+            "totales": {"P": int, "A": int, "T": int, "J": int, "total": int},
+            "porcentajes": {"P": float, "A": float, "T": float, "J": float},
+            "porcentaje_asistencia_global": float | None,
+            "por_curso": dict[str, dict],
+        }
+    """
+    if not isinstance(colegio_data, dict):
+        colegio_data = {}
+
+    cursos_dict = colegio_data.get(K_CURSOS, {})
+    if not isinstance(cursos_dict, dict):
+        cursos_dict = {}
+
+    totales_inst = {"P": 0, "A": 0, "T": 0, "J": 0, "total": 0}
+    total_alumnos = 0
+    fechas_unicas = set()
+    por_curso = {}
+
+    for nom_curso in sorted(cursos_dict.keys()):
+        c_data = cursos_dict.get(nom_curso, {})
+        stats_c = obtener_estadisticas_asistencia_curso(c_data, fecha_desde, fecha_hasta)
+
+        total_alumnos += stats_c["total_alumnos"]
+        for f in stats_c["fechas_aplicadas"]:
+            fechas_unicas.add(f)
+
+        t_c = stats_c["totales"]
+        totales_inst["P"] += t_c["P"]
+        totales_inst["A"] += t_c["A"]
+        totales_inst["T"] += t_c["T"]
+        totales_inst["J"] += t_c["J"]
+        totales_inst["total"] += t_c["total"]
+
+        por_curso[nom_curso] = {
+            "total_alumnos": stats_c["total_alumnos"],
+            "clases_dictadas": stats_c["clases_dictadas"],
+            "P": t_c["P"],
+            "A": t_c["A"],
+            "T": t_c["T"],
+            "J": t_c["J"],
+            "total": t_c["total"],
+            "porcentaje_asistencia": stats_c["porcentaje_asistencia_promedio"],
+        }
+
+    total_marcas = totales_inst["total"]
+    porcentajes_inst = {
+        "P": round((totales_inst["P"] / total_marcas) * 100, 1) if total_marcas > 0 else 0.0,
+        "A": round((totales_inst["A"] / total_marcas) * 100, 1) if total_marcas > 0 else 0.0,
+        "T": round((totales_inst["T"] / total_marcas) * 100, 1) if total_marcas > 0 else 0.0,
+        "J": round((totales_inst["J"] / total_marcas) * 100, 1) if total_marcas > 0 else 0.0,
+    }
+
+    if total_marcas > 0:
+        porcentaje_global = round(((totales_inst["P"] + totales_inst["T"]) / total_marcas) * 100, 1)
+    else:
+        porcentaje_global = None
+
+    return {
+        "total_cursos": len(por_curso),
+        "total_alumnos": total_alumnos,
+        "total_clases_registradas": len(fechas_unicas),
+        "totales": totales_inst,
+        "porcentajes": porcentajes_inst,
+        "porcentaje_asistencia_global": porcentaje_global,
+        "por_curso": por_curso,
+    }
+
+
 
 

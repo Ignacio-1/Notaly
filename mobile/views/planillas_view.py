@@ -27,6 +27,8 @@ class PlanillasView(ft.Container):
         self.on_navigate = on_navigate
 
         self.filtro_tipo = "todas"  # "todas", "notas", "asistencias", "estadisticas"
+        self.colegios_expandidos: set[str] = set()
+        self.cursos_expandidos: set[tuple[str, str]] = set()
         self.filter_container = ft.Container()
 
         self.list_view = ft.ListView(
@@ -95,6 +97,8 @@ class PlanillasView(ft.Container):
         if self.filtro_tipo == nuevo_filtro:
             return
         self.filtro_tipo = nuevo_filtro
+        self.colegios_expandidos.clear()
+        self.cursos_expandidos.clear()
         tok = self.state.tokens
         self.filter_container.content = self._build_filter_bar(tok)
         self._actualizar_lista()
@@ -108,6 +112,69 @@ class PlanillasView(ft.Container):
                 except Exception:
                     pass
 
+    def _toggle_colegio(self, col: str):
+        """Expande o colapsa una institución en el Hub (REQ-EVT-024-001)."""
+        if col in self.colegios_expandidos:
+            self.colegios_expandidos.remove(col)
+            self.cursos_expandidos = {pair for pair in self.cursos_expandidos if pair[0] != col}
+        else:
+            self.colegios_expandidos.add(col)
+        self._actualizar_lista()
+        try:
+            self.list_view.update()
+        except Exception:
+            if self.app_page:
+                try:
+                    self.app_page.update()
+                except Exception:
+                    pass
+
+    def _toggle_curso(self, col: str, cur: str):
+        """Expande o colapsa un curso o ámbito institucional en el Hub (REQ-EVT-024-002)."""
+        par = (col, cur)
+        if par in self.cursos_expandidos:
+            self.cursos_expandidos.remove(par)
+        else:
+            self.cursos_expandidos.add(par)
+        self._actualizar_lista()
+        try:
+            self.list_view.update()
+        except Exception:
+            if self.app_page:
+                try:
+                    self.app_page.update()
+                except Exception:
+                    pass
+
+    def _obtener_tarjetas_planillas_curso(self, colegio: str, curso: str) -> list[ft.Container]:
+        """Helper de consulta para pruebas unitarias e inspección UI."""
+        for ctrl in self.list_view.controls:
+            if isinstance(ctrl, ft.Container) and getattr(ctrl, "data", None):
+                d = ctrl.data
+                if isinstance(d, dict) and d.get("colegio") == colegio:
+                    if d.get("curso") == curso or d.get("label") == curso:
+                        col_content = ctrl.content
+                        if isinstance(col_content, ft.Column) and len(col_content.controls) >= 3:
+                            cards_col = col_content.controls[2]
+                            if isinstance(cards_col, ft.Column):
+                                return list(cards_col.controls)
+        return []
+
+    def _obtener_nombres_cursos_mostrados(self, colegio: str) -> list[str]:
+        """Helper de consulta para pruebas unitarias e inspección UI."""
+        res = []
+        for ctrl in self.list_view.controls:
+            if isinstance(ctrl, ft.Container) and getattr(ctrl, "data", None):
+                d = ctrl.data
+                if isinstance(d, dict) and d.get("colegio") == colegio and "curso" in d:
+                    label = d.get("label", "")
+                    cur = d.get("curso", "")
+                    if label:
+                        res.append(label)
+                    if cur and cur != label:
+                        res.append(cur)
+        return res
+
     def _build_ui(self):
         # Limpieza silenciosa de huérfanos al cargar la vista
         self.state.depurar_planillas_huerfanas()
@@ -120,9 +187,13 @@ class PlanillasView(ft.Container):
         tok = self.state.tokens
         todas_planillas = self.state.get_planillas()
 
-        # Filtrar por tipo seleccionado (REQ-EXP-005)
+        # Filtrar por tipo seleccionado (REQ-EXP-005 / SPEC-023)
         if self.filtro_tipo == "todas":
             planillas = todas_planillas
+        elif self.filtro_tipo == "asistencias":
+            planillas = [p for p in todas_planillas if p.get("tipo", "notas") in ("asistencias", "estadisticas_asistencia")]
+        elif self.filtro_tipo == "estadisticas":
+            planillas = [p for p in todas_planillas if p.get("tipo", "notas") in ("estadisticas", "estadisticas_asistencia")]
         else:
             planillas = [p for p in todas_planillas if p.get("tipo", "notas") == self.filtro_tipo]
 
@@ -130,14 +201,14 @@ class PlanillasView(ft.Container):
             self.list_view.controls = [self._build_empty_state(tok)]
             return
 
-        # Agrupación por colegio y curso / ámbito (REQ-EXP-006)
+        # Agrupación por colegio y curso / ámbito (REQ-EXP-006 / SPEC-023 / SPEC-024)
         colegios_map: dict[str, dict[str, list[dict]]] = {}
         for p in planillas:
             col = p.get("colegio") or "Sin Institución"
             cur_raw = (p.get("curso") or "").strip()
             tipo = p.get("tipo", "notas")
             if not cur_raw:
-                cur = "Institucional" if tipo == "estadisticas" else "General"
+                cur = "Institucional" if tipo in ("estadisticas", "estadisticas_asistencia") else "General"
             else:
                 cur = cur_raw
 
@@ -147,47 +218,90 @@ class PlanillasView(ft.Container):
                 colegios_map[col][cur] = []
             colegios_map[col][cur].append(p)
 
+        # Limpieza defensiva de conjuntos expandidos ante elementos eliminados
+        colegios_activos = set(colegios_map.keys())
+        self.colegios_expandidos &= colegios_activos
+        self.cursos_expandidos = {
+            (c, cr) for c, cr in self.cursos_expandidos
+            if c in colegios_map and cr in colegios_map[c]
+        }
+
         cards = []
         for col, cursos in colegios_map.items():
-            cards.append(
-                ft.Row(
+            col_expandido = (col in self.colegios_expandidos)
+            total_col = sum(len(items) for items in cursos.values())
+            arrow_col = ft.Icons.KEYBOARD_ARROW_DOWN if col_expandido else ft.Icons.KEYBOARD_ARROW_RIGHT
+
+            # Nivel 1: Cabecera interactiva de Institución
+            col_header = ft.Container(
+                content=ft.Row(
                     [
                         ft.Icon(ft.Icons.SCHOOL, size=18, color=tok.primary),
-                        ft.Text(col, size=15, weight=ft.FontWeight.BOLD, color=tok.text_main),
+                        ft.Text(col, size=15, weight=ft.FontWeight.BOLD, color=tok.text_main, expand=True),
+                        ft.Container(
+                            content=ft.Text(f"{total_col} archivo{'s' if total_col != 1 else ''}", size=11, color=tok.text_muted),
+                            padding=ft.Padding(left=8, right=8, top=2, bottom=2),
+                            bgcolor=tok.surface_variant,
+                            border_radius=10,
+                        ),
+                        ft.Icon(arrow_col, size=18, color=tok.text_muted),
                     ],
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
                     spacing=8,
-                )
+                ),
+                bgcolor=tok.surface,
+                border=ft.Border.all(1, tok.primary if col_expandido else tok.border_color),
+                border_radius=10,
+                padding=ft.Padding(left=12, right=12, top=10, bottom=10),
+                on_click=lambda _, c=col: self._toggle_colegio(c),
+                data={"tipo": "header_colegio", "colegio": col},
             )
-            for cur, items in cursos.items():
-                es_institucional = (cur == "Institucional")
-                header_icon = ft.Icons.ACCOUNT_BALANCE if es_institucional else (ft.Icons.FOLDER_OUTLINED if cur == "General" else ft.Icons.CLASS_)
-                header_label = "Ámbito: Institucional" if es_institucional else (f"Curso: {cur}" if cur != "General" else "General")
-                items_column = ft.Column(spacing=8, controls=[self._build_planilla_card(p, tok) for p in items])
-                cards.append(
-                    ft.Container(
+            cards.append(col_header)
+
+            # Nivel 2 y 3: Cursos/Ámbito y Planillas asociadas si la institución está expandida
+            if col_expandido:
+                for cur, items in cursos.items():
+                    cur_expandido = ((col, cur) in self.cursos_expandidos)
+                    es_institucional = (cur == "Institucional")
+                    header_icon = ft.Icons.ACCOUNT_BALANCE if es_institucional else (ft.Icons.FOLDER_OUTLINED if cur == "General" else ft.Icons.CLASS_)
+                    header_label = "Ámbito: Institucional" if es_institucional else (f"Curso: {cur}" if cur != "General" else "General")
+                    arrow_cur = ft.Icons.KEYBOARD_ARROW_DOWN if cur_expandido else ft.Icons.KEYBOARD_ARROW_RIGHT
+
+                    cur_header = ft.Container(
+                        content=ft.Row(
+                            [
+                                ft.Icon(header_icon, size=16, color=tok.primary),
+                                ft.Text(header_label, size=13, weight=ft.FontWeight.BOLD, color=tok.text_main, expand=True),
+                                ft.Text(f"{len(items)} archivo(s)", size=11, color=tok.text_muted),
+                                ft.Icon(arrow_cur, size=16, color=tok.text_muted),
+                            ],
+                            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                            spacing=8,
+                        ),
+                        padding=ft.Padding(left=8, right=8, top=6, bottom=6),
+                        on_click=lambda _, c=col, cr=cur: self._toggle_curso(c, cr),
+                    )
+
+                    course_controls = [cur_header]
+                    if cur_expandido:
+                        course_controls.append(ft.Divider(height=1, color=tok.border_color))
+                        course_controls.append(
+                            ft.Column(
+                                spacing=8,
+                                controls=[self._build_planilla_card(p, tok) for p in items],
+                            )
+                        )
+
+                    cur_box = ft.Container(
                         bgcolor=tok.surface,
                         border=ft.Border.all(1, tok.border_color),
-                        border_radius=12,
-                        padding=12,
-                        margin=ft.Margin(bottom=8, top=0, left=0, right=0),
-                        content=ft.Column(
-                            spacing=10,
-                            controls=[
-                                ft.Row(
-                                    [
-                                        ft.Icon(header_icon, size=16, color=tok.primary),
-                                        ft.Text(header_label, size=13, weight=ft.FontWeight.BOLD, color=tok.text_main),
-                                        ft.Container(expand=True),
-                                        ft.Text(f"{len(items)} archivo(s)", size=11, color=tok.text_muted),
-                                    ],
-                                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                                ),
-                                ft.Divider(height=1, color=tok.border_color),
-                                items_column,
-                            ],
-                        ),
+                        border_radius=10,
+                        padding=8,
+                        margin=ft.Margin(left=12, right=0, top=0, bottom=4),
+                        content=ft.Column(spacing=6, controls=course_controls),
+                        data={"tipo": "box_curso", "colegio": col, "curso": cur, "label": header_label},
                     )
-                )
+                    cards.append(cur_box)
 
         self.list_view.controls = cards
 
@@ -203,8 +317,13 @@ class PlanillasView(ft.Container):
 
         es_asistencia = (tipo == "asistencias")
         es_estadistica = (tipo == "estadisticas")
+        es_estadistica_asistencia = (tipo == "estadisticas_asistencia")
 
-        if es_estadistica:
+        if es_estadistica_asistencia:
+            tipo_label = "Estadísticas Asistencias"
+            icono_color = "#6366F1"
+            icono = ft.Icons.BAR_CHART
+        elif es_estadistica:
             tipo_label = "Estadísticas"
             icono_color = "#6366F1" if formato == "pdf" else tok.primary
             icono = ft.Icons.BAR_CHART

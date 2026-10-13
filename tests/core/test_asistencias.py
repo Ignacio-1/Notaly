@@ -19,7 +19,6 @@ from core.exportador import (
 )
 from gui.app import AppPromedios
 
-
 @pytest.fixture
 def sample_curso_asistencias():
     """Datos de prueba con curso, alumnos y asistencias registradas."""

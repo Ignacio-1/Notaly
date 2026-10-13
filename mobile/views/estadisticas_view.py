@@ -26,8 +26,10 @@ from core.constants import (
     K_TIPO,
     K_SUBTIPO,
     K_OBSERVACION,
+    K_ASISTENCIAS,
     formatear_fecha,
 )
+from core.calculos import ordenar_fechas_cronologicamente
 from mobile.components.comportamiento_dialog import get_comportamiento_style
 from mobile.components.export_estadisticas_dialog import ExportEstadisticasDialog
 
@@ -39,6 +41,12 @@ COLOR_VACIO = "#CBD5E1"       # Slate 300
 COLOR_COMP_POS = "#10B981"    # Emerald 500 (Positivo)
 COLOR_COMP_REG = "#F59E0B"    # Amber 500 (Regular)
 COLOR_COMP_NEG = "#EF4444"    # Red 500 (Negativo)
+
+COLOR_ASIST_P = "#10B981"      # Emerald 500 (Presente)
+COLOR_ASIST_A = "#EF4444"      # Red 500 (Ausente)
+COLOR_ASIST_T = "#F59E0B"      # Amber 500 (Tarde)
+COLOR_ASIST_J = "#3B82F6"      # Blue 500 (Justificado)
+COLOR_ASIST_EMPTY = "#CBD5E1"  # Slate 300 (Vacío)
 
 NOMBRES_PERIODOS = ["1° Trimestre", "2° Trimestre", "3° Trimestre", "Resumen Anual"]
 
@@ -71,9 +79,13 @@ class EstadisticasView(ft.Container):
         self.histograma_container = ft.Container()
         self.dynamic_content_container = ft.Container()
         self.comportamiento_container = ft.Container(visible=False)
+        self.asistencia_filtro_container = ft.Container(visible=False)
+        self.asistencia_kpi_container = ft.Container(visible=False)
+        self.asistencia_donut_container = ft.Container(visible=False)
+        self.asistencia_detalle_container = ft.Container(visible=False)
 
         # Estado del módulo de estadísticas
-        self.seccion_activa = "rendimiento"  # "rendimiento" o "comportamiento"
+        self.seccion_activa = "rendimiento"  # "rendimiento", "comportamiento" o "asistencias"
         self.histograma_modo = "rangos"  # "rangos" o "notas"
         self.filtro_comportamiento = "todos"  # "todos", "positivo", "regular", "negativo"
         self.alumnos_expandidos_comp: set[str] = set()
@@ -108,6 +120,10 @@ class EstadisticasView(ft.Container):
             self.histograma_container,
             self.dynamic_content_container,
             self.comportamiento_container,
+            self.asistencia_filtro_container,
+            self.asistencia_kpi_container,
+            self.asistencia_donut_container,
+            self.asistencia_detalle_container,
         ]
 
         self.content = ft.Column(
@@ -164,6 +180,10 @@ class EstadisticasView(ft.Container):
             self.histograma_container.visible = True
             self.dynamic_content_container.visible = True
             self.comportamiento_container.visible = False
+            self.asistencia_filtro_container.visible = False
+            self.asistencia_kpi_container.visible = False
+            self.asistencia_donut_container.visible = False
+            self.asistencia_detalle_container.visible = False
 
             # 3. Selector de Período (T1, T2, T3, Anual)
             self.period_selector_container.content = self._build_period_selector()
@@ -182,6 +202,27 @@ class EstadisticasView(ft.Container):
                 self.dynamic_content_container.content = self._build_curso_alumnos_section(stats)
             else:
                 self.dynamic_content_container.content = self._build_colegio_cursos_section(stats)
+        elif self.seccion_activa == "asistencias":
+            self.period_selector_container.visible = False
+            self.kpi_container.visible = False
+            self.donut_container.visible = False
+            self.histograma_container.visible = False
+            self.dynamic_content_container.visible = False
+            self.comportamiento_container.visible = False
+            self.asistencia_filtro_container.visible = True
+            self.asistencia_kpi_container.visible = True
+            self.asistencia_donut_container.visible = True
+            self.asistencia_detalle_container.visible = True
+
+            if nivel == "curso" and self.state.selected_curso:
+                stats_asist = self.state.get_estadisticas_asistencia_curso()
+            else:
+                stats_asist = self.state.get_estadisticas_asistencia_colegio()
+
+            self.asistencia_filtro_container.content = self._build_asistencia_filtro_section()
+            self.asistencia_kpi_container.content = self._build_asistencia_kpi_row(stats_asist, nivel)
+            self.asistencia_donut_container.content = self._build_asistencia_donut_section(stats_asist, nivel)
+            self.asistencia_detalle_container.content = self._build_asistencia_detalle_section(stats_asist, nivel)
         else:
             self.period_selector_container.visible = False
             self.kpi_container.visible = False
@@ -189,6 +230,10 @@ class EstadisticasView(ft.Container):
             self.histograma_container.visible = False
             self.dynamic_content_container.visible = False
             self.comportamiento_container.visible = True
+            self.asistencia_filtro_container.visible = False
+            self.asistencia_kpi_container.visible = False
+            self.asistencia_donut_container.visible = False
+            self.asistencia_detalle_container.visible = False
 
             # Apartado Comportamiento
             self.comportamiento_container.content = self._build_comportamiento_section()
@@ -219,20 +264,6 @@ class EstadisticasView(ft.Container):
         nivel = self.state.estadisticas_nivel
         colegio = self.state.selected_colegio or ""
         curso = self.state.selected_curso if (nivel == "curso" and self.state.selected_curso) else None
-        periodo_idx = self._get_active_periodo()
-        periodo_nombre = NOMBRES_PERIODOS[periodo_idx]
-
-        if curso:
-            stats_rend = self.state.get_estadisticas_curso(colegio=colegio, curso=curso, periodo_idx=periodo_idx)
-            stats_comp = self.state.get_estadisticas_comportamiento(colegio=colegio, curso=curso)
-        else:
-            stats_rend = self.state.get_estadisticas_colegio(colegio=colegio, periodo_idx=periodo_idx)
-            stats_comp = self.state.get_estadisticas_comportamiento(colegio=colegio, curso=None)
-
-        datos_stats = {
-            "rendimiento": stats_rend,
-            "comportamiento": stats_comp,
-        }
 
         def al_terminar(exito: bool, detalle: str):
             if exito:
@@ -240,16 +271,58 @@ class EstadisticasView(ft.Container):
             else:
                 self._mostrar_snackbar(f"Error al exportar reporte: {detalle}", error=True)
 
-        dlg = ExportEstadisticasDialog(
-            colegio_nombre=colegio,
-            curso_nombre=curso,
-            periodo_nombre=periodo_nombre,
-            datos_estadisticas=datos_stats,
-            on_success=al_terminar,
-            page=self.app_page,
-            state=self.state,
-            tokens=self.state.tokens,
-        )
+        if getattr(self, "seccion_activa", "rendimiento") == "asistencias":
+            if curso:
+                datos_stats = self.state.get_estadisticas_asistencia_curso(colegio=colegio, curso=curso)
+            else:
+                datos_stats = self.state.get_estadisticas_asistencia_colegio(colegio=colegio)
+
+            if getattr(self.state, "estadisticas_asistencia_todas_fechas", True) or not getattr(self.state, "estadisticas_asistencia_fecha_desde", None):
+                rango_fechas_str = "Todas las fechas"
+            else:
+                f_desde = self.state.estadisticas_asistencia_fecha_desde
+                f_hasta = getattr(self.state, "estadisticas_asistencia_fecha_hasta", None) or f_desde
+                rango_fechas_str = f"Desde: {f_desde} | Hasta: {f_hasta}"
+
+            dlg = ExportEstadisticasDialog(
+                colegio_nombre=colegio,
+                curso_nombre=curso,
+                datos_estadisticas=datos_stats,
+                tipo_estadistica="asistencias",
+                rango_fechas_str=rango_fechas_str,
+                on_success=al_terminar,
+                page=self.app_page,
+                state=self.state,
+                tokens=self.state.tokens,
+            )
+        else:
+            periodo_idx = self._get_active_periodo()
+            periodo_nombre = NOMBRES_PERIODOS[periodo_idx]
+
+            if curso:
+                stats_rend = self.state.get_estadisticas_curso(colegio=colegio, curso=curso, periodo_idx=periodo_idx)
+                stats_comp = self.state.get_estadisticas_comportamiento(colegio=colegio, curso=curso)
+            else:
+                stats_rend = self.state.get_estadisticas_colegio(colegio=colegio, periodo_idx=periodo_idx)
+                stats_comp = self.state.get_estadisticas_comportamiento(colegio=colegio, curso=None)
+
+            datos_stats = {
+                "rendimiento": stats_rend,
+                "comportamiento": stats_comp,
+            }
+
+            dlg = ExportEstadisticasDialog(
+                colegio_nombre=colegio,
+                curso_nombre=curso,
+                periodo_nombre=periodo_nombre,
+                datos_estadisticas=datos_stats,
+                tipo_estadistica="academica",
+                on_success=al_terminar,
+                page=self.app_page,
+                state=self.state,
+                tokens=self.state.tokens,
+            )
+
         if self.app_page:
             try:
                 self.app_page.show_dialog(dlg)
@@ -286,7 +359,7 @@ class EstadisticasView(ft.Container):
             pass
 
     def _conmutar_seccion(self, nueva_seccion: str):
-        """Conmuta entre analítica de calificaciones y comportamiento sin reiniciar scroll."""
+        """Conmuta entre analítica de calificaciones, comportamiento y asistencias sin reiniciar scroll."""
         if self.seccion_activa == nueva_seccion:
             return
         self.seccion_activa = nueva_seccion
@@ -299,6 +372,10 @@ class EstadisticasView(ft.Container):
             self.histograma_container.update()
             self.dynamic_content_container.update()
             self.comportamiento_container.update()
+            self.asistencia_filtro_container.update()
+            self.asistencia_kpi_container.update()
+            self.asistencia_donut_container.update()
+            self.asistencia_detalle_container.update()
         except RuntimeError:
             pass
 
@@ -322,6 +399,10 @@ class EstadisticasView(ft.Container):
             self.histograma_container.update()
             self.dynamic_content_container.update()
             self.comportamiento_container.update()
+            self.asistencia_filtro_container.update()
+            self.asistencia_kpi_container.update()
+            self.asistencia_donut_container.update()
+            self.asistencia_detalle_container.update()
         except RuntimeError:
             pass
 
@@ -344,6 +425,36 @@ class EstadisticasView(ft.Container):
             self.histograma_container.update()
             self.dynamic_content_container.update()
             self.comportamiento_container.update()
+            self.asistencia_filtro_container.update()
+            self.asistencia_kpi_container.update()
+            self.asistencia_donut_container.update()
+            self.asistencia_detalle_container.update()
+        except RuntimeError:
+            pass
+
+    def _al_cambiar_filtro_fechas_asistencias(self, todas: bool | None = None, desde: str | None = None, hasta: str | None = None):
+        """Actualiza el rango de fechas en el estado y refresca in-place los contenedores de asistencias."""
+        if todas is not None:
+            self.state.estadisticas_asistencia_todas_fechas = todas
+        if desde is not None:
+            self.state.estadisticas_asistencia_fecha_desde = desde
+        if hasta is not None:
+            self.state.estadisticas_asistencia_fecha_hasta = hasta
+
+        # Normalización defensiva si vienen invertidas
+        f_d = self.state.estadisticas_asistencia_fecha_desde
+        f_h = self.state.estadisticas_asistencia_fecha_hasta
+        if f_d and f_h and not self.state.estadisticas_asistencia_todas_fechas:
+            fechas_norm = ordenar_fechas_cronologicamente([f_d, f_h])
+            self.state.estadisticas_asistencia_fecha_desde = fechas_norm[0]
+            self.state.estadisticas_asistencia_fecha_hasta = fechas_norm[-1]
+
+        self._actualizar_datos_ui()
+        try:
+            self.asistencia_filtro_container.update()
+            self.asistencia_kpi_container.update()
+            self.asistencia_donut_container.update()
+            self.asistencia_detalle_container.update()
         except RuntimeError:
             pass
 
@@ -352,117 +463,253 @@ class EstadisticasView(ft.Container):
     # -------------------------------------------------------------------------
 
     def _build_level_selector(self) -> ft.Container:
-        """Pestañas superiores de selección de contexto: Colegios, Institucional y Cursos."""
+        """Tarjeta de Contexto Jerárquico activa (SPEC-024 / REQ-STA-024-004 / REQ-STA-024-005)."""
         colegios = self.state.get_colegios()
-        colegio_actual = self.state.selected_colegio or (colegios[0] if colegios else None)
-        cursos = self.state.get_cursos(colegio_actual) if colegio_actual else []
+        colegio_actual = self.state.selected_colegio or (colegios[0] if colegios else "Sin Colegio")
         nivel = self.state.estadisticas_nivel
         tok = self.state.tokens
 
-        filas_controles = []
+        if nivel == "curso":
+            curso_actual = self.state.selected_curso or ""
+            texto_contexto = f"Colegio: {colegio_actual} · Curso: {curso_actual}"
+            icono = ft.Icons.CLASS_
+        else:
+            texto_contexto = f"Colegio: {colegio_actual} · Ámbito: Institucional"
+            icono = ft.Icons.ACCOUNT_BALANCE
 
-        # 1. Selector de Colegio (si hay más de 1 colegio registrado en la app)
-        if len(colegios) > 1:
-            chips_colegio = []
-            for col in colegios:
-                es_sel = (col == colegio_actual)
-                chips_colegio.append(
+        return ft.Container(
+            content=ft.Row(
+                [
+                    ft.Container(
+                        content=ft.Icon(icono, color=tok.primary, size=18),
+                        width=36,
+                        height=36,
+                        bgcolor=tok.primary_light,
+                        border_radius=8,
+                        alignment=ft.Alignment.CENTER,
+                    ),
+                    ft.Column(
+                        [
+                            ft.Text("CONTEXTO ANALÍTICO", size=10, weight=ft.FontWeight.BOLD, color=tok.text_muted),
+                            ft.Text(
+                                texto_contexto,
+                                size=13,
+                                weight=ft.FontWeight.BOLD,
+                                color=tok.text_main,
+                                max_lines=1,
+                                overflow=ft.TextOverflow.ELLIPSIS,
+                            ),
+                        ],
+                        spacing=2,
+                        expand=True,
+                        alignment=ft.MainAxisAlignment.CENTER,
+                    ),
                     ft.Container(
                         content=ft.Row(
                             [
-                                ft.Icon(ft.Icons.SCHOOL, size=14, color=tok.primary if es_sel else tok.text_muted),
-                                ft.Text(
-                                    col,
-                                    size=12,
-                                    weight=ft.FontWeight.BOLD if es_sel else ft.FontWeight.W_500,
-                                    color=tok.primary if es_sel else tok.text_muted,
-                                ),
+                                ft.Text("Cambiar", size=11, weight=ft.FontWeight.BOLD, color=tok.primary),
+                                ft.Icon(ft.Icons.KEYBOARD_ARROW_DOWN, size=14, color=tok.primary),
                             ],
-                            spacing=4,
+                            spacing=2,
                             alignment=ft.MainAxisAlignment.CENTER,
                         ),
-                        padding=ft.Padding(left=10, right=10, top=6, bottom=6),
-                        bgcolor=tok.primary_light if es_sel else tok.surface,
-                        border=ft.Border.all(1, tok.primary if es_sel else tok.border_color),
+                        bgcolor=tok.primary_light,
                         border_radius=8,
-                        on_click=lambda _, c=col: self._cambiar_colegio_estadisticas(c),
-                    )
-                )
-            filas_controles.append(
-                ft.Row(chips_colegio, spacing=8, scroll=ft.ScrollMode.AUTO)
-            )
+                        padding=ft.Padding(left=8, right=8, top=5, bottom=5),
+                    ),
+                ],
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                spacing=10,
+            ),
+            bgcolor=tok.surface,
+            border=ft.Border.all(1, tok.border_color),
+            border_radius=12,
+            padding=12,
+            margin=ft.Margin(bottom=4, top=0, left=0, right=0),
+            on_click=lambda _: self._abrir_selector_contexto(),
+        )
 
-        # 2. Selector de Nivel (Institucional vs Cursos del colegio activo)
-        tabs_nivel = [
-            ft.Container(
+    def _abrir_selector_contexto(self):
+        """Abre un diálogo modal vertical para seleccionar Colegio y Nivel/Curso (REQ-EVT-024-006)."""
+        if not self.app_page:
+            return
+        tok = self.state.tokens
+        colegios = self.state.get_colegios()
+        col_activo = self.state.selected_colegio
+        cur_activo = self.state.selected_curso
+        nivel_activo = self.state.estadisticas_nivel
+
+        dialog_width = min(self.app_page.width - 32, 380) if hasattr(self.app_page, "width") and self.app_page.width else 360
+
+        secciones_colegios = []
+        for col in colegios:
+            cursos = self.state.get_cursos(col)
+
+            # Opción Institucional
+            es_inst_activo = (col == col_activo and nivel_activo == "colegio")
+            btn_institucional = ft.Container(
                 content=ft.Row(
                     [
                         ft.Icon(
-                            ft.Icons.ANALYTICS_OUTLINED,
-                            size=15,
-                            color=tok.primary if nivel == "colegio" else tok.text_muted,
+                            ft.Icons.ACCOUNT_BALANCE,
+                            size=16,
+                            color=tok.primary if es_inst_activo else tok.text_muted,
                         ),
                         ft.Text(
-                            "Institucional (Todo el Colegio)",
+                            "Ámbito Institucional (Todo el Colegio)",
                             size=12,
-                            weight=ft.FontWeight.BOLD if nivel == "colegio" else ft.FontWeight.W_500,
-                            color=tok.primary if nivel == "colegio" else tok.text_muted,
+                            weight=ft.FontWeight.BOLD if es_inst_activo else ft.FontWeight.W_500,
+                            color=tok.primary if es_inst_activo else tok.text_main,
+                            expand=True,
+                        ),
+                        ft.Icon(
+                            ft.Icons.CHECK,
+                            size=16,
+                            color=tok.primary,
+                            visible=es_inst_activo,
                         ),
                     ],
-                    spacing=6,
-                    alignment=ft.MainAxisAlignment.CENTER,
+                    spacing=8,
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
                 ),
-                padding=ft.Padding(left=12, right=12, top=8, bottom=8),
-                bgcolor=tok.primary_light if nivel == "colegio" else tok.surface,
-                border=ft.Border.all(1, tok.primary if nivel == "colegio" else tok.border_color),
+                bgcolor=tok.primary_light if es_inst_activo else tok.surface,
+                border=ft.Border.all(1, tok.primary if es_inst_activo else tok.border_color),
                 border_radius=8,
-                on_click=lambda _: self._conmutar_nivel("colegio"),
+                padding=ft.Padding(left=10, right=10, top=8, bottom=8),
+                on_click=lambda _, c=col: self._seleccionar_contexto(c, nivel="colegio"),
             )
-        ]
 
-        if cursos:
+            opciones_col = [btn_institucional]
+
+            # Cursos del colegio
             for cur in cursos:
-                es_cur_activo = (nivel == "curso" and self.state.selected_curso == cur)
-                tabs_nivel.append(
-                    ft.Container(
-                        content=ft.Row(
-                            [
-                                ft.Icon(
-                                    ft.Icons.CLASS_,
-                                    size=15,
-                                    color=tok.primary if es_cur_activo else tok.text_muted,
-                                ),
-                                ft.Text(
-                                    f"Curso: {cur}",
-                                    size=12,
-                                    weight=ft.FontWeight.BOLD if es_cur_activo else ft.FontWeight.W_500,
-                                    color=tok.primary if es_cur_activo else tok.text_muted,
-                                ),
-                            ],
-                            spacing=6,
-                            alignment=ft.MainAxisAlignment.CENTER,
-                        ),
-                        padding=ft.Padding(left=12, right=12, top=8, bottom=8),
-                        bgcolor=tok.primary_light if es_cur_activo else tok.surface,
-                        border=ft.Border.all(1, tok.primary if es_cur_activo else tok.border_color),
-                        border_radius=8,
-                        on_click=lambda _, c=cur: self._conmutar_nivel("curso", c),
-                    )
+                es_cur_activo = (col == col_activo and nivel_activo == "curso" and cur == cur_activo)
+                btn_curso = ft.Container(
+                    content=ft.Row(
+                        [
+                            ft.Icon(
+                                ft.Icons.CLASS_,
+                                size=16,
+                                color=tok.primary if es_cur_activo else tok.text_muted,
+                            ),
+                            ft.Text(
+                                f"Curso: {cur}",
+                                size=12,
+                                weight=ft.FontWeight.BOLD if es_cur_activo else ft.FontWeight.W_500,
+                                color=tok.primary if es_cur_activo else tok.text_main,
+                                expand=True,
+                            ),
+                            ft.Icon(
+                                ft.Icons.CHECK,
+                                size=16,
+                                color=tok.primary,
+                                visible=es_cur_activo,
+                            ),
+                        ],
+                        spacing=8,
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                    ),
+                    bgcolor=tok.primary_light if es_cur_activo else tok.surface,
+                    border=ft.Border.all(1, tok.primary if es_cur_activo else tok.border_color),
+                    border_radius=8,
+                    padding=ft.Padding(left=10, right=10, top=8, bottom=8),
+                    on_click=lambda _, c=col, cr=cur: self._seleccionar_contexto(c, nivel="curso", curso=cr),
                 )
+                opciones_col.append(btn_curso)
 
-        filas_controles.append(
-            ft.Row(tabs_nivel, spacing=8, scroll=ft.ScrollMode.AUTO)
-        )
+            secciones_colegios.append(
+                ft.Container(
+                    content=ft.Column(
+                        [
+                            ft.Row(
+                                [
+                                    ft.Icon(ft.Icons.SCHOOL, size=16, color=tok.primary),
+                                    ft.Text(col, size=13, weight=ft.FontWeight.BOLD, color=tok.text_main, expand=True),
+                                ],
+                                spacing=6,
+                            ),
+                            ft.Column(opciones_col, spacing=6),
+                        ],
+                        spacing=8,
+                    ),
+                    bgcolor=tok.surface_variant,
+                    border_radius=10,
+                    padding=10,
+                )
+            )
 
-        return ft.Container(
-            content=ft.Column(filas_controles, spacing=8),
-            margin=ft.Margin(bottom=4, top=0, left=0, right=0),
+        dlg = ft.AlertDialog(
+            modal=True,
+            title=ft.Row(
+                [
+                    ft.Icon(ft.Icons.TUNE, color=tok.primary, size=20),
+                    ft.Text("Seleccionar Institución y Curso", size=15, weight=ft.FontWeight.BOLD),
+                ],
+                spacing=8,
+            ),
+            content=ft.Container(
+                width=dialog_width,
+                content=ft.Column(
+                    secciones_colegios,
+                    spacing=10,
+                    scroll=ft.ScrollMode.AUTO,
+                ),
+            ),
+            actions=[
+                ft.TextButton(
+                    "Cerrar",
+                    on_click=lambda _: (self.app_page.pop_dialog(), self.app_page.update()),
+                )
+            ],
+            actions_alignment=ft.MainAxisAlignment.END,
         )
+        self.app_page.show_dialog(dlg)
+        try:
+            self.app_page.update()
+        except Exception:
+            pass
+
+    def _seleccionar_contexto(self, col: str, nivel: str, curso: str | None = None):
+        """Aplica la selección de contexto jerárquico in-place (REQ-EVT-024-007 / REQ-EVT-024-008)."""
+        if self.app_page:
+            self.app_page.pop_dialog()
+        self.state.selected_colegio = col
+        self.state.estadisticas_nivel = nivel
+        if nivel == "curso":
+            self.state.selected_curso = curso
+        elif not curso:
+            cursos = self.state.get_cursos(col)
+            if cursos and not self.state.selected_curso:
+                self.state.selected_curso = cursos[0]
+
+        self._actualizar_datos_ui()
+        try:
+            self.header_container.update()
+            self.level_selector_container.update()
+            self.seccion_selector_container.update()
+            self.period_selector_container.update()
+            self.kpi_container.update()
+            self.donut_container.update()
+            self.histograma_container.update()
+            self.dynamic_content_container.update()
+            self.comportamiento_container.update()
+            self.asistencia_filtro_container.update()
+            self.asistencia_kpi_container.update()
+            self.asistencia_donut_container.update()
+            self.asistencia_detalle_container.update()
+        except RuntimeError:
+            pass
+        if self.app_page:
+            try:
+                self.app_page.update()
+            except Exception:
+                pass
 
     def _build_seccion_selector(self) -> ft.Container:
-        """Selector de dos pestañas: Calificaciones vs Comportamiento."""
+        """Selector de tres pestañas: Calificaciones, Comportamiento y Asistencias."""
         is_rend = (self.seccion_activa == "rendimiento")
         is_comp = (self.seccion_activa == "comportamiento")
+        is_asist = (self.seccion_activa == "asistencias")
         tok = self.state.tokens
 
         tab_rend = ft.Container(
@@ -515,8 +762,33 @@ class EstadisticasView(ft.Container):
             ),
         )
 
+        tab_asist = ft.Container(
+            expand=True,
+            height=36,
+            border_radius=8,
+            bgcolor=tok.primary_light if is_asist else tok.surface,
+            border=ft.Border.all(1.5 if is_asist else 1, tok.primary if is_asist else tok.border_color),
+            alignment=ft.Alignment.CENTER,
+            ink=True,
+            on_click=lambda _: self._conmutar_seccion("asistencias"),
+            content=ft.Row(
+                alignment=ft.MainAxisAlignment.CENTER,
+                spacing=6,
+                tight=True,
+                controls=[
+                    ft.Icon(ft.Icons.EVENT_AVAILABLE, size=16, color=tok.primary if is_asist else tok.text_muted),
+                    ft.Text(
+                        "Asistencias",
+                        size=12,
+                        weight=ft.FontWeight.BOLD if is_asist else ft.FontWeight.W_500,
+                        color=tok.primary if is_asist else tok.text_muted,
+                    ),
+                ],
+            ),
+        )
+
         return ft.Container(
-            content=ft.Row(spacing=8, controls=[tab_rend, tab_comp]),
+            content=ft.Row(spacing=8, controls=[tab_rend, tab_comp, tab_asist]),
             margin=ft.Margin(bottom=4, top=0, left=0, right=0),
         )
 
@@ -1734,6 +2006,507 @@ class EstadisticasView(ft.Container):
                 ],
             ),
         )
+
+    # -------------------------------------------------------------------------
+    # --- MÓDULO DE ESTADÍSTICAS DE ASISTENCIA (SPEC-022) ---
+    # -------------------------------------------------------------------------
+
+    def _build_asistencia_filtro_section(self) -> ft.Container:
+        tok = self.state.tokens
+        col = self.state.selected_colegio
+        cur = self.state.selected_curso
+        nivel = self.state.estadisticas_nivel
+
+        fechas_set = set()
+        if nivel == "curso" and cur:
+            c_data = self.state.get_curso_data(col, cur)
+            for f in c_data.get(K_ASISTENCIAS, {}).keys():
+                fechas_set.add(f)
+        else:
+            col_data = self.state.data.get("colegios", {}).get(col, {})
+            for c_data in col_data.get("cursos", {}).values():
+                for f in c_data.get(K_ASISTENCIAS, {}).keys():
+                    fechas_set.add(f)
+
+        fechas_ordenadas = ordenar_fechas_cronologicamente(list(fechas_set))
+
+        todas = self.state.estadisticas_asistencia_todas_fechas
+        val_desde = self.state.estadisticas_asistencia_fecha_desde or (fechas_ordenadas[0] if fechas_ordenadas else None)
+        val_hasta = self.state.estadisticas_asistencia_fecha_hasta or (fechas_ordenadas[-1] if fechas_ordenadas else None)
+
+        chk_todas = ft.Checkbox(
+            label="Todas las fechas",
+            value=todas,
+            active_color=tok.primary,
+            label_style=ft.TextStyle(size=12, color=tok.text_main, weight=ft.FontWeight.W_500),
+            on_change=lambda e: self._al_cambiar_filtro_fechas_asistencias(todas=e.control.value),
+        )
+
+        opciones = [ft.dropdown.Option(f) for f in fechas_ordenadas]
+        dd_desde = ft.Dropdown(
+            label="Desde",
+            options=opciones,
+            value=val_desde if val_desde in fechas_ordenadas else None,
+            disabled=todas,
+            expand=True,
+            dense=True,
+            content_padding=ft.Padding(8, 4, 8, 4),
+            on_select=lambda e: self._al_cambiar_filtro_fechas_asistencias(desde=e.control.value),
+        )
+        dd_hasta = ft.Dropdown(
+            label="Hasta",
+            options=opciones,
+            value=val_hasta if val_hasta in fechas_ordenadas else None,
+            disabled=todas,
+            expand=True,
+            dense=True,
+            content_padding=ft.Padding(8, 4, 8, 4),
+            on_select=lambda e: self._al_cambiar_filtro_fechas_asistencias(hasta=e.control.value),
+        )
+
+        return ft.Container(
+            bgcolor=tok.surface,
+            border=ft.Border.all(1, tok.border_color),
+            border_radius=12,
+            padding=ft.Padding(left=12, right=12, top=10, bottom=10),
+            content=ft.Column(
+                spacing=8,
+                tight=True,
+                controls=[
+                    ft.Row(
+                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                        controls=[
+                            ft.Row(
+                                spacing=6,
+                                controls=[
+                                    ft.Icon(ft.Icons.DATE_RANGE, size=16, color=tok.primary),
+                                    ft.Text("Rango de Fechas", size=12, weight=ft.FontWeight.BOLD, color=tok.text_main),
+                                ],
+                            ),
+                            chk_todas,
+                        ],
+                    ),
+                    ft.Row(spacing=8, controls=[dd_desde, dd_hasta]),
+                ],
+            ),
+        )
+
+    def _build_asistencia_kpi_row(self, stats: dict, nivel: str) -> ft.Container:
+        tok = self.state.tokens
+
+        def _kpi_card(titulo: str, valor: str, subtitulo: str, bg_color: str, text_color: str, border_color: str):
+            return ft.Container(
+                expand=True,
+                bgcolor=bg_color,
+                border=ft.Border.all(1, border_color),
+                border_radius=12,
+                padding=ft.Padding(left=10, right=10, top=10, bottom=10),
+                content=ft.Column(
+                    spacing=2,
+                    horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                    controls=[
+                        ft.Text(titulo, size=11, weight=ft.FontWeight.W_600, color=text_color),
+                        ft.Text(valor, size=18, weight=ft.FontWeight.BOLD, color=text_color),
+                        ft.Text(subtitulo, size=10, color=text_color),
+                    ],
+                ),
+            )
+
+        if nivel == "curso":
+            tot_al = stats.get("total_alumnos", 0)
+            clases = stats.get("clases_dictadas", 0)
+            tot_m = stats.get("totales", {}).get("total", 0)
+            pct = stats.get("porcentaje_asistencia_promedio")
+            pct_str = f"{pct:.1f}%" if pct is not None else "--"
+
+            row_1 = ft.Row(
+                spacing=8,
+                controls=[
+                    _kpi_card("Alumnos", f"{tot_al}", "Matriculados", tok.surface_variant, tok.text_main, tok.border_color),
+                    _kpi_card("Clases", f"{clases}", "Dictadas", tok.surface_variant, tok.text_main, tok.border_color),
+                ],
+            )
+            row_2 = ft.Row(
+                spacing=8,
+                controls=[
+                    _kpi_card("Marcas", f"{tot_m}", "Registros P+A+T+J", tok.surface_variant, tok.text_main, tok.border_color),
+                    _kpi_card("Asistencia", pct_str, "Promedio del curso", tok.primary_light, tok.primary, tok.border_color),
+                ],
+            )
+        else:
+            tot_cur = stats.get("total_cursos", 0)
+            tot_al = stats.get("total_alumnos", 0)
+            clases = stats.get("total_clases_registradas", 0)
+            pct = stats.get("porcentaje_asistencia_global")
+            pct_str = f"{pct:.1f}%" if pct is not None else "--"
+
+            row_1 = ft.Row(
+                spacing=8,
+                controls=[
+                    _kpi_card("Cursos", f"{tot_cur}", "Divisiones", tok.surface_variant, tok.text_main, tok.border_color),
+                    _kpi_card("Alumnos", f"{tot_al}", "Total Institucional", tok.surface_variant, tok.text_main, tok.border_color),
+                ],
+            )
+            row_2 = ft.Row(
+                spacing=8,
+                controls=[
+                    _kpi_card("Clases", f"{clases}", "Fechas registradas", tok.surface_variant, tok.text_main, tok.border_color),
+                    _kpi_card("Asistencia", pct_str, "Promedio Institucional", tok.primary_light, tok.primary, tok.border_color),
+                ],
+            )
+
+        return ft.Column(spacing=8, controls=[row_1, row_2])
+
+    def _build_asistencia_donut_section(self, stats: dict, nivel: str) -> ft.Container:
+        tok = self.state.tokens
+        totales = stats.get("totales", {})
+        P = totales.get("P", 0)
+        A = totales.get("A", 0)
+        T = totales.get("T", 0)
+        J = totales.get("J", 0)
+        total = totales.get("total", 0)
+
+        pcts = stats.get("porcentajes", {})
+        pct_p = pcts.get("P", 0.0)
+        pct_a = pcts.get("A", 0.0)
+        pct_t = pcts.get("T", 0.0)
+        pct_j = pcts.get("J", 0.0)
+
+        pct_asist = stats.get("porcentaje_asistencia_promedio" if nivel == "curso" else "porcentaje_asistencia_global")
+        pct_asist_str = f"{pct_asist:.1f}%" if pct_asist is not None else "--%"
+
+        cx, cy, size = 10, 10, 120
+        stroke_w = 18
+        shapes = []
+
+        if total == 0:
+            p_empty = ft.Paint(style=ft.PaintingStyle.STROKE, stroke_width=stroke_w, color=COLOR_ASIST_EMPTY)
+            shapes.append(cv.Arc(cx, cy, size, size, 0, 2 * math.pi, paint=p_empty))
+        else:
+            start_ang = -math.pi / 2
+            items = [
+                (P, COLOR_ASIST_P),
+                (A, COLOR_ASIST_A),
+                (T, COLOR_ASIST_T),
+                (J, COLOR_ASIST_J),
+            ]
+            for cant, color in items:
+                if cant > 0:
+                    sweep = (cant / total) * 2 * math.pi
+                    p = ft.Paint(style=ft.PaintingStyle.STROKE, stroke_width=stroke_w, color=color)
+                    shapes.append(cv.Arc(cx, cy, size, size, start_ang, sweep, paint=p))
+                    start_ang += sweep
+
+        canvas = cv.Canvas(shapes=shapes, width=140, height=140)
+
+        donut_stack = ft.Stack(
+            controls=[
+                canvas,
+                ft.Container(
+                    width=140,
+                    height=140,
+                    alignment=ft.Alignment.CENTER,
+                    content=ft.Column(
+                        spacing=0,
+                        alignment=ft.MainAxisAlignment.CENTER,
+                        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                        controls=[
+                            ft.Text(pct_asist_str, size=18, weight=ft.FontWeight.BOLD, color=tok.text_main),
+                            ft.Text("Asistencia", size=10, color=tok.text_muted),
+                        ],
+                    ),
+                ),
+            ],
+            width=140,
+            height=140,
+        )
+
+        def _leyenda_item(color: str, etiqueta: str, cant: int, pct: float):
+            return ft.Row(
+                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                controls=[
+                    ft.Row(
+                        spacing=6,
+                        controls=[
+                            ft.Container(width=10, height=10, border_radius=5, bgcolor=color),
+                            ft.Text(etiqueta, size=12, color=tok.text_main, weight=ft.FontWeight.W_500),
+                        ],
+                    ),
+                    ft.Text(f"{cant} ({pct:.1f}%)", size=12, weight=ft.FontWeight.BOLD, color=tok.text_main),
+                ],
+            )
+
+        card_leyendas = ft.Container(
+            expand=True,
+            padding=ft.Padding(left=10, right=10, top=6, bottom=6),
+            content=ft.Column(
+                spacing=6,
+                alignment=ft.MainAxisAlignment.CENTER,
+                controls=[
+                    _leyenda_item(COLOR_ASIST_P, "Presentes", P, pct_p),
+                    _leyenda_item(COLOR_ASIST_A, "Ausentes", A, pct_a),
+                    _leyenda_item(COLOR_ASIST_T, "Tardes", T, pct_t),
+                    _leyenda_item(COLOR_ASIST_J, "Justificados", J, pct_j),
+                ],
+            ),
+        )
+
+        return ft.Container(
+            bgcolor=tok.surface,
+            border=ft.Border.all(1, tok.border_color),
+            border_radius=14,
+            padding=ft.Padding(left=14, right=14, top=14, bottom=14),
+            content=ft.Column(
+                spacing=12,
+                controls=[
+                    ft.Row(
+                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                        controls=[
+                            ft.Text("Distribución de Asistencias", size=14, weight=ft.FontWeight.BOLD, color=tok.text_main),
+                            ft.Text(f"Total: {total}", size=11, color=tok.text_muted),
+                        ],
+                    ),
+                    ft.Row(
+                        alignment=ft.MainAxisAlignment.CENTER,
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                        spacing=16,
+                        controls=[
+                            donut_stack,
+                            card_leyendas,
+                        ],
+                    ),
+                ],
+            ),
+        )
+
+    def _build_asistencia_detalle_section(self, stats: dict, nivel: str) -> ft.Container:
+        tok = self.state.tokens
+        is_dark = self.state.is_dark_mode
+
+        if nivel == "curso":
+            alumnos = stats.get("alumnos_detalle", [])
+            if not alumnos:
+                return ft.Container(
+                    bgcolor=tok.surface,
+                    border=ft.Border.all(1, tok.border_color),
+                    border_radius=14,
+                    padding=20,
+                    alignment=ft.Alignment.CENTER,
+                    content=ft.Column(
+                        spacing=8,
+                        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                        controls=[
+                            ft.Icon(ft.Icons.PEOPLE_OUTLINE, size=32, color=tok.text_subtle),
+                            ft.Text("No hay alumnos cargados", size=14, weight=ft.FontWeight.BOLD, color=tok.text_main),
+                            ft.Text("Agrega alumnos a este curso desde la planilla.", size=12, color=tok.text_muted),
+                        ],
+                    ),
+                )
+
+            rows = []
+            for idx, al in enumerate(alumnos):
+                bg_avatar, text_avatar = get_avatar_palette(idx, is_dark=is_dark)
+                pct = al.get("porcentaje")
+                pct_str = f"{pct:.1f}%" if pct is not None else "--"
+                alerta = al.get("alerta", False)
+
+                pill_alerta = None
+                if alerta:
+                    pill_alerta = ft.Container(
+                        bgcolor="#EF4444",
+                        border_radius=6,
+                        padding=ft.Padding(left=6, right=6, top=2, bottom=2),
+                        content=ft.Row(
+                            spacing=3,
+                            tight=True,
+                            controls=[
+                                ft.Icon(ft.Icons.WARNING_AMBER_ROUNDED, size=12, color=ft.Colors.WHITE),
+                                ft.Text("< 75%", size=10, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
+                            ],
+                        ),
+                    )
+
+                badge_asist = ft.Container(
+                    bgcolor=tok.grade_pass_bg if (pct is not None and pct >= 75) else tok.grade_fail_bg,
+                    border_radius=8,
+                    padding=ft.Padding(left=8, right=8, top=3, bottom=3),
+                    content=ft.Text(
+                        pct_str,
+                        size=11,
+                        weight=ft.FontWeight.BOLD,
+                        color=tok.grade_pass_text if (pct is not None and pct >= 75) else tok.grade_fail_text,
+                    ),
+                )
+
+                metricas_col = ft.Row(
+                    spacing=6,
+                    tight=True,
+                    controls=[
+                        ft.Text(f"P:{al.get('P', 0)}", size=11, color=COLOR_ASIST_P, weight=ft.FontWeight.BOLD),
+                        ft.Text(f"A:{al.get('A', 0)}", size=11, color=COLOR_ASIST_A, weight=ft.FontWeight.BOLD),
+                        ft.Text(f"T:{al.get('T', 0)}", size=11, color=COLOR_ASIST_T, weight=ft.FontWeight.BOLD),
+                        ft.Text(f"J:{al.get('J', 0)}", size=11, color=COLOR_ASIST_J, weight=ft.FontWeight.BOLD),
+                    ],
+                )
+
+                trailing_controls = [metricas_col, badge_asist]
+                if pill_alerta:
+                    trailing_controls.append(pill_alerta)
+
+                rows.append(
+                    ft.Container(
+                        padding=ft.Padding(left=8, right=8, top=6, bottom=6),
+                        border=ft.Border(bottom=ft.BorderSide(1, tok.border_color)),
+                        content=ft.Row(
+                            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                            controls=[
+                                ft.Row(
+                                    spacing=10,
+                                    controls=[
+                                        ft.Container(
+                                            width=32,
+                                            height=32,
+                                            border_radius=16,
+                                            bgcolor=bg_avatar,
+                                            alignment=ft.Alignment.CENTER,
+                                            content=ft.Text(
+                                                extract_initials(al["nombre"]),
+                                                size=11,
+                                                weight=ft.FontWeight.BOLD,
+                                                color=text_avatar,
+                                            ),
+                                        ),
+                                        ft.Text(al["nombre"], size=13, weight=ft.FontWeight.W_500, color=tok.text_main),
+                                    ],
+                                ),
+                                ft.Row(spacing=8, controls=trailing_controls),
+                            ],
+                        ),
+                    )
+                )
+
+            return ft.Container(
+                bgcolor=tok.surface,
+                border=ft.Border.all(1, tok.border_color),
+                border_radius=14,
+                padding=ft.Padding(left=14, right=14, top=14, bottom=14),
+                content=ft.Column(
+                    spacing=10,
+                    controls=[
+                        ft.Column(
+                            spacing=2,
+                            controls=[
+                                ft.Text("Nómina de Asistencia por Alumno", size=14, weight=ft.FontWeight.BOLD, color=tok.text_main),
+                                ft.Text("Porcentajes y marcas P, A, T, J por alumno", size=11, color=tok.text_muted),
+                            ],
+                        ),
+                        ft.Column(spacing=4, controls=rows),
+                    ],
+                ),
+            )
+        else:
+            por_curso = stats.get("por_curso", {})
+            if not por_curso:
+                return ft.Container(
+                    bgcolor=tok.surface,
+                    border=ft.Border.all(1, tok.border_color),
+                    border_radius=14,
+                    padding=20,
+                    alignment=ft.Alignment.CENTER,
+                    content=ft.Column(
+                        spacing=8,
+                        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                        controls=[
+                            ft.Icon(ft.Icons.CLASS_OUTLINED, size=32, color=tok.text_subtle),
+                            ft.Text("No hay cursos con asistencias", size=14, weight=ft.FontWeight.BOLD, color=tok.text_main),
+                            ft.Text("Registra asistencias en los cursos para visualizar estadísticas.", size=12, color=tok.text_muted),
+                        ],
+                    ),
+                )
+
+            curso_rows = []
+            for nombre_curso, c_data in por_curso.items():
+                pct = c_data.get("porcentaje_asistencia")
+                pct_str = f"{pct:.1f}%" if pct is not None else "--"
+                c_tot = c_data.get("total_alumnos", 0)
+                clases = c_data.get("clases_dictadas", 0)
+
+                valor_progreso = (pct / 100.0) if pct is not None else 0.0
+
+                curso_rows.append(
+                    ft.Container(
+                        bgcolor=tok.bg_page,
+                        border=ft.Border.all(1, tok.border_color),
+                        border_radius=10,
+                        padding=ft.Padding(left=12, right=12, top=10, bottom=10),
+                        on_click=lambda _, cur=nombre_curso: self._conmutar_nivel("curso", cur),
+                        content=ft.Column(
+                            spacing=6,
+                            controls=[
+                                ft.Row(
+                                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                                    controls=[
+                                        ft.Row(
+                                            spacing=6,
+                                            controls=[
+                                                ft.Icon(ft.Icons.CLASS_, size=15, color=tok.primary),
+                                                ft.Text(nombre_curso, size=13, weight=ft.FontWeight.BOLD, color=tok.text_main),
+                                                ft.Text(f"({c_tot} al. · {clases} cl.)", size=11, color=tok.text_muted),
+                                            ],
+                                        ),
+                                        ft.Container(
+                                            bgcolor=tok.grade_pass_bg if (pct is not None and pct >= 75) else tok.grade_fail_bg,
+                                            border_radius=8,
+                                            padding=ft.Padding(left=6, right=6, top=2, bottom=2),
+                                            content=ft.Text(
+                                                pct_str,
+                                                size=11,
+                                                weight=ft.FontWeight.BOLD,
+                                                color=tok.grade_pass_text if (pct is not None and pct >= 75) else tok.grade_fail_text,
+                                            ),
+                                        ),
+                                    ],
+                                ),
+                                ft.Row(
+                                    spacing=8,
+                                    controls=[
+                                        ft.Text(f"P: {c_data.get('P', 0)}", size=11, color=COLOR_ASIST_P, weight=ft.FontWeight.BOLD),
+                                        ft.Text(f"A: {c_data.get('A', 0)}", size=11, color=COLOR_ASIST_A, weight=ft.FontWeight.BOLD),
+                                        ft.Text(f"T: {c_data.get('T', 0)}", size=11, color=COLOR_ASIST_T, weight=ft.FontWeight.BOLD),
+                                        ft.Text(f"J: {c_data.get('J', 0)}", size=11, color=COLOR_ASIST_J, weight=ft.FontWeight.BOLD),
+                                    ],
+                                ),
+                                ft.ProgressBar(
+                                    value=valor_progreso,
+                                    color=COLOR_ASIST_P,
+                                    bgcolor=tok.border_color,
+                                    height=6,
+                                    border_radius=3,
+                                ),
+                            ],
+                        ),
+                    )
+                )
+
+            return ft.Container(
+                bgcolor=tok.surface,
+                border=ft.Border.all(1, tok.border_color),
+                border_radius=14,
+                padding=ft.Padding(left=14, right=14, top=14, bottom=14),
+                content=ft.Column(
+                    spacing=10,
+                    controls=[
+                        ft.Column(
+                            spacing=2,
+                            controls=[
+                                ft.Text("Asistencia por Curso", size=14, weight=ft.FontWeight.BOLD, color=tok.text_main),
+                                ft.Text("Toca un curso para ver su desglose nominal", size=11, color=tok.text_muted),
+                            ],
+                        ),
+                        ft.Column(spacing=8, controls=curso_rows),
+                    ],
+                ),
+            )
 
     def _build_empty_state_global(self) -> ft.Container:
         """Estado vacío cuando no existe ningún colegio cargado en la aplicación."""

@@ -7,6 +7,11 @@ from core.calculos import (
     obtener_estadisticas_curso,
     obtener_estadisticas_colegio,
     calcular_distribucion_notas,
+    ordenar_fechas_cronologicamente,
+    filtrar_fechas_asistencia,
+    resumen_asistencia_curso_filtrado,
+    obtener_estadisticas_asistencia_curso,
+    obtener_estadisticas_asistencia_colegio,
 )
 from core.constants import *
 
@@ -666,6 +671,392 @@ def test_estadisticas_colegio_incluye_histograma_consolidado():
     assert hist["por_rango"]["1-3"] == 1
     assert hist["porcentajes_rango"]["8-10"] == 50.0
     assert hist["porcentajes_rango"]["1-3"] == 50.0
+
+
+def test_ordenar_fechas_cronologicamente_tupla():
+    # Fechas en formato dd-mm-aaaa donde orden alfabético fallaría ("01-08-2026" iría antes que "15-05-2026")
+    fechas = ["15-05-2026", "01-08-2026", "10-01-2026", "25-12-2025"]
+    ordenadas = ordenar_fechas_cronologicamente(fechas)
+    assert ordenadas == ["25-12-2025", "10-01-2026", "15-05-2026", "01-08-2026"]
+
+    # Fechas ISO y2k
+    fechas_iso = ["2026-08-22", "2026-05-10", "2025-12-01"]
+    ordenadas_iso = ordenar_fechas_cronologicamente(fechas_iso)
+    assert ordenadas_iso == ["2025-12-01", "2026-05-10", "2026-08-22"]
+
+
+def test_filtrar_fechas_asistencia_rango_normal():
+    fechas = ["10-03-2026", "15-04-2026", "20-05-2026", "01-06-2026"]
+    filtradas = filtrar_fechas_asistencia(fechas, fecha_desde="01-04-2026", fecha_hasta="31-05-2026")
+    assert filtradas == ["15-04-2026", "20-05-2026"]
+
+    # Sin filtros devuelve todas ordenadas
+    assert filtrar_fechas_asistencia(fechas) == fechas
+
+
+def test_filtrar_fechas_asistencia_rango_invertido_normalizacion():
+    fechas = ["10-03-2026", "15-04-2026", "20-05-2026", "01-06-2026"]
+    # fecha_desde posterior a fecha_hasta -> debe normalizar (min, max)
+    filtradas = filtrar_fechas_asistencia(fechas, fecha_desde="31-05-2026", fecha_hasta="01-04-2026")
+    assert filtradas == ["15-04-2026", "20-05-2026"]
+
+
+def test_resumen_asistencia_curso_filtrado_metricas():
+    curso_data = {
+        K_ALUMNOS: {
+            "1": {K_NOMBRE: "Ana Garcia"},
+            "2": {K_NOMBRE: "Bernardo Gomez"},
+        },
+        K_ASISTENCIAS: {
+            "10-03-2026": {"1": "P", "2": "A"},
+            "15-04-2026": {"1": "P", "2": "P"},
+            "20-05-2026": {"1": "A", "2": "T"},
+            "01-06-2026": {"1": "P", "2": "J"},
+        },
+    }
+    # Filtro entre 01-04-2026 y 31-05-2026 -> fechas activas: 15-04-2026 y 20-05-2026 (2 fechas)
+    resumen = resumen_asistencia_curso_filtrado(curso_data, fecha_desde="01-04-2026", fecha_hasta="31-05-2026")
+    assert resumen["total_fechas"] == 2
+    assert resumen["fechas"] == ["15-04-2026", "20-05-2026"]
+    
+    # Alumno 1: 15-04 (P), 20-05 (A) -> 1 Presente, 1 Ausente -> Total 2 -> 50.0%
+    ana = resumen["por_alumno"]["1"]
+    assert ana["presentes"] == 1
+    assert ana["ausentes"] == 1
+    assert ana["tardes"] == 0
+    assert ana["justificados"] == 0
+    assert ana["total_dias"] == 2
+    assert ana["porcentaje_asistencia"] == 50.0
+
+    # Alumno 2: 15-04 (P), 20-05 (T) -> 1 Presente, 1 Tarde -> Total 2 -> (1+1)/2 = 100.0%
+    bernardo = resumen["por_alumno"]["2"]
+    assert bernardo["presentes"] == 1
+    assert bernardo["ausentes"] == 0
+    assert bernardo["tardes"] == 1
+    assert bernardo["justificados"] == 0
+    assert bernardo["total_dias"] == 2
+    assert bernardo["porcentaje_asistencia"] == 100.0
+
+
+def test_resumen_asistencia_curso_filtrado_rango_sin_clases():
+    curso_data = {
+        K_ALUMNOS: {
+            "1": {K_NOMBRE: "Ana Garcia"},
+        },
+        K_ASISTENCIAS: {
+            "10-03-2026": {"1": "P"},
+            "15-04-2026": {"1": "P"},
+        },
+    }
+    # Rango donde no hubo clases: julio 2026
+    resumen = resumen_asistencia_curso_filtrado(curso_data, fecha_desde="01-07-2026", fecha_hasta="31-07-2026")
+    assert resumen["total_fechas"] == 0
+    assert resumen["fechas"] == []
+    ana = resumen["por_alumno"]["1"]
+    assert ana["presentes"] == 0
+    assert ana["ausentes"] == 0
+    assert ana["tardes"] == 0
+    assert ana["justificados"] == 0
+    assert ana["total_dias"] == 0
+    assert ana["porcentaje_asistencia"] is None
+
+
+# ==============================================================================
+# Tests para obtener_estadisticas_asistencia_curso (SPEC-022 / T1)
+# ==============================================================================
+
+def test_obtener_estadisticas_asistencia_curso_metricas_completas():
+    """Valida métricas completas para un curso con 3 alumnos y marcas P, A, T, J."""
+    curso_data = {
+        K_ALUMNOS: {
+            "1": {K_NOMBRE: "Juan Perez"},
+            "2": {K_NOMBRE: "Maria Gomez"},
+            "3": {K_NOMBRE: "Carlos Lopez"},
+        },
+        K_ASISTENCIAS: {
+            "01-03-2026": {"1": "P", "2": "P", "3": "P"},
+            "02-03-2026": {"1": "P", "2": "A", "3": "T"},
+            "03-03-2026": {"1": "T", "2": "P", "3": "J"},
+            "04-03-2026": {"1": "A", "2": "J", "3": "A"},
+        },
+    }
+    stats = obtener_estadisticas_asistencia_curso(curso_data)
+    assert stats["clases_dictadas"] == 4
+    assert stats["fechas_aplicadas"] == ["01-03-2026", "02-03-2026", "03-03-2026", "04-03-2026"]
+    assert stats["total_alumnos"] == 3
+    assert stats["totales"]["P"] == 5
+    assert stats["totales"]["A"] == 3
+    assert stats["totales"]["T"] == 2
+    assert stats["totales"]["J"] == 2
+    assert stats["totales"]["total"] == 12
+
+    assert stats["porcentajes"]["P"] == 41.7
+    assert stats["porcentajes"]["A"] == 25.0
+    assert stats["porcentajes"]["T"] == 16.7
+    assert stats["porcentajes"]["J"] == 16.7
+
+    # (5 + 2) / 12 * 100 = 58.333... -> 58.3%
+    assert stats["porcentaje_asistencia_promedio"] == 58.3
+
+    assert len(stats["alumnos_detalle"]) == 3
+    # Juan: P=2, A=1, T=1, J=0 -> total=4, %=(2+1)/4=75.0, alerta=False
+    al1 = stats["alumnos_detalle"][0]
+    assert al1["id"] == "1"
+    assert al1["nombre"] == "Juan Perez"
+    assert al1["P"] == 2
+    assert al1["A"] == 1
+    assert al1["T"] == 1
+    assert al1["J"] == 0
+    assert al1["total"] == 4
+    assert al1["porcentaje"] == 75.0
+    assert al1["alerta"] is False
+
+    # Maria: P=2, A=1, T=0, J=1 -> total=4, %=(2+0)/4=50.0, alerta=True
+    al2 = stats["alumnos_detalle"][1]
+    assert al2["id"] == "2"
+    assert al2["nombre"] == "Maria Gomez"
+    assert al2["P"] == 2
+    assert al2["A"] == 1
+    assert al2["T"] == 0
+    assert al2["J"] == 1
+    assert al2["total"] == 4
+    assert al2["porcentaje"] == 50.0
+    assert al2["alerta"] is True
+
+    # Carlos: P=1, A=1, T=1, J=1 -> total=4, %=(1+1)/4=50.0, alerta=True
+    al3 = stats["alumnos_detalle"][2]
+    assert al3["id"] == "3"
+    assert al3["nombre"] == "Carlos Lopez"
+    assert al3["P"] == 1
+    assert al3["A"] == 1
+    assert al3["T"] == 1
+    assert al3["J"] == 1
+    assert al3["total"] == 4
+    assert al3["porcentaje"] == 50.0
+    assert al3["alerta"] is True
+
+
+def test_obtener_estadisticas_asistencia_curso_filtro_rango_fechas():
+    """Solo computa fechas dentro del intervalo cronológico [desde, hasta]."""
+    curso_data = {
+        K_ALUMNOS: {
+            "1": {K_NOMBRE: "Juan Perez"},
+            "2": {K_NOMBRE: "Maria Gomez"},
+        },
+        K_ASISTENCIAS: {
+            "10-03-2026": {"1": "P", "2": "A"},
+            "15-04-2026": {"1": "P", "2": "P"},
+            "20-05-2026": {"1": "A", "2": "T"},
+            "01-06-2026": {"1": "P", "2": "J"},
+        },
+    }
+    stats = obtener_estadisticas_asistencia_curso(curso_data, fecha_desde="01-04-2026", fecha_hasta="31-05-2026")
+    assert stats["clases_dictadas"] == 2
+    assert stats["fechas_aplicadas"] == ["15-04-2026", "20-05-2026"]
+    assert stats["totales"]["total"] == 4
+    assert stats["alumnos_detalle"][0]["total"] == 2
+    assert stats["alumnos_detalle"][0]["porcentaje"] == 50.0
+    assert stats["alumnos_detalle"][1]["total"] == 2
+    assert stats["alumnos_detalle"][1]["porcentaje"] == 100.0
+
+
+def test_obtener_estadisticas_asistencia_curso_rango_invertido():
+    """Si fecha_desde > fecha_hasta, normaliza defensivamente a (min, max)."""
+    curso_data = {
+        K_ALUMNOS: {
+            "1": {K_NOMBRE: "Juan Perez"},
+        },
+        K_ASISTENCIAS: {
+            "10-03-2026": {"1": "P"},
+            "15-04-2026": {"1": "P"},
+            "20-05-2026": {"1": "A"},
+        },
+    }
+    stats_invertido = obtener_estadisticas_asistencia_curso(curso_data, fecha_desde="31-05-2026", fecha_hasta="01-04-2026")
+    stats_normal = obtener_estadisticas_asistencia_curso(curso_data, fecha_desde="01-04-2026", fecha_hasta="31-05-2026")
+    assert stats_invertido == stats_normal
+    assert stats_invertido["fechas_aplicadas"] == ["15-04-2026", "20-05-2026"]
+    assert stats_invertido["clases_dictadas"] == 2
+
+
+def test_obtener_estadisticas_asistencia_curso_vacio():
+    """Manejo seguro sin divisiones por cero ante cursos o rangos sin asistencias."""
+    # 1. Curso vacío
+    stats_vacio = obtener_estadisticas_asistencia_curso({})
+    assert stats_vacio["clases_dictadas"] == 0
+    assert stats_vacio["fechas_aplicadas"] == []
+    assert stats_vacio["total_alumnos"] == 0
+    assert stats_vacio["totales"] == {"P": 0, "A": 0, "T": 0, "J": 0, "total": 0}
+    assert stats_vacio["porcentajes"] == {"P": 0.0, "A": 0.0, "T": 0.0, "J": 0.0}
+    assert stats_vacio["porcentaje_asistencia_promedio"] is None
+    assert stats_vacio["alumnos_detalle"] == []
+
+    # 2. Con alumnos pero sin marcas
+    curso_con_alumnos = {
+        K_ALUMNOS: {"1": {K_NOMBRE: "Juan Perez"}},
+        K_ASISTENCIAS: {},
+    }
+    stats_sin_asist = obtener_estadisticas_asistencia_curso(curso_con_alumnos)
+    assert stats_sin_asist["clases_dictadas"] == 0
+    assert stats_sin_asist["fechas_aplicadas"] == []
+    assert stats_sin_asist["total_alumnos"] == 1
+    assert stats_sin_asist["totales"]["total"] == 0
+    assert stats_sin_asist["porcentajes"] == {"P": 0.0, "A": 0.0, "T": 0.0, "J": 0.0}
+    assert stats_sin_asist["porcentaje_asistencia_promedio"] is None
+    assert len(stats_sin_asist["alumnos_detalle"]) == 1
+    assert stats_sin_asist["alumnos_detalle"][0]["total"] == 0
+    assert stats_sin_asist["alumnos_detalle"][0]["porcentaje"] is None
+    assert stats_sin_asist["alumnos_detalle"][0]["alerta"] is False
+
+    # 3. Rango sin clases dictadas
+    curso_con_fechas = {
+        K_ALUMNOS: {"1": {K_NOMBRE: "Juan Perez"}},
+        K_ASISTENCIAS: {"10-03-2026": {"1": "P"}},
+    }
+    stats_rango_vacio = obtener_estadisticas_asistencia_curso(
+        curso_con_fechas, fecha_desde="01-07-2026", fecha_hasta="31-07-2026"
+    )
+    assert stats_rango_vacio["clases_dictadas"] == 0
+    assert stats_rango_vacio["fechas_aplicadas"] == []
+    assert stats_rango_vacio["totales"]["total"] == 0
+    assert stats_rango_vacio["porcentaje_asistencia_promedio"] is None
+
+
+def test_obtener_estadisticas_asistencia_curso_alerta_critica():
+    """Comprueba que alumnos con < 75.0% tengan alerta == True y >= 75.0% tengan alerta == False."""
+    curso_data = {
+        K_ALUMNOS: {
+            "1": {K_NOMBRE: "Alumno Umbral Exacto"},
+            "2": {K_NOMBRE: "Alumno Umbral Con Tarde"},
+            "3": {K_NOMBRE: "Alumno En Riesgo"},
+            "4": {K_NOMBRE: "Alumno Excelente"},
+            "5": {K_NOMBRE: "Alumno Sin Marcas"},
+        },
+        K_ASISTENCIAS: {
+            "01-03-2026": {"1": "P", "2": "P", "3": "P", "4": "P"},
+            "02-03-2026": {"1": "P", "2": "P", "3": "P", "4": "P"},
+            "03-03-2026": {"1": "P", "2": "T", "3": "A", "4": "P"},
+            "04-03-2026": {"1": "A", "2": "A", "3": "A", "4": "P"},
+        },
+    }
+    stats = obtener_estadisticas_asistencia_curso(curso_data)
+    detalles = {al["id"]: al for al in stats["alumnos_detalle"]}
+
+    # Alumno 1 (3P, 1A -> 75.0%) -> alerta False
+    assert detalles["1"]["porcentaje"] == 75.0
+    assert detalles["1"]["alerta"] is False
+
+    # Alumno 2 (2P, 1T, 1A -> (2+1)/4 = 75.0%) -> alerta False
+    assert detalles["2"]["porcentaje"] == 75.0
+    assert detalles["2"]["alerta"] is False
+
+    # Alumno 3 (2P, 2A -> 2/4 = 50.0% < 75.0%) -> alerta True
+    assert detalles["3"]["porcentaje"] == 50.0
+    assert detalles["3"]["alerta"] is True
+
+    # Alumno 4 (4P -> 100.0%) -> alerta False
+    assert detalles["4"]["porcentaje"] == 100.0
+    assert detalles["4"]["alerta"] is False
+
+    # Alumno 5 (sin registros -> None) -> alerta False
+    assert detalles["5"]["porcentaje"] is None
+    assert detalles["5"]["alerta"] is False
+
+
+# ==============================================================================
+# Tests para obtener_estadisticas_asistencia_colegio (SPEC-022 / T2)
+# ==============================================================================
+
+def test_obtener_estadisticas_asistencia_colegio_agregacion():
+    """Valida agregación de 2 cursos, unión de fechas únicas y sumatoria de P, A, T, J."""
+    colegio_data = {
+        K_CURSOS: {
+            "1A": {
+                K_ALUMNOS: {
+                    "1": {K_NOMBRE: "Alumno 1A-1"},
+                    "2": {K_NOMBRE: "Alumno 1A-2"},
+                },
+                K_ASISTENCIAS: {
+                    "01-03-2026": {"1": "P", "2": "P"},
+                    "02-03-2026": {"1": "P", "2": "A"},
+                },
+            },
+            "2B": {
+                K_ALUMNOS: {
+                    "1": {K_NOMBRE: "Alumno 2B-1"},
+                },
+                K_ASISTENCIAS: {
+                    "02-03-2026": {"1": "T"},
+                    "03-03-2026": {"1": "J"},
+                },
+            },
+        }
+    }
+    stats = obtener_estadisticas_asistencia_colegio(colegio_data)
+    assert stats["total_cursos"] == 2
+    assert stats["total_alumnos"] == 3
+    # Unión de fechas con marcas: {"01-03-2026", "02-03-2026", "03-03-2026"} = 3
+    assert stats["total_clases_registradas"] == 3
+
+    # Totales: 1A tiene (3P, 1A), 2B tiene (1T, 1J) -> Total P=3, A=1, T=1, J=1 -> total=6
+    assert stats["totales"]["P"] == 3
+    assert stats["totales"]["A"] == 1
+    assert stats["totales"]["T"] == 1
+    assert stats["totales"]["J"] == 1
+    assert stats["totales"]["total"] == 6
+
+    # % P = 3/6 * 100 = 50.0%, % A = 1/6 * 100 = 16.7%
+    assert stats["porcentajes"]["P"] == 50.0
+    assert stats["porcentajes"]["A"] == 16.7
+    assert stats["porcentajes"]["T"] == 16.7
+    assert stats["porcentajes"]["J"] == 16.7
+
+    # Asistencia Global = (3P + 1T)/6 = 4/6 = 66.7%
+    assert stats["porcentaje_asistencia_global"] == 66.7
+
+    assert "1A" in stats["por_curso"]
+    assert "2B" in stats["por_curso"]
+    assert stats["por_curso"]["1A"]["total_alumnos"] == 2
+    assert stats["por_curso"]["1A"]["clases_dictadas"] == 2
+    assert stats["por_curso"]["1A"]["porcentaje_asistencia"] == 75.0
+
+    assert stats["por_curso"]["2B"]["total_alumnos"] == 1
+    assert stats["por_curso"]["2B"]["clases_dictadas"] == 2
+    # 2B tiene 1T, 1J -> (P+T)/total = (0+1)/2 = 50.0%
+    assert stats["por_curso"]["2B"]["porcentaje_asistencia"] == 50.0
+
+
+def test_obtener_estadisticas_asistencia_colegio_filtro_fechas():
+    """Valida filtro de fechas a nivel colegio."""
+    colegio_data = {
+        K_CURSOS: {
+            "1A": {
+                K_ALUMNOS: {"1": {K_NOMBRE: "A1"}},
+                K_ASISTENCIAS: {
+                    "10-03-2026": {"1": "P"},
+                    "15-04-2026": {"1": "P"},
+                },
+            },
+        }
+    }
+    stats = obtener_estadisticas_asistencia_colegio(colegio_data, fecha_desde="01-04-2026", fecha_hasta="30-04-2026")
+    assert stats["total_clases_registradas"] == 1
+    assert stats["totales"]["total"] == 1
+    assert stats["por_curso"]["1A"]["clases_dictadas"] == 1
+
+
+def test_obtener_estadisticas_asistencia_colegio_vacio():
+    """Colegio sin cursos o sin asistencias retorna estructura segura."""
+    stats_vacio = obtener_estadisticas_asistencia_colegio({})
+    assert stats_vacio["total_cursos"] == 0
+    assert stats_vacio["total_alumnos"] == 0
+    assert stats_vacio["total_clases_registradas"] == 0
+    assert stats_vacio["totales"] == {"P": 0, "A": 0, "T": 0, "J": 0, "total": 0}
+    assert stats_vacio["porcentajes"] == {"P": 0.0, "A": 0.0, "T": 0.0, "J": 0.0}
+    assert stats_vacio["porcentaje_asistencia_global"] is None
+    assert stats_vacio["por_curso"] == {}
+
+
 
 
 

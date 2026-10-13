@@ -156,3 +156,71 @@ def test_registrar_exportacion_estadisticas(tmp_path):
     indice = cargar_indice(tmp_path)
     assert len(indice) == 1
     assert indice[0]["tipo"] == "estadisticas"
+
+
+def test_generar_nombre_planilla_estadisticas_asistencia_con_curso():
+    nombre = generar_nombre_planilla(
+        curso="2° B",
+        tipo="estadisticas_asistencia",
+        formato="pdf",
+        fecha_str="13-10-2026",
+    )
+    assert nombre == "Planilla Asistencias Estadisticas 2° B - 13-10-2026.pdf"
+
+
+def test_generar_nombre_planilla_estadisticas_asistencia_institucional():
+    nombre = generar_nombre_planilla(
+        curso=None,
+        tipo="estadisticas_asistencia",
+        colegio="Colegio Belgrano",
+        formato="pdf",
+        fecha_str="13-10-2026",
+    )
+    assert nombre == "Planilla Asistencias Estadisticas Colegio Belgrano - 13-10-2026.pdf"
+
+
+def test_generar_nombre_planilla_estadisticas_asistencia_fallback_colegio():
+    nombre = generar_nombre_planilla(
+        curso="",
+        tipo="estadisticas_asistencia",
+        colegio="",
+        formato="pdf",
+        fecha_str="13-10-2026",
+    )
+    assert nombre == "Planilla Asistencias Estadisticas Colegio - 13-10-2026.pdf"
+
+
+def test_generar_nombre_planilla_estadisticas_asistencia_colision_diaria(tmp_path):
+    archivo_base = tmp_path / "Planilla Asistencias Estadisticas 2° B - 13-10-2026.pdf"
+    archivo_base.write_text("dummy")
+
+    nombre = generar_nombre_planilla(
+        curso="2° B",
+        tipo="estadisticas_asistencia",
+        formato="pdf",
+        fecha_str="13-10-2026",
+        directorio=tmp_path,
+    )
+    assert nombre == "Planilla Asistencias Estadisticas 2° B - 13-10-2026 (1).pdf"
+
+
+def test_registrar_exportacion_estadisticas_asistencia(tmp_path):
+    pdf_file = tmp_path / "Planilla Asistencias Estadisticas 2° B - 13-10-2026.pdf"
+    pdf_file.write_text("pdf dummy content")
+
+    entry = registrar_exportacion(
+        ruta_archivo=pdf_file,
+        colegio="Colegio Belgrano",
+        curso="2° B",
+        tipo="estadisticas_asistencia",
+        formato="pdf",
+        directorio=tmp_path,
+    )
+
+    assert entry["tipo"] == "estadisticas_asistencia"
+    assert entry["curso"] == "2° B"
+    assert entry["colegio"] == "Colegio Belgrano"
+    indice = cargar_indice(tmp_path)
+    assert len(indice) == 1
+    assert indice[0]["tipo"] == "estadisticas_asistencia"
+

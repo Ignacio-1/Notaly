@@ -24,6 +24,8 @@ from .constants import (
     NOMBRES_TRIMESTRES,
     NOMBRES_COLUMNAS_DEFAULT,
     formatear_fecha,
+    FORMATO_FECHA,
+    FORMATO_HORA,
 )
 
 
@@ -205,138 +207,221 @@ def exportar_a_csv(curso_data: dict, file_path: str) -> tuple[bool, str | None]:
         return False, str(e)
 
 
-def exportar_a_pdf(curso_data: dict, file_path: str, nombre_curso: str, nombre_colegio: str = "") -> tuple[bool, str | None]:
+
+class NotalyLandscapePDF(FPDF):
+    """
+    Clase base para todos los reportes A4 apaisados (297x210 mm) de Notaly.
+    Incluye marca de agua institucional permanente 'NOTALY' y pie formal
+    con paginación 'Página X de Y', atribución institucional y fecha/hora
+    estricta conforme al Principio 8 ('dd-mm-aaaa hh:mm').
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(orientation="L", unit="mm", format="A4", *args, **kwargs)
+        self.set_auto_page_break(auto=False)
+        self.alias_nb_pages()
+        ahora = datetime.now()
+        # Formato constitucional estricto: dd-mm-aaaa hh:mm (Principio 8)
+        self.fecha_hora_emision = ahora.strftime(f"{FORMATO_FECHA} {FORMATO_HORA}")
+
+    def watermark(self):
+        """
+        Estampa marca de agua centrada 'NOTALY' en gris tenue
+        con rotación a 45 grados, sin obstaculizar la lectura de tablas y datos.
+        """
+        prev_x = self.get_x()
+        prev_y = self.get_y()
+        self.set_text_color(241, 245, 249)
+        self.set_font("helvetica", "B", 65)
+        with self.rotation(45, x=148.5, y=105):
+            self.text(x=85, y=115, text="NOTALY")
+        self.set_text_color(0, 0, 0)
+        self.set_xy(prev_x, prev_y)
+
+    def header(self):
+        """Dibuja la marca de agua automáticamente al inicio de cada página."""
+        self.watermark()
+
+    def footer(self):
+        """
+        Pie institucional formal permanente:
+        Línea divisoria horizontal sutil, atribución 'Planilla generada por NOTALY',
+        indicador de paginación 'Página X de {nb}' y fecha/hora constitucional.
+        """
+        self.set_y(-14)
+        self.set_draw_color(226, 232, 240)
+        self.set_line_width(0.2)
+        self.line(10, self.get_y(), 287, self.get_y())
+
+        self.set_y(-11)
+        self.set_font("helvetica", "I", 7.5)
+        self.set_text_color(148, 163, 184)
+
+        # Lado izquierdo: Atribución
+        self.set_x(10)
+        self.cell(90, 5, "Planilla generada por NOTALY", border=0, align="L")
+
+        # Centro: Paginación
+        self.set_x(105)
+        texto_pag = f"Página {self.page_no()} de {{nb}}"
+        self.cell(87, 5, texto_pag, border=0, align="C")
+
+        # Lado derecho: Fecha y hora de emisión (dd-mm-aaaa hh:mm)
+        self.set_x(197)
+        texto_fecha = f"Emisión: {self.fecha_hora_emision}"
+        self.cell(90, 5, texto_fecha, border=0, align="R")
+
+
+def _dibujar_cabecera_notas_pdf(pdf, nombre_curso: str, nombre_colegio: str, col_widths: dict, header_h: float, font_size: float, curso_data: dict):
+    """Dibuja el membrete institucional, super-cabecera y sub-cabeceras evaluativas en la página actual."""
+    pdf.set_font('helvetica', 'B', 13)
+    titulo_texto = f'{nombre_colegio.upper()} - PLANILLA DE NOTAS - CURSO: {nombre_curso}' if nombre_colegio else f'PLANILLA DE NOTAS - CURSO: {nombre_curso}'
+    pdf.cell(0, 8, titulo_texto, border=0, align='C')
+    pdf.ln(10)
+
+    trim_w = col_widths['t_p'] * 4 + col_widths['t_pr'] + col_widths['t_re']
+    fin_w = col_widths['f_p'] * 3 + col_widths['f_t']
+
+    pdf.set_font('helvetica', 'B', font_size)
+    pdf.set_fill_color(240, 240, 240)
+
+    # Fila 1 (Super Cabeceras)
+    pdf.cell(col_widths['n'] + col_widths['nombre'], header_h, '', border=1, fill=True)
+    pdf.cell(trim_w, header_h, 'Primer trimestre', border=1, align='C', fill=True)
+    pdf.cell(trim_w, header_h, 'Segundo trimestre', border=1, align='C', fill=True)
+    pdf.cell(trim_w, header_h, 'Tercer trimestre', border=1, align='C', fill=True)
+    pdf.cell(fin_w, header_h, 'Promedios Finales', border=1, align='C', fill=True)
+    pdf.ln()
+
+    # Fila 2 (Sub Cabeceras)
+    pdf.cell(col_widths['n'], header_h, 'N', border=1, align='C', fill=True)
+    pdf.cell(col_widths['nombre'], header_h, 'Nombre del Alumno', border=1, align='C', fill=True)
+
+    nombres_cols_curso = curso_data.get(K_NOMBRES_COLUMNAS, {})
+    for t_nom in NOMBRES_TRIMESTRES:
+        cols = nombres_cols_curso.get(t_nom, [])
+        pdf.cell(col_widths['t_p'], header_h, cols[0] if len(cols) > 0 else 'P1', border=1, align='C', fill=True)
+        pdf.cell(col_widths['t_p'], header_h, cols[1] if len(cols) > 1 else 'P2', border=1, align='C', fill=True)
+        pdf.cell(col_widths['t_p'], header_h, cols[2] if len(cols) > 2 else 'P3', border=1, align='C', fill=True)
+        pdf.cell(col_widths['t_p'], header_h, cols[3] if len(cols) > 3 else 'Ex', border=1, align='C', fill=True)
+        pdf.cell(col_widths['t_pr'], header_h, 'Prom', border=1, align='C', fill=True)
+        pdf.cell(col_widths['t_re'], header_h, 'Recup', border=1, align='C', fill=True)
+
+    pdf.cell(col_widths['f_p'], header_h, 'T1', border=1, align='C', fill=True)
+    pdf.cell(col_widths['f_p'], header_h, 'T2', border=1, align='C', fill=True)
+    pdf.cell(col_widths['f_p'], header_h, 'T3', border=1, align='C', fill=True)
+    pdf.cell(col_widths['f_t'], header_h, 'TOTAL', border=1, align='C', fill=True)
+    pdf.ln()
+
+
+def exportar_a_pdf(
+    curso_data: dict,
+    file_path: str,
+    nombre_curso: str,
+    nombre_colegio: str = "",
+    paginado: bool = True,
+) -> tuple[bool, str | None]:
     """
     Exporta los datos de un curso a un archivo PDF en formato A4 Horizontal.
+    Soporta modo paginado (15 alumnos por página) o modo comprimido en una sola página.
     """
-    class PDFWithFooter(FPDF):
-        def footer(self):
-            # Posición a 15 mm del final de la página
-            self.set_y(-15)
-            # Línea divisoria muy tenue y delgada
-            self.set_draw_color(226, 232, 240)
-            self.set_line_width(0.2)
-            self.line(10, self.get_y(), 287, self.get_y())
-            # Fuente del pie de página pequeña y atenuada (#9CA3AF)
-            self.set_font('helvetica', 'I', 8)
-            self.set_text_color(156, 163, 175)
-            self.cell(0, 10, 'Planilla generada por NOTALY - Gestor de Notas', align='R')
-
     try:
-        pdf = PDFWithFooter(orientation='L', unit='mm', format='A4')
+        pdf = NotalyLandscapePDF()
         pdf.set_auto_page_break(auto=False)
-        pdf.add_page()
-        
-        # Título
-        pdf.set_font('helvetica', 'B', 14)
-        titulo_texto = f'{nombre_colegio.upper()} - PLANILLA DE NOTAS - CURSO: {nombre_curso}' if nombre_colegio else f'PLANILLA DE NOTAS - CURSO: {nombre_curso}'
-        pdf.cell(0, 10, titulo_texto, border=0, align='C')
-        pdf.ln(12)
 
-        num_alumnos = len(curso_data.get(K_ALUMNOS, {}))
-        # 163mm de alto utilizable (210 - margenes y titulos)
-        row_height = min(7.0, 163.0 / max(1, num_alumnos))
-        font_size = max(5.0, row_height * 1.3)
-        header_h = max(5.0, row_height)
+        alumnos_ordenados = sorted(
+            curso_data.get(K_ALUMNOS, {}).items(),
+            key=lambda item: int(item[0]) if str(item[0]).isdigit() else str(item[0]),
+        )
+        num_alumnos = len(alumnos_ordenados)
 
-        # Configuración de anchos de columna
-        col_widths = {
-            'n': 8, 'nombre': 45,
-            't_p': 9, 't_pr': 10, 't_re': 11,
-            'f_p': 10, 'f_t': 14
-        }
-        trim_w = col_widths['t_p']*4 + col_widths['t_pr'] + col_widths['t_re'] # 57
-        fin_w = col_widths['f_p']*3 + col_widths['f_t'] # 44
+        if paginado:
+            # Geometría confortable para 15 alumnos por página
+            col_widths = {
+                'n': 8, 'nombre': 55,
+                't_p': 9, 't_pr': 10, 't_re': 11,
+                'f_p': 10, 'f_t': 14
+            }
+            row_height = 8.0
+            header_h = 7.0
+            font_size = 8.5
+            lotes = [alumnos_ordenados[i:i + 15] for i in range(0, max(1, num_alumnos), 15)] if num_alumnos > 0 else [[]]
+        else:
+            # Modo comprimido en una sola página (REQ-NOT-04)
+            col_widths = {
+                'n': 8, 'nombre': 45,
+                't_p': 9, 't_pr': 10, 't_re': 11,
+                'f_p': 10, 'f_t': 14
+            }
+            header_h = max(4.5, min(6.0, 140.0 / max(1, num_alumnos + 2)))
+            alto_disponible = 160.0 - (2 * header_h)
+            row_height = max(3.2, min(6.5, alto_disponible / max(1, num_alumnos)))
+            font_size = max(4.2, min(8.0, row_height * 1.25))
+            lotes = [alumnos_ordenados]
 
-        pdf.set_font('helvetica', 'B', font_size)  # type: ignore
-        
-        # Fila 1 (Super Cabeceras)
-        pdf.set_fill_color(240, 240, 240)
-        pdf.cell(col_widths['n'] + col_widths['nombre'], header_h, '', border=1, fill=True)
-        pdf.cell(trim_w, header_h, 'Primer trimestre', border=1, align='C', fill=True)
-        pdf.cell(trim_w, header_h, 'Segundo trimestre', border=1, align='C', fill=True)
-        pdf.cell(trim_w, header_h, 'Tercer trimestre', border=1, align='C', fill=True)
-        pdf.cell(fin_w, header_h, 'Promedios Finales', border=1, align='C', fill=True)
-        pdf.ln()
+        for lote in lotes:
+            pdf.add_page()
+            _dibujar_cabecera_notas_pdf(pdf, nombre_curso, nombre_colegio, col_widths, header_h, font_size, curso_data)
 
-        # Fila 2 (Sub Cabeceras)
-        pdf.cell(col_widths['n'], header_h, 'N', border=1, align='C', fill=True)
-        pdf.cell(col_widths['nombre'], header_h, 'Nombre del Alumno', border=1, align='C', fill=True)
-        
-        nombres_cols_curso = curso_data[K_NOMBRES_COLUMNAS]
-        for t_nom in NOMBRES_TRIMESTRES:
-            cols = nombres_cols_curso[t_nom]
-            pdf.cell(col_widths['t_p'], header_h, cols[0] if len(cols)>0 else 'P1', border=1, align='C', fill=True)
-            pdf.cell(col_widths['t_p'], header_h, cols[1] if len(cols)>1 else 'P2', border=1, align='C', fill=True)
-            pdf.cell(col_widths['t_p'], header_h, cols[2] if len(cols)>2 else 'P3', border=1, align='C', fill=True)
-            pdf.cell(col_widths['t_p'], header_h, cols[3] if len(cols)>3 else 'Ex', border=1, align='C', fill=True)
-            pdf.cell(col_widths['t_pr'], header_h, 'Prom', border=1, align='C', fill=True)
-            pdf.cell(col_widths['t_re'], header_h, 'Recup', border=1, align='C', fill=True)
+            pdf.set_font('helvetica', '', font_size)
 
-        pdf.cell(col_widths['f_p'], header_h, 'T1', border=1, align='C', fill=True)
-        pdf.cell(col_widths['f_p'], header_h, 'T2', border=1, align='C', fill=True)
-        pdf.cell(col_widths['f_p'], header_h, 'T3', border=1, align='C', fill=True)
-        pdf.cell(col_widths['f_t'], header_h, 'TOTAL', border=1, align='C', fill=True)
-        pdf.ln()
+            for id_alumno, datos_alumno in lote:
+                pdf.cell(col_widths['n'], row_height, str(id_alumno), border=1, align='C')
 
-        # Filas de Alumnos
-        pdf.set_font('helvetica', '', font_size)  # type: ignore
-        alumnos_ordenados = sorted(curso_data[K_ALUMNOS].items(), key=lambda item: int(item[0]))
+                # Truncar nombre si es muy largo sin romper la grilla
+                nombre = datos_alumno.get(K_NOMBRE, "")
+                max_chars = 28 if paginado else 23
+                if len(nombre) > max_chars:
+                    nombre = nombre[:max_chars - 3] + "..."
+                pdf.cell(col_widths['nombre'], row_height, nombre, border=1, align='L')
 
-        for id_alumno, datos_alumno in alumnos_ordenados:
-            pdf.cell(col_widths['n'], row_height, str(id_alumno), border=1, align='C')
-            
-            # Truncar nombre si es muy largo
-            nombre = datos_alumno.get(K_NOMBRE, "")
-            if len(nombre) > 23: nombre = nombre[:20] + "..."
-            pdf.cell(col_widths['nombre'], row_height, nombre, border=1, align='L')
+                resultados = procesar_calificaciones_alumno(datos_alumno.get(K_TRIMESTRES, {}))
 
-            resultados = procesar_calificaciones_alumno(datos_alumno[K_TRIMESTRES])
+                # Notas trimestrales
+                for indice, nombre_trimestre in enumerate(NOMBRES_TRIMESTRES):
+                    trimestre_data = datos_alumno.get(K_TRIMESTRES, {}).get(nombre_trimestre, {})
 
-            # Notas trimestrales
-            for indice, nombre_trimestre in enumerate(NOMBRES_TRIMESTRES):
-                trimestre_data = datos_alumno[K_TRIMESTRES][nombre_trimestre]
-                
-                # Principales (3)
-                principales = trimestre_data.get(K_PRINCIPALES, [None, None, None])
-                for i in range(3):
-                    val = principales[i] if i < len(principales) else None
-                    pdf.cell(col_widths['t_p'], row_height, formatear_nota_entera(val), border=1, align='C')
-                
-                # Extras (1)
-                extras = trimestre_data.get(K_EXTRAS, [None])
-                val_ex = extras[0] if extras else None
-                pdf.cell(col_widths['t_p'], row_height, formatear_nota_entera(val_ex), border=1, align='C')
-                
-                # Promedio Crudo
-                prom_crudo = resultados["promedios_crudos_redondeados"][indice]
-                pdf.set_text_color(220, 50, 50) if prom_crudo is not None and prom_crudo < 6 else pdf.set_text_color(0, 0, 0)
-                pdf.cell(col_widths['t_pr'], row_height, formatear_nota_entera(prom_crudo), border=1, align='C')
+                    # Principales (3)
+                    principales = trimestre_data.get(K_PRINCIPALES, [None, None, None])
+                    for i in range(3):
+                        val = principales[i] if i < len(principales) else None
+                        pdf.cell(col_widths['t_p'], row_height, formatear_nota_entera(val), border=1, align='C')
+
+                    # Extras (1)
+                    extras = trimestre_data.get(K_EXTRAS, [None])
+                    val_ex = extras[0] if extras else None
+                    pdf.cell(col_widths['t_p'], row_height, formatear_nota_entera(val_ex), border=1, align='C')
+
+                    # Promedio Crudo
+                    prom_crudo = resultados["promedios_crudos_redondeados"][indice]
+                    pdf.set_text_color(220, 50, 50) if prom_crudo is not None and prom_crudo < 6 else pdf.set_text_color(0, 0, 0)
+                    pdf.cell(col_widths['t_pr'], row_height, formatear_nota_entera(prom_crudo), border=1, align='C')
+                    pdf.set_text_color(0, 0, 0)
+
+                    # Recuperatorio
+                    recup = trimestre_data.get(K_RECUPERATORIO)
+                    pdf.cell(col_widths['t_re'], row_height, formatear_nota_entera(recup), border=1, align='C')
+
+                # Promedios finales (T1, T2, T3, TOTAL)
+                for indice in range(3):
+                    nota_final = resultados["notas_finales_redondeadas"][indice]
+                    pdf.set_text_color(220, 50, 50) if nota_final is not None and nota_final < 6 else pdf.set_text_color(0, 0, 0)
+                    pdf.cell(col_widths['f_p'], row_height, formatear_nota_entera(nota_final), border=1, align='C')
+
+                nota_total = resultados['nota_final_total_redondeada']
+                pdf.set_text_color(220, 50, 50) if nota_total is not None and nota_total < 6 else pdf.set_text_color(0, 0, 0)
+                pdf.set_font('helvetica', 'B', font_size)
+                pdf.cell(col_widths['f_t'], row_height, formatear_nota_entera(nota_total), border=1, align='C')
+                pdf.set_font('helvetica', '', font_size)
                 pdf.set_text_color(0, 0, 0)
-                
-                # Recuperatorio
-                recup = trimestre_data.get(K_RECUPERATORIO)
-                pdf.cell(col_widths['t_re'], row_height, formatear_nota_entera(recup), border=1, align='C')
 
-            # Promedios finales (T1, T2, T3, TOTAL)
-            for indice in range(3):
-                nota_final = resultados["notas_finales_redondeadas"][indice]
-                pdf.set_text_color(220, 50, 50) if nota_final is not None and nota_final < 6 else pdf.set_text_color(0, 0, 0)
-                pdf.cell(col_widths['f_p'], row_height, formatear_nota_entera(nota_final), border=1, align='C')
-                
-            nota_total = resultados['nota_final_total_redondeada']
-            pdf.set_text_color(220, 50, 50) if nota_total is not None and nota_total < 6 else pdf.set_text_color(0, 0, 0)
-            pdf.set_font('helvetica', 'B', font_size)  # type: ignore
-            pdf.cell(col_widths['f_t'], row_height, formatear_nota_entera(nota_total), border=1, align='C')
-            pdf.set_font('helvetica', '', font_size)  # type: ignore
-            pdf.set_text_color(0, 0, 0)
-            
-            pdf.ln()
+                pdf.ln()
 
         pdf.output(file_path)
         return True, None
     except Exception as e:
         return False, str(e)
+
 
 
 def exportar_asistencias_a_texto(curso_data: dict, file_path: str, nombre_curso: str, nombre_colegio: str = "") -> tuple[bool, str | None]:
@@ -452,136 +537,195 @@ def exportar_asistencias_a_csv(curso_data: dict, file_path: str) -> tuple[bool, 
         return False, str(e)
 
 
-def exportar_asistencias_a_pdf(curso_data: dict, file_path: str, nombre_curso: str, nombre_colegio: str = "") -> tuple[bool, str | None]:
+def _formatear_fecha_cabecera_pdf(fecha: str) -> str:
+    """Formatea fecha exclusivamente con guiones para cabecera PDF (dd-mm). Prohibidas las barras."""
+    f_norm = formatear_fecha(fecha)  # Devuelve dd-mm-yyyy si es válida
+    partes = f_norm.split("-")
+    if len(partes) == 3:
+        return f"{partes[0]}-{partes[1]}"
+    return f_norm.replace("/", "-")
+
+
+def _dibujar_cabecera_asistencias_pdf(
+    pdf,
+    nombre_curso: str,
+    nombre_colegio: str,
+    fechas: list[str],
+    w_n: float,
+    w_nombre: float,
+    w_fecha: float,
+    w_stats: float,
+    w_total: float,
+    w_porc: float,
+    header_h: float,
+    font_size: float,
+):
+    """Dibuja membrete institucional y cabecera de la tabla de asistencias en la página actual."""
+    pdf.set_font('helvetica', 'B', 13)
+    titulo_texto = f'{nombre_colegio.upper()} - REGISTRO DE ASISTENCIA - CURSO: {nombre_curso}' if nombre_colegio else f'REGISTRO DE ASISTENCIA - CURSO: {nombre_curso}'
+    pdf.cell(0, 8, titulo_texto, border=0, align='C')
+    pdf.ln(10)
+
+    pdf.set_font('helvetica', 'B', font_size)
+    pdf.set_fill_color(240, 240, 240)
+
+    pdf.cell(w_n, header_h, 'N', border=1, align='C', fill=True)
+    pdf.cell(w_nombre, header_h, 'Nombre del Alumno', border=1, align='C', fill=True)
+
+    if not fechas:
+        # Período vacío o curso sin asistencias (REQ-EXC-03)
+        w_aviso = 277.0 - (w_n + w_nombre)
+        pdf.cell(w_aviso, header_h, 'Estado de Asistencia', border=1, align='C', fill=True)
+        pdf.ln()
+        return
+
+    for fecha in fechas:
+        fecha_corta = _formatear_fecha_cabecera_pdf(fecha)
+        pdf.cell(w_fecha, header_h, fecha_corta, border=1, align='C', fill=True)
+
+    pdf.cell(w_stats, header_h, 'P', border=1, align='C', fill=True)
+    pdf.cell(w_stats, header_h, 'A', border=1, align='C', fill=True)
+    pdf.cell(w_stats, header_h, 'T', border=1, align='C', fill=True)
+    pdf.cell(w_stats, header_h, 'J', border=1, align='C', fill=True)
+    pdf.cell(w_total, header_h, 'Total', border=1, align='C', fill=True)
+    pdf.cell(w_porc, header_h, '% Asist', border=1, align='C', fill=True)
+    pdf.ln()
+
+
+def exportar_asistencias_a_pdf(
+    curso_data: dict,
+    file_path: str,
+    nombre_curso: str,
+    nombre_colegio: str = "",
+    paginado: bool = True,
+    fecha_desde: str | None = None,
+    fecha_hasta: str | None = None,
+) -> tuple[bool, str | None]:
     """
     Exporta el registro de asistencias de un curso a un archivo PDF en formato A4 Horizontal.
+    Soporta modo paginado (10 alumnos por página) o modo comprimido en una sola página,
+    con filtrado por rango de fechas opcional.
     """
-    class PDFWithFooter(FPDF):
-        def footer(self):
-            self.set_y(-15)
-            self.set_draw_color(226, 232, 240)
-            self.set_line_width(0.2)
-            self.line(10, self.get_y(), 287, self.get_y())
-            self.set_font('helvetica', 'I', 8)
-            self.set_text_color(156, 163, 175)
-            self.cell(0, 10, 'Registro de asistencia generado por NOTALY', align='R')
-
     try:
-        from .calculos import resumen_asistencia_curso
+        from .calculos import resumen_asistencia_curso_filtrado
         from .constants import K_ASISTENCIAS
 
-        resumen = resumen_asistencia_curso(curso_data)
+        resumen = resumen_asistencia_curso_filtrado(curso_data, fecha_desde, fecha_hasta)
         fechas = resumen["fechas"]
         asistencias = curso_data.get(K_ASISTENCIAS, {})
 
         alumnos_ordenados = sorted(
             curso_data.get(K_ALUMNOS, {}).items(),
-            key=lambda item: int(item[0]),
+            key=lambda item: int(item[0]) if str(item[0]).isdigit() else str(item[0]),
         )
+        num_alumnos = len(alumnos_ordenados)
 
-        pdf = PDFWithFooter(orientation='L', unit='mm', format='A4')
-        pdf.set_auto_page_break(auto=True, margin=15)
-        pdf.add_page()
+        pdf = NotalyLandscapePDF()
+        pdf.set_auto_page_break(auto=False)
 
-        # Título
-        pdf.set_font('helvetica', 'B', 14)
-        titulo_texto = f'{nombre_colegio.upper()} - REGISTRO DE ASISTENCIA - CURSO: {nombre_curso}' if nombre_colegio else f'REGISTRO DE ASISTENCIA - CURSO: {nombre_curso}'
-        pdf.cell(0, 10, titulo_texto, border=0, align='C')
-        pdf.ln(12)
-
-        # Determinar anchos de columna
-        # Ancho total disponible aprox 277 mm
-        w_n = 8
-        w_nombre = 45
-        w_stats = 10  # Para P, A, T, J
-        w_total = 12
-        w_porc = 14
+        # Dimensionamiento horizontal (277 mm utilizables)
+        w_n = 8.0
+        w_nombre = 55.0
+        w_stats = 10.0  # Para P, A, T, J
+        w_total = 12.0
+        w_porc = 14.0
         stats_total_w = w_stats * 4 + w_total + w_porc  # 66 mm
+        espacio_fechas = 277.0 - (w_n + w_nombre + stats_total_w)  # 148 mm
 
-        espacio_fechas = 277 - (w_n + w_nombre + stats_total_w) # aprox 158 mm
-        max_fechas_por_pagina = 18
-
-        # Si hay muchas fechas, ajustamos el ancho de cada columna de fecha
+        MAX_FECHAS_POR_PAGINA = 16
         num_fechas = len(fechas)
-        if num_fechas > 0:
-            w_fecha = max(8.0, min(14.0, espacio_fechas / num_fechas))
+
+        if num_fechas == 0:
+            bloques_fechas = [[]]
         else:
-            w_fecha = 14.0
+            bloques_fechas = [fechas[i:i + MAX_FECHAS_POR_PAGINA] for i in range(0, num_fechas, MAX_FECHAS_POR_PAGINA)]
 
-        header_h = 7.0
-        row_h = 6.5
-        font_size = 8.0
+        if paginado:
+            row_h = 8.0
+            header_h = 7.5
+            font_size = 8.5
+            lotes_alumnos = [alumnos_ordenados[i:i + 10] for i in range(0, max(1, num_alumnos), 10)] if num_alumnos > 0 else [[]]
+        else:
+            # Modo comprimido en una sola página (REQ-ASI-07)
+            header_h = max(4.5, min(6.0, 140.0 / max(1, num_alumnos + 2)))
+            alto_disponible = 160.0 - header_h
+            row_h = max(3.2, min(6.5, alto_disponible / max(1, num_alumnos)))
+            font_size = max(4.2, min(8.0, row_h * 1.25))
+            lotes_alumnos = [alumnos_ordenados]
 
-        # Cabecera
-        pdf.set_font('helvetica', 'B', font_size)
-        pdf.set_fill_color(240, 240, 240)
+        for bloque_fechas in bloques_fechas:
+            num_f_bloque = len(bloque_fechas)
+            w_fecha = max(8.5, min(14.0, espacio_fechas / max(1, num_f_bloque))) if num_f_bloque > 0 else 14.0
 
-        pdf.cell(w_n, header_h, 'N', border=1, align='C', fill=True)
-        pdf.cell(w_nombre, header_h, 'Nombre del Alumno', border=1, align='C', fill=True)
+            for lote in lotes_alumnos:
+                pdf.add_page()
+                _dibujar_cabecera_asistencias_pdf(
+                    pdf, nombre_curso, nombre_colegio, bloque_fechas,
+                    w_n, w_nombre, w_fecha, w_stats, w_total, w_porc,
+                    header_h, font_size
+                )
 
-        for fecha in fechas:
-            # Formato fecha corto DD/MM
-            partes = fecha.split('-')
-            fecha_corta = f"{partes[2]}/{partes[1]}" if len(partes) == 3 else fecha
-            pdf.cell(w_fecha, header_h, fecha_corta, border=1, align='C', fill=True)
+                pdf.set_font('helvetica', '', font_size)
 
-        pdf.cell(w_stats, header_h, 'P', border=1, align='C', fill=True)
-        pdf.cell(w_stats, header_h, 'A', border=1, align='C', fill=True)
-        pdf.cell(w_stats, header_h, 'T', border=1, align='C', fill=True)
-        pdf.cell(w_stats, header_h, 'J', border=1, align='C', fill=True)
-        pdf.cell(w_total, header_h, 'Total', border=1, align='C', fill=True)
-        pdf.cell(w_porc, header_h, '% Asist', border=1, align='C', fill=True)
-        pdf.ln()
+                for id_alumno, datos_alumno in lote:
+                    stats = resumen["por_alumno"].get(str(id_alumno), {})
+                    pdf.cell(w_n, row_h, str(id_alumno), border=1, align='C')
 
-        # Filas de alumnos
-        pdf.set_font('helvetica', '', font_size)
+                    nombre = datos_alumno.get(K_NOMBRE, "")
+                    max_chars = 28 if paginado else 23
+                    if len(nombre) > max_chars:
+                        nombre = nombre[:max_chars - 3] + "..."
+                    pdf.cell(w_nombre, row_h, nombre, border=1, align='L')
 
-        for id_alumno, datos_alumno in alumnos_ordenados:
-            stats = resumen["por_alumno"].get(str(id_alumno), {})
-            pdf.cell(w_n, row_h, str(id_alumno), border=1, align='C')
+                    if num_f_bloque == 0:
+                        # Mensaje informativo para rango sin clases o curso sin asistencias
+                        w_aviso = 277.0 - (w_n + w_nombre)
+                        pdf.set_font('helvetica', 'I', font_size - 0.5)
+                        pdf.set_text_color(100, 116, 139)
+                        pdf.cell(w_aviso, row_h, "Sin registros de asistencia en el período seleccionado", border=1, align='C')
+                        pdf.set_text_color(0, 0, 0)
+                        pdf.set_font('helvetica', '', font_size)
+                        pdf.ln()
+                        continue
 
-            nombre = datos_alumno.get(K_NOMBRE, "")
-            if len(nombre) > 23:
-                nombre = nombre[:20] + "..."
-            pdf.cell(w_nombre, row_h, nombre, border=1, align='L')
+                    for fecha in bloque_fechas:
+                        estado = asistencias.get(fecha, {}).get(str(id_alumno), "-")
+                        if estado == "P":
+                            pdf.set_text_color(16, 185, 129)
+                        elif estado == "A":
+                            pdf.set_text_color(239, 68, 68)
+                        elif estado == "T":
+                            pdf.set_text_color(245, 158, 11)
+                        elif estado == "J":
+                            pdf.set_text_color(59, 130, 246)
+                        else:
+                            pdf.set_text_color(160, 160, 160)
 
-            for fecha in fechas:
-                estado = asistencias.get(fecha, {}).get(str(id_alumno), "-")
-                if estado == "P":
-                    pdf.set_text_color(16, 185, 129)
-                elif estado == "A":
-                    pdf.set_text_color(239, 68, 68)
-                elif estado == "T":
-                    pdf.set_text_color(245, 158, 11)
-                elif estado == "J":
-                    pdf.set_text_color(59, 130, 246)
-                else:
-                    pdf.set_text_color(160, 160, 160)
+                        pdf.cell(w_fecha, row_h, estado, border=1, align='C')
+                        pdf.set_text_color(0, 0, 0)
 
-                pdf.cell(w_fecha, row_h, estado, border=1, align='C')
-                pdf.set_text_color(0, 0, 0)
+                    pdf.cell(w_stats, row_h, str(stats.get('presentes', 0)), border=1, align='C')
+                    pdf.cell(w_stats, row_h, str(stats.get('ausentes', 0)), border=1, align='C')
+                    pdf.cell(w_stats, row_h, str(stats.get('tardes', 0)), border=1, align='C')
+                    pdf.cell(w_stats, row_h, str(stats.get('justificados', 0)), border=1, align='C')
+                    pdf.cell(w_total, row_h, str(stats.get('total_dias', 0)), border=1, align='C')
 
-            pdf.cell(w_stats, row_h, str(stats.get('presentes', 0)), border=1, align='C')
-            pdf.cell(w_stats, row_h, str(stats.get('ausentes', 0)), border=1, align='C')
-            pdf.cell(w_stats, row_h, str(stats.get('tardes', 0)), border=1, align='C')
-            pdf.cell(w_stats, row_h, str(stats.get('justificados', 0)), border=1, align='C')
-            pdf.cell(w_total, row_h, str(stats.get('total_dias', 0)), border=1, align='C')
+                    porc = stats.get('porcentaje_asistencia')
+                    porc_str = f"{porc}%" if porc is not None else "-"
+                    if porc is not None and porc < 75:
+                        pdf.set_text_color(220, 50, 50)
+                        pdf.set_font('helvetica', 'B', font_size)
+                    pdf.cell(w_porc, row_h, porc_str, border=1, align='C')
+                    pdf.set_text_color(0, 0, 0)
+                    pdf.set_font('helvetica', '', font_size)
 
-            porc = stats.get('porcentaje_asistencia')
-            porc_str = f"{porc}%" if porc is not None else "-"
-            if porc is not None and porc < 75:
-                pdf.set_text_color(220, 50, 50)
-                pdf.set_font('helvetica', 'B', font_size)
-            pdf.cell(w_porc, row_h, porc_str, border=1, align='C')
-            pdf.set_text_color(0, 0, 0)
-            pdf.set_font('helvetica', '', font_size)
-
-            pdf.ln()
+                    pdf.ln()
 
         pdf.output(file_path)
         return True, None
     except Exception as e:
         return False, str(e)
+
 
 
 def formatear_notas_trimestre_whatsapp(
@@ -1510,6 +1654,276 @@ def exportar_estadisticas_a_pdf(
                             pdf.line(pdf.l_margin, pdf.get_y(), pdf.w - pdf.r_margin, pdf.get_y())
                             pdf.ln(2)
                         pdf.ln(4)
+
+        dest_path = Path(file_path)
+        dest_path.parent.mkdir(parents=True, exist_ok=True)
+        pdf.output(str(dest_path))
+        return True, str(dest_path)
+
+    except Exception as e:
+        return False, str(e)
+
+
+def exportar_estadisticas_asistencia_a_pdf(
+    datos_estadisticas: dict,
+    file_path: str,
+    nombre_colegio: str,
+    nombre_curso: str | None = None,
+    rango_fechas_str: str = "Todas las fechas",
+) -> tuple[bool, str | None]:
+    """
+    Genera el reporte PDF estadístico de asistencias formal conforme a SPEC-022.
+    Soporta visualización a nivel institucional o por curso con KPIs, frecuencias P, A, T, J,
+    desglose comparativo o nómina de estudiantes con alerta crítica.
+
+    Args:
+        datos_estadisticas: Diccionario procesado por obtener_estadisticas_asistencia_curso
+                            o obtener_estadisticas_asistencia_colegio.
+        file_path: Ruta absoluta destino del archivo PDF.
+        nombre_colegio: Nombre de la institución.
+        nombre_curso: Nombre del curso (None si es institucional).
+        rango_fechas_str: Leyenda del rango de fechas evaluado.
+
+    Returns:
+        Tupla (éxito: bool, ruta_o_error: str | None).
+    """
+    try:
+        ahora = datetime.now()
+        fecha_str = ahora.strftime(FORMATO_FECHA)
+        hora_str = ahora.strftime(FORMATO_HORA)
+        fecha_hora_emision = f"{fecha_str} {hora_str}"
+
+        colegio_nom = (nombre_colegio or "").strip() or "Institución Educativa"
+        curso_nom = nombre_curso.strip() if nombre_curso and str(nombre_curso).strip() else None
+        periodo_nom = (rango_fechas_str or "").strip() or "Todas las fechas"
+
+        pdf = ReporteEstadisticasPDF(
+            nombre_colegio=colegio_nom,
+            nombre_curso=curso_nom,
+            periodo_nombre=periodo_nom,
+            fecha_hora_emision=fecha_hora_emision,
+        )
+        pdf.alias_nb_pages()
+        pdf.set_auto_page_break(auto=True, margin=18)
+        pdf.set_margins(15, 12, 15)
+        pdf.add_page()
+
+        datos = datos_estadisticas or {}
+        es_curso = curso_nom is not None
+
+        # Título de sección
+        titulo_sec = f"Reporte Estadístico de Asistencias - {curso_nom}" if es_curso else "Reporte Estadístico de Asistencias - Institucional"
+        _dibujar_encabezado_seccion_pdf(pdf, titulo_sec)
+
+        totales = datos.get("totales", {"P": 0, "A": 0, "T": 0, "J": 0, "total": 0})
+        porcentajes = datos.get("porcentajes", {"P": 0.0, "A": 0.0, "T": 0.0, "J": 0.0})
+        total_marcas = totales.get("total", 0)
+
+        # 1. Bloque de KPIs Principales
+        card_w = 45.0
+        card_h = 13.0
+        start_x = pdf.l_margin
+        start_y = pdf.get_y()
+
+        if es_curso:
+            total_al = datos.get("total_alumnos", 0)
+            clases = datos.get("clases_dictadas", 0)
+            prom_asist = datos.get("porcentaje_asistencia_promedio")
+            prom_str = f"{prom_asist:.1f}%" if prom_asist is not None else "--"
+
+            kpis = [
+                ("ALUMNOS", f"{total_al}", (30, 41, 59)),
+                ("CLASES DICTADAS", f"{clases}", (71, 85, 105)),
+                ("TOTAL MARCAS", f"{total_marcas}", (100, 116, 139)),
+                ("% ASISTENCIA", prom_str, (16, 185, 129)),
+            ]
+        else:
+            tot_cursos = datos.get("total_cursos", 0)
+            tot_al = datos.get("total_alumnos", 0)
+            tot_clases = datos.get("total_clases_registradas", 0)
+            prom_glob = datos.get("porcentaje_asistencia_global")
+            prom_str = f"{prom_glob:.1f}%" if prom_glob is not None else "--"
+
+            kpis = [
+                ("TOTAL CURSOS", f"{tot_cursos}", (30, 41, 59)),
+                ("TOTAL ALUMNOS", f"{tot_al}", (71, 85, 105)),
+                ("CLASES REGISTRADAS", f"{tot_clases}", (100, 116, 139)),
+                ("% ASISTENCIA GLOBAL", prom_str, (16, 185, 129)),
+            ]
+
+        for i, (label, val, color) in enumerate(kpis):
+            x = start_x + (i * card_w)
+            pdf.set_fill_color(248, 250, 252)
+            pdf.set_draw_color(226, 232, 240)
+            pdf.rect(x, start_y, card_w, card_h, "DF")
+
+            pdf.set_xy(x, start_y + 1.5)
+            pdf.set_font("helvetica", "B", 6.5)
+            pdf.set_text_color(100, 116, 139)
+            pdf.cell(card_w, 4, label, border=0, align="C")
+
+            pdf.set_xy(x, start_y + 5.5)
+            pdf.set_font("helvetica", "B", 9.5)
+            pdf.set_text_color(*color)
+            pdf.cell(card_w, 6, val, border=0, align="C")
+
+        pdf.set_y(start_y + card_h + 5)
+
+        # 2. Distribución de Estados (P, A, T, J)
+        pdf.set_font("helvetica", "B", 8.5)
+        pdf.set_text_color(51, 65, 85)
+        pdf.cell(180, 5, _sanitizar_texto_fpdf("Distribución General de Asistencia:"), border=0, align="L")
+        pdf.ln(5.5)
+
+        w_col = 45.0
+        h_row = 6.0
+
+        pdf.set_fill_color(241, 245, 249)
+        pdf.set_draw_color(226, 232, 240)
+        pdf.set_font("helvetica", "B", 7.5)
+
+        pdf.set_text_color(16, 185, 129)
+        pdf.cell(w_col, h_row, "Presentes (P)", border=1, fill=True, align="C")
+        pdf.set_text_color(239, 68, 68)
+        pdf.cell(w_col, h_row, "Ausentes (A)", border=1, fill=True, align="C")
+        pdf.set_text_color(245, 158, 11)
+        pdf.cell(w_col, h_row, "Tardes (T)", border=1, fill=True, align="C")
+        pdf.set_text_color(59, 130, 246)
+        pdf.cell(w_col, h_row, "Justificados (J)", border=1, fill=True, align="C")
+        pdf.ln(h_row)
+
+        pdf.set_font("helvetica", "", 8)
+        pdf.set_text_color(30, 41, 59)
+        val_p = f"{totales.get('P', 0)} ({porcentajes.get('P', 0.0):.1f}%)"
+        val_a = f"{totales.get('A', 0)} ({porcentajes.get('A', 0.0):.1f}%)"
+        val_t = f"{totales.get('T', 0)} ({porcentajes.get('T', 0.0):.1f}%)"
+        val_j = f"{totales.get('J', 0)} ({porcentajes.get('J', 0.0):.1f}%)"
+
+        pdf.cell(w_col, h_row, val_p, border=1, align="C")
+        pdf.cell(w_col, h_row, val_a, border=1, align="C")
+        pdf.cell(w_col, h_row, val_t, border=1, align="C")
+        pdf.cell(w_col, h_row, val_j, border=1, align="C")
+        pdf.ln(h_row + 5)
+
+        # 3. Sección Detallada (Comparativa por Curso o Nómina de Alumnos)
+        if not es_curso:
+            # Institucional: Tabla comparativa de cursos
+            por_curso = datos.get("por_curso", {})
+            if not por_curso:
+                pdf.set_fill_color(248, 250, 252)
+                pdf.set_font("helvetica", "I", 9)
+                pdf.set_text_color(100, 116, 139)
+                pdf.cell(180, 10, _sanitizar_texto_fpdf("Sin cursos registrados o sin asistencias en el período."), border=1, fill=True, align="C")
+                pdf.ln(12)
+            else:
+                pdf.set_font("helvetica", "B", 8.5)
+                pdf.set_text_color(51, 65, 85)
+                pdf.cell(180, 5, _sanitizar_texto_fpdf("Comparativa de Asistencia por Curso:"), border=0, align="L")
+                pdf.ln(5.5)
+
+                pdf.set_fill_color(241, 245, 249)
+                pdf.set_draw_color(226, 232, 240)
+                pdf.set_font("helvetica", "B", 7.5)
+                pdf.set_text_color(71, 85, 105)
+
+                pdf.cell(42, 5, "Curso / División", border=1, fill=True, align="L")
+                pdf.cell(18, 5, "Alumnos", border=1, fill=True, align="C")
+                pdf.cell(18, 5, "Clases", border=1, fill=True, align="C")
+                pdf.cell(18, 5, "P", border=1, fill=True, align="C")
+                pdf.cell(18, 5, "A", border=1, fill=True, align="C")
+                pdf.cell(18, 5, "T", border=1, fill=True, align="C")
+                pdf.cell(18, 5, "J", border=1, fill=True, align="C")
+                pdf.cell(30, 5, "% Asistencia", border=1, fill=True, align="C")
+                pdf.ln(5)
+
+                for c_nom, c_stats in sorted(por_curso.items()):
+                    if pdf.get_y() > 270:
+                        pdf.add_page()
+                    pdf.set_font("helvetica", "", 7.5)
+                    pdf.set_text_color(30, 41, 59)
+
+                    pct = c_stats.get("porcentaje_asistencia")
+                    pct_str = f"{pct:.1f}%" if pct is not None else "--"
+
+                    pdf.cell(42, 5.5, _sanitizar_texto_fpdf(c_nom), border=1, align="L")
+                    pdf.cell(18, 5.5, str(c_stats.get("total_alumnos", 0)), border=1, align="C")
+                    pdf.cell(18, 5.5, str(c_stats.get("clases_dictadas", 0)), border=1, align="C")
+                    pdf.cell(18, 5.5, str(c_stats.get("P", 0)), border=1, align="C")
+                    pdf.cell(18, 5.5, str(c_stats.get("A", 0)), border=1, align="C")
+                    pdf.cell(18, 5.5, str(c_stats.get("T", 0)), border=1, align="C")
+                    pdf.cell(18, 5.5, str(c_stats.get("J", 0)), border=1, align="C")
+
+                    if pct is not None and pct < 75.0:
+                        pdf.set_text_color(220, 38, 38)
+                        pdf.set_font("helvetica", "B", 7.5)
+                    pdf.cell(30, 5.5, pct_str, border=1, align="C")
+                    pdf.set_text_color(30, 41, 59)
+                    pdf.set_font("helvetica", "", 7.5)
+                    pdf.ln(5.5)
+
+        else:
+            # Por Curso: Nómina de estudiantes
+            alumnos_detalle = datos.get("alumnos_detalle", [])
+            if not alumnos_detalle:
+                pdf.set_fill_color(248, 250, 252)
+                pdf.set_font("helvetica", "I", 9)
+                pdf.set_text_color(100, 116, 139)
+                pdf.cell(180, 10, _sanitizar_texto_fpdf("Sin alumnos registrados en el curso."), border=1, fill=True, align="C")
+                pdf.ln(12)
+            else:
+                pdf.set_font("helvetica", "B", 8.5)
+                pdf.set_text_color(51, 65, 85)
+                pdf.cell(180, 5, _sanitizar_texto_fpdf("Nómina y Desempeño Individual de Asistencia:"), border=0, align="L")
+                pdf.ln(5.5)
+
+                pdf.set_fill_color(241, 245, 249)
+                pdf.set_draw_color(226, 232, 240)
+                pdf.set_font("helvetica", "B", 7.5)
+                pdf.set_text_color(71, 85, 105)
+
+                pdf.cell(12, 5, "N°", border=1, fill=True, align="C")
+                pdf.cell(56, 5, "Estudiante", border=1, fill=True, align="L")
+                pdf.cell(16, 5, "P", border=1, fill=True, align="C")
+                pdf.cell(16, 5, "A", border=1, fill=True, align="C")
+                pdf.cell(16, 5, "T", border=1, fill=True, align="C")
+                pdf.cell(16, 5, "J", border=1, fill=True, align="C")
+                pdf.cell(18, 5, "Total", border=1, fill=True, align="C")
+                pdf.cell(30, 5, "% Asistencia", border=1, fill=True, align="C")
+                pdf.ln(5)
+
+                for al in alumnos_detalle:
+                    if pdf.get_y() > 270:
+                        pdf.add_page()
+                    pdf.set_font("helvetica", "", 7.5)
+                    pdf.set_text_color(30, 41, 59)
+
+                    aid = str(al.get("id", ""))
+                    nom = str(al.get("nombre", ""))
+                    if len(nom) > 30:
+                        nom = nom[:27] + "..."
+
+                    pct = al.get("porcentaje")
+                    pct_str = f"{pct:.1f}%" if pct is not None else "--"
+                    es_alerta = al.get("alerta", False)
+
+                    pdf.cell(12, 5.5, aid, border=1, align="C")
+                    pdf.cell(56, 5.5, _sanitizar_texto_fpdf(nom), border=1, align="L")
+                    pdf.cell(16, 5.5, str(al.get("P", 0)), border=1, align="C")
+                    pdf.cell(16, 5.5, str(al.get("A", 0)), border=1, align="C")
+                    pdf.cell(16, 5.5, str(al.get("T", 0)), border=1, align="C")
+                    pdf.cell(16, 5.5, str(al.get("J", 0)), border=1, align="C")
+                    pdf.cell(18, 5.5, str(al.get("total", 0)), border=1, align="C")
+
+                    if es_alerta:
+                        pdf.set_text_color(220, 38, 38)
+                        pdf.set_font("helvetica", "B", 7.5)
+                        pdf.cell(30, 5.5, f"{pct_str} (!)", border=1, align="C")
+                    else:
+                        pdf.cell(30, 5.5, pct_str, border=1, align="C")
+
+                    pdf.set_text_color(30, 41, 59)
+                    pdf.set_font("helvetica", "", 7.5)
+                    pdf.ln(5.5)
 
         dest_path = Path(file_path)
         dest_path.parent.mkdir(parents=True, exist_ok=True)
