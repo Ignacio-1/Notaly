@@ -420,19 +420,20 @@ def test_boton_compartir_copia_automatica(populated_state, mock_page, tmp_path):
     auto_backup_file = downloads_dir / gestor_datos.AUTO_BACKUP_FILENAME
     auto_backup_file.write_text(json.dumps({K_COLEGIOS: {}}), encoding="utf-8")
 
-    # 1. Con copia existente
-    with patch.object(populated_state, "get_backup_directories", return_value=[downloads_dir]):
-        dlg = LocalBackupDialog(populated_state, mock_page)
-        btn_compartir = next(
-            (b for b in _buscar_controles_tipo(dlg.tabs_content_container.content, ft.OutlinedButton)
-             if "compartir" in _obtener_texto_boton(b).lower()),
-            None
-        )
-        assert btn_compartir is not None
-        btn_compartir.on_click(None)
-        assert mock_page.clipboard_data == str(auto_backup_file.resolve())
-        assert len(mock_page.overlay) > 0
-        assert "Copia lista" in mock_page.overlay[-1].content.value
+    # 1. Con copia existente (debe invocar la hoja nativa de compartir según SPEC-026)
+    with patch("mobile.components.local_backup_dialog.compartir_archivo") as mock_compartir:
+        with patch.object(populated_state, "get_backup_directories", return_value=[downloads_dir]):
+            dlg = LocalBackupDialog(populated_state, mock_page)
+            btn_compartir = next(
+                (b for b in _buscar_controles_tipo(dlg.tabs_content_container.content, ft.OutlinedButton)
+                 if "compartir" in _obtener_texto_boton(b).lower()),
+                None
+            )
+            assert btn_compartir is not None
+            btn_compartir.on_click(None)
+            mock_compartir.assert_called_once()
+            args, kwargs = mock_compartir.call_args
+            assert args[1] == str(auto_backup_file.resolve())
 
     # 2. Sin copia existente
     vacio_dir = tmp_path / "Vacio"

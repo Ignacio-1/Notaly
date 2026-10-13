@@ -486,7 +486,6 @@ class GruposView(ft.Container):
                 border=ft.Border.all(1, tok.border_color),
                 border_radius=16,
                 padding=24,
-                width=360,
                 content=ft.Column(
                     tight=True,
                     horizontal_alignment=ft.CrossAxisAlignment.CENTER,

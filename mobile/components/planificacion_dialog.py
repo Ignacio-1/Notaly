@@ -23,7 +23,7 @@ MESES = [
     "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
 ]
 
-DIAS_SEMANA = ["Lu", "Ma", "Mi", "Ju", "Vi", "Sa", "Do"]
+DIAS_SEMANA = ["Lu", "Ma", "Mi", "Ju", "Vi"]
 DIAS_SEMANA_ABBR = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
 
 
@@ -196,8 +196,8 @@ class PlanificacionCursoDialog(ft.AlertDialog):
         )
 
         # Dimensiones responsivas M3
-        pw = self.app_page.width if self.app_page and self.app_page.width else 390
-        ph = self.app_page.height if self.app_page and self.app_page.height else 844
+        pw = getattr(self.app_page, "width", None) or 390
+        ph = getattr(self.app_page, "height", None) or 844
         calc_w = max(280, min(pw - 32, 380))
         max_h = max(280, min(ph * 0.72, 520))
 
@@ -288,7 +288,7 @@ class PlanificacionCursoDialog(ft.AlertDialog):
                 pass
 
     def _render_calendar(self):
-        """Renderiza la matriz de días del mes en curso."""
+        """Renderiza la matriz de días del mes en curso mostrando exclusivamente días hábiles (Lunes a Viernes)."""
         tok = self.tokens
         clases = self.state.get_clases_curso(self.colegio, self.curso)
         fechas_planificadas = set(clases.keys())
@@ -296,26 +296,32 @@ class PlanificacionCursoDialog(ft.AlertDialog):
         cal = calendar.monthcalendar(self.current_view_year, self.current_view_month)
         today = datetime.now()
 
-        # Fila de encabezado de días (Lu - Do)
+        # Fila de encabezado de días hábiles (Lu - Vi) con distribución simétrica y responsiva
         header_days = ft.Row(
             [
                 ft.Container(
                     content=ft.Text(d, weight=ft.FontWeight.BOLD, size=11, color=tok.text_muted, text_align=ft.TextAlign.CENTER),
-                    width=40,
+                    expand=True,
+                    height=28,
                     alignment=ft.Alignment.CENTER,
                 )
                 for d in DIAS_SEMANA
             ],
-            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+            spacing=4,
         )
 
         grid_rows = [header_days]
 
         for week in cal:
+            week_habiles = week[:5]  # Solo Lunes a Viernes (0 a 4)
+            # Omitir semanas sin ningún día hábil perteneciente al mes activo
+            if not any(day > 0 for day in week_habiles):
+                continue
+
             week_cols = []
-            for day in week:
+            for day in week_habiles:
                 if day == 0:
-                    week_cols.append(ft.Container(width=40, height=36))
+                    week_cols.append(ft.Container(expand=True, height=36))
                 else:
                     fecha_dia_iso = f"{self.current_view_year:04d}-{self.current_view_month:02d}-{day:02d}"
                     has_class = fecha_dia_iso in fechas_planificadas
@@ -352,7 +358,7 @@ class PlanificacionCursoDialog(ft.AlertDialog):
                         bgcolor=bgcolor,
                         border=border,
                         border_radius=8,
-                        width=40,
+                        expand=True,
                         height=36,
                         alignment=ft.Alignment.CENTER,
                         ink=True,
@@ -360,7 +366,7 @@ class PlanificacionCursoDialog(ft.AlertDialog):
                     )
                     week_cols.append(day_btn)
 
-            grid_rows.append(ft.Row(week_cols, alignment=ft.MainAxisAlignment.SPACE_BETWEEN))
+            grid_rows.append(ft.Row(week_cols, spacing=4))
 
         self.calendar_body.content = ft.Column(grid_rows, spacing=4, tight=True)
 

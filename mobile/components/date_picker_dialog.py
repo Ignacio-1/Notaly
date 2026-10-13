@@ -28,7 +28,7 @@ MESES = [
     "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
 ]
 
-DIAS_SEMANA = ["Lu", "Ma", "Mi", "Ju", "Vi", "Sa", "Do"]
+DIAS_SEMANA = ["Lu", "Ma", "Mi", "Ju", "Vi"]
 
 
 class DatePickerDialog(ft.AlertDialog):
@@ -78,6 +78,9 @@ class DatePickerDialog(ft.AlertDialog):
         # Renderizar calendario
         self._render_calendar()
 
+        pw = getattr(self.app_page, "width", None) or 360
+        calc_w = max(280, min(pw - 32, 340))
+
         content = ft.Container(
             content=ft.Column(
                 [
@@ -101,8 +104,9 @@ class DatePickerDialog(ft.AlertDialog):
                 ],
                 tight=True,
                 spacing=10,
-                width=330,
+                width=calc_w,
             ),
+            width=calc_w,
             padding=ft.Padding(left=0, right=0, top=0, bottom=0),
         )
 
@@ -159,26 +163,31 @@ class DatePickerDialog(ft.AlertDialog):
         cal = calendar.monthcalendar(self.current_view_year, self.current_view_month)
         today = datetime.now()
 
-        # Fila de días de la semana
+        # Fila de días de la semana hábiles (Lu - Vi) con distribución simétrica
         header_days = ft.Row(
             [
                 ft.Container(
-                    content=ft.Text(d, weight=ft.FontWeight.BOLD, size=12, color=ft.Colors.SECONDARY),
-                    width=40,
+                    content=ft.Text(d, weight=ft.FontWeight.BOLD, size=11, color=ft.Colors.SECONDARY, text_align=ft.TextAlign.CENTER),
+                    expand=True,
+                    height=28,
                     alignment=ft.Alignment.CENTER,
                 )
                 for d in DIAS_SEMANA
             ],
-            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+            spacing=4,
         )
 
         grid_rows = [header_days]
 
         for week in cal:
+            week_habiles = week[:5]  # Solo Lunes a Viernes (0 a 4)
+            if not any(day > 0 for day in week_habiles):
+                continue
+
             week_cols = []
-            for day in week:
+            for day in week_habiles:
                 if day == 0:
-                    week_cols.append(ft.Container(width=40, height=36))
+                    week_cols.append(ft.Container(expand=True, height=36))
                 else:
                     fecha_dia_iso = f"{self.current_view_year:04d}-{self.current_view_month:02d}-{day:02d}"
                     is_selected = (
@@ -209,7 +218,7 @@ class DatePickerDialog(ft.AlertDialog):
                         bgcolor=bgcolor,
                         border=border,
                         border_radius=8,
-                        width=40,
+                        expand=True,
                         height=36,
                         alignment=ft.Alignment.CENTER,
                         ink=True,
@@ -217,7 +226,7 @@ class DatePickerDialog(ft.AlertDialog):
                     )
                     week_cols.append(day_btn)
 
-            grid_rows.append(ft.Row(week_cols, alignment=ft.MainAxisAlignment.SPACE_BETWEEN))
+            grid_rows.append(ft.Row(week_cols, spacing=4))
 
         self.calendar_body.content = ft.Column(grid_rows, spacing=4)
 

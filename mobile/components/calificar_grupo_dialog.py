@@ -175,8 +175,11 @@ class CalificarGrupoDialog(ft.AlertDialog):
         )
 
 
+        pw = getattr(self.app_page, "width", None) or 360
+        calc_w = max(280, min(pw - 32, 330))
+
         return ft.Container(
-            width=330,
+            width=calc_w,
             content=ft.Column(
                 tight=True,
                 spacing=12,

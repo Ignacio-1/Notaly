@@ -299,9 +299,12 @@ class ComportamientoDialog(ft.AlertDialog):
         )
 
 
+        pw = getattr(self.app_page, "width", None) or 360
+        calc_w = max(280, min(pw - 32, 350))
+
         return ft.Container(
             content=scroll_content,
-            width=360,
+            width=calc_w,
             height=480,
             padding=0,
         )

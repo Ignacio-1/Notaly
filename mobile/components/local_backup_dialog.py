@@ -97,6 +97,9 @@ class LocalBackupDialog(ft.AlertDialog):
             on_change=self._on_tab_changed,
         )
 
+        pw = getattr(self.app_page, "width", None) or 360
+        calc_w = max(280, min(pw - 32, 350))
+
         super().__init__(
             title=ft.Row(
                 [
@@ -108,7 +111,7 @@ class LocalBackupDialog(ft.AlertDialog):
             ),
             content=ft.Container(
                 content=self.tabs_content_container,
-                width=360,
+                width=calc_w,
                 height=480,
             ),
             actions=[
@@ -433,7 +436,6 @@ class LocalBackupDialog(ft.AlertDialog):
                 ft.OutlinedButton(
                     "Seleccionar archivo de copia (.json)",
                     icon=ft.Icons.FILE_OPEN_OUTLINED,
-                    width=350,
                     height=40,
                     style=ft.ButtonStyle(
                         color=tok.primary,

@@ -294,3 +294,37 @@ def test_planificacion_dialog_on_change_callbacks(temp_state):
     assert on_change_mock.call_count == 4
 
 
+def test_planificacion_dialog_solo_dias_habiles(temp_state):
+    """Verifica que el calendario muestre exclusivamente 5 días hábiles (Lu-Vi) sin fines de semana ni desfaces."""
+    page = MockMobilePage()
+    dlg = PlanificacionCursoDialog(
+        state=temp_state,
+        colegio="Escuela 1",
+        curso="3A",
+        page=page,
+    )
+
+    # 1. Constante de días de semana debe ser exactamente Lu a Vi (5 días)
+    assert DIAS_SEMANA == ["Lu", "Ma", "Mi", "Ju", "Vi"]
+    assert "Sa" not in DIAS_SEMANA
+    assert "Do" not in DIAS_SEMANA
+
+    # 2. La grilla del calendario debe contener filas con exactamente 5 columnas
+    grid_column = dlg.calendar_body.content
+    assert isinstance(grid_column, ft.Column)
+    assert len(grid_column.controls) > 1
+
+    # Fila de cabecera
+    header_row = grid_column.controls[0]
+    assert isinstance(header_row, ft.Row)
+    assert len(header_row.controls) == 5
+    dias_renderizados = [c.content.value for c in header_row.controls]
+    assert dias_renderizados == ["Lu", "Ma", "Mi", "Ju", "Vi"]
+
+    # Todas las filas de semanas deben tener exactamente 5 columnas
+    for week_row in grid_column.controls[1:]:
+        assert isinstance(week_row, ft.Row)
+        assert len(week_row.controls) == 5
+
+
+
