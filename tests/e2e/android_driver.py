@@ -236,7 +236,10 @@ class AndroidDriver:
         """Regresa hasta la pantalla inicial de ColegiosView."""
         self._ensure_app_foreground()
         self._dismiss_active_modals()
-        for _ in range(6):
+        # Cerrar teclado virtual si estuviese desplegado
+        self.keyevent(111)  # KEYCODE_ESCAPE
+        time.sleep(0.3)
+        for _ in range(8):
             if self.is_visible("+ Colegio"):
                 return
             if self.is_visible("Inicio"):
@@ -252,6 +255,10 @@ class AndroidDriver:
                 self.press_back()
                 time.sleep(0.8)
             self._dismiss_active_modals()
+        # Si aún no alcanzó la raíz por navegación profunda, relanzar app para volver al inicio limpio
+        if not self.is_visible("+ Colegio"):
+            self.restart_app()
+            time.sleep(1.5)
 
     def ensure_in_curso(self):
         """Garantiza que la pantalla activa sea NotasView dentro de un curso."""

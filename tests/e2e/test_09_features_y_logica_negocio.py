@@ -169,13 +169,25 @@ def test_feature_busqueda_global_alumnos_y_filtrado(driver):
         driver.type_text("a")
         time.sleep(0.5)
 
-        # Cerrar vista de búsqueda tocando el botón 'Volver' o con press_back
+        # Cerrar teclado si está activo y cerrar vista de búsqueda
+        driver.keyevent(111)  # Escape / cerrar teclado
+        time.sleep(0.4)
         if driver.is_visible("Volver"):
             driver.tap("Volver")
             time.sleep(0.5)
         else:
             driver.press_back()
             time.sleep(0.5)
+
+        # Si aún siguiera abierta la vista de resultados de búsqueda, segundo retroceso
+        if not (
+            driver.is_visible("1° Trim")
+            or driver.is_visible("Notas")
+            or driver.is_visible("+ Alumno")
+            or driver.is_visible("Hoy")
+        ):
+            driver.press_back()
+            time.sleep(0.8)
 
     assert (
         driver.is_visible("1° Trim")
