@@ -232,6 +232,27 @@ class AndroidDriver:
                 self.tap(btn)
                 time.sleep(0.5)
 
+    def find_export_button(self) -> Optional[UIElement]:
+        """Localiza el botón de exportación por content-desc, texto, o posición en la barra de herramientas."""
+        for el in self.dump_hierarchy():
+            desc = (el.content_desc or el.text or "").lower()
+            if "exportar" in desc:
+                return el
+        # Fallback: en NotasView, el 4to botón de la barra de acciones (a la derecha de + Alumno)
+        elements = self.dump_hierarchy()
+        alumno_btns = [el for el in elements if "+ alumno" in el.content_desc.lower()]
+        if alumno_btns:
+            y_center = alumno_btns[0].cy
+            toolbar_btns = [
+                el for el in elements
+                if el.clickable and abs(el.cy - y_center) < 50 and el.cx > alumno_btns[0].x2
+            ]
+            if len(toolbar_btns) >= 4:
+                return toolbar_btns[3]
+            elif toolbar_btns:
+                return toolbar_btns[-1]
+        return None
+
     def ensure_in_colegios(self):
         """Regresa hasta la pantalla inicial de ColegiosView."""
         self._ensure_app_foreground()
@@ -239,6 +260,16 @@ class AndroidDriver:
         # Cerrar teclado virtual si estuviese desplegado
         self.keyevent(111)  # KEYCODE_ESCAPE
         time.sleep(0.3)
+        # Limpiar texto residual en campo de búsqueda si lo hubiera
+        for el in self.dump_hierarchy():
+            if el.class_name == "android.widget.EditText" and el.text:
+                el.tap()
+                time.sleep(0.2)
+                for _ in range(len(el.text) + 2):
+                    self.keyevent(67)  # KEYCODE_DEL
+                self.keyevent(111)  # KEYCODE_ESCAPE
+                time.sleep(0.3)
+                break
         for _ in range(8):
             if self.is_visible("+ Colegio"):
                 return

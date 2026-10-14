@@ -16,9 +16,12 @@ def test_stress_01_exportacion_whatsapp_periodos(driver):
     driver.ensure_in_curso()
 
     # Localizar y abrir diálogo de exportación
-    export_buttons = [el for el in driver.dump_hierarchy() if "exportar" in (el.content_desc or el.text).lower()]
-    assert len(export_buttons) > 0, "Botón de exportación debe estar visible en la barra de herramientas."
-    export_buttons[0].tap()
+    btn_export = driver.find_export_button() if hasattr(driver, "find_export_button") else None
+    if not btn_export:
+        export_buttons = [el for el in driver.dump_hierarchy() if "exportar" in (el.content_desc or el.text).lower()]
+        btn_export = export_buttons[0] if export_buttons else None
+    assert btn_export is not None, "Botón de exportación debe estar visible en la barra de herramientas."
+    btn_export.tap()
     time.sleep(1.0)
 
     # Seleccionar la opción 'Texto para WhatsApp'

@@ -169,6 +169,10 @@ def test_feature_busqueda_global_alumnos_y_filtrado(driver):
         driver.type_text("a")
         time.sleep(0.5)
 
+        # Borrar el término de búsqueda para dejar el estado limpio
+        driver.keyevent(67)  # KEYCODE_DEL
+        time.sleep(0.3)
+
         # Cerrar teclado si está activo y cerrar vista de búsqueda
         driver.keyevent(111)  # Escape / cerrar teclado
         time.sleep(0.4)

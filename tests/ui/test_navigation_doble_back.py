@@ -56,7 +56,7 @@ class MockMobilePage:
         self.spacing = 0
         self.services = []
         self.controls = []
-        self.overlay = []
+        self._overlay = []
         self.dialog_stack = []
         self.views = [MockView()]
         self.window = MockWindow()
@@ -66,6 +66,10 @@ class MockMobilePage:
         self.on_view_pop = None
         self.on_keyboard_event = None
         self.on_app_lifecycle_state_change = None
+
+    @property
+    def overlay(self):
+        return self._overlay
 
     def add(self, *controls):
         self.controls.extend(controls)

@@ -105,7 +105,10 @@ def main(page: ft.Page):
     def _mostrar_snackbar_doble_back():
         t = state.tokens
         if hasattr(page, "overlay") and isinstance(page.overlay, list):
-            page.overlay = [c for c in page.overlay if not isinstance(c, ft.SnackBar)]
+            # Mutación in-place segura: page.overlay es una propiedad de sólo lectura en Flet
+            for c in list(page.overlay):
+                if isinstance(c, ft.SnackBar):
+                    page.overlay.remove(c)
             sb = ft.SnackBar(
                 content=ft.Text(
                     "Presiona o haz el gesto de volver otra vez para salir",
