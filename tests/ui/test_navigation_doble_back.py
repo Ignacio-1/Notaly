@@ -120,23 +120,29 @@ def mock_app_environment(tmp_path):
 
 
 def test_prioridad_absoluta_busqueda_omnibox(mock_app_environment):
-    """La vista de búsqueda abierta se cierra con máxima prioridad sin desapilar historial."""
+    """La vista de búsqueda overlay abierta se cierra con máxima prioridad sin desapilar historial."""
     p, state, on_navigate = mock_app_environment
+
+    assert p.appbar is None
+    assert p.controls[0].border.bottom.width == 1  # Divisor sobre Footer en raíz
 
     # Navegar a cursos
     on_navigate("cursos")
     assert state.current_screen == "cursos"
     assert state.can_pop() is True
 
-    # Abrir la búsqueda global
-    global_search = p.appbar.title
+    # Abrir la búsqueda global overlay y comprobar ocultamiento defensivo de footer
+    global_search = p._global_search
+    assert global_search in p.overlay
     global_search.is_open = True
+    assert p.navigation_bar.visible is False
 
     # Disparar evento retroceso del sistema
     p.on_view_pop()
 
-    # Debe cerrar la búsqueda, pero permanecer en cursos sin desapilar
+    # Debe cerrar la búsqueda y restaurar footer, permaneciendo en cursos sin desapilar
     assert global_search.is_open is False
+    assert p.navigation_bar.visible is True
     assert state.current_screen == "cursos"
     assert state.can_pop() is True
     assert p.window.closed is False
@@ -379,4 +385,37 @@ def test_reutilizacion_vistas_curso_navegacion_instantanea(mock_app_environment)
     # 3. Volver a notas: debe ser inmediato
     on_navigate("notas")
     assert state.current_screen == "notas"
+
+
+def test_b3_y_b4_sincronizacion_cache_y_busqueda_multi_curso(mock_app_environment):
+    """B3 + B4: Alta de alumno invalida caché obsoleto de Asistencias y búsqueda entre cursos preserva retorno."""
+    p, state, on_navigate = mock_app_environment
+    state.add_curso("Colegio San Martin", "2do B")
+    state.add_alumno("Perez", "Juan", colegio="Colegio San Martin", curso="1ro A")
+
+    state.selected_colegio = "Colegio San Martin"
+    state.selected_curso = "1ro A"
+    on_navigate("notas")
+    on_navigate("asistencias")
+    asist_v1 = p.controls[0].content
+
+    # Alta de alumno incrementa curso_roster_version y debe regenerar AsistenciasView al volver
+    state.add_alumno("Gomez", "Ana")
+    on_navigate("notas")
+    on_navigate("asistencias")
+    asist_v2 = p.controls[0].content
+    assert asist_v2 is not asist_v1
+    assert len(asist_v2.alumnos_botones) == 2
+
+    # Salto directo mediante buscador hacia otro curso preserva retorno al 1ro A al retroceder
+    state.seleccionar_resultado_busqueda(
+        {"tipo": "curso", "colegio": "Colegio San Martin", "curso": "2do B"},
+        on_navigate=on_navigate,
+    )
+    assert state.selected_curso == "2do B"
+    assert state.current_screen == "notas"
+
+    p.on_view_pop()
+    assert state.selected_curso == "1ro A"
+    assert state.current_screen == "asistencias"
 

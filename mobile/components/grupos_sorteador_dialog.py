@@ -1,406 +1,429 @@
 """
-Componentes modales para la generación y gestión de Trabajos en Grupo:
-- SorteadorGruposDialog: Asistente interactivo con balanceo automático, previsualización en vivo y temas.
-- ReasignarAlumnoDialog: Modal ágil para reubicar alumnos entre grupos de forma manual.
+Hojas modales editoriales para generación y gestión de Trabajos en Grupo (SPEC-028):
+- `SorteadorGruposDialog(NotalySheet)`: sorteo automático con previsualización al 100% y temas.
+- `ReasignarAlumnoDialog(NotalySheet)`: reubicación manual en filas planas `NotalyListRow`.
 """
 
-from typing import Callable, Any
+from __future__ import annotations
+
+import re
+from typing import Any, Callable
+
 import flet as ft
+
+from core.grupos import (
+    asignar_temas_a_grupos,
+    calcular_previsualizacion_grupos,
+    distribuir_alumnos_en_grupos,
+)
+from mobile.components.ledger_primitives import EmptyStateView, NotalyListRow
+from mobile.components.notaly_sheet import NotalySheet, sheet_action_button
 from mobile.state import AppState
 from mobile.theme import (
-    PRIMARY,
-    SURFACE_WHITE,
-    BORDER_COLOR,
-    TEXT_MAIN,
-    TEXT_MUTED,
-    TEXT_SUBTLE,
-    LIGHT_TOKENS,
+    FONT_MONO,
+    RADIUS_SM,
+    SPACE_MD,
+    SPACE_SM,
+    SPACE_XS,
     ThemeTokens,
-    get_tokens,
-)
-from core.grupos import (
-    distribuir_alumnos_en_grupos,
-    calcular_previsualizacion_grupos,
-    asignar_temas_a_grupos,
+    pluralizar,
+    resolve_tokens,
+    tabular_text,
 )
 
 
-class SorteadorGruposDialog(ft.AlertDialog):
-    """Diálogo modal para configurar y sortear grupos de trabajo con o sin temas."""
+def _normalizar_plurales_resumen(resumen: str) -> str:
+    """Corrige discordancias gramaticales (`1 alumnos` -> `1 alumno`, `1 grupos` -> `1 grupo`)."""
+    texto = re.sub(r"\b1 alumnos\b", "1 alumno", resumen or "")
+    texto = re.sub(r"\b1 grupos\b", "1 grupo", texto)
+    return texto
+
+
+class SorteadorGruposDialog(NotalySheet):
+    """Hoja modal para configurar y sortear grupos de trabajo con o sin temas."""
 
     def __init__(
         self,
         state: AppState,
-        page: ft.Page,
+        page: ft.Page | None,
         on_created: Callable[[dict], Any],
         tokens: ThemeTokens | None = None,
-    ):
+    ) -> None:
         self.app_state = state
         self.app_page = page
         self.on_created = on_created
-        self.tokens = tokens or getattr(state, "tokens", None) or get_tokens("dark" if getattr(page, "theme_mode", None) == ft.ThemeMode.DARK else "light")
+        self.tokens = resolve_tokens(tokens=tokens, page=page, state=state)
         tok = self.tokens
 
-        colegio = state.selected_colegio or ""
-        curso = state.selected_curso or ""
+        colegio = getattr(state, "selected_colegio", None) or ""
+        curso = getattr(state, "selected_curso", None) or ""
         self.alumnos_dict = state.get_alumnos(colegio, curso)
         self.total_alumnos = len(self.alumnos_dict)
 
-        # Estado del formulario
-        self.modo = "por_grupos"  # "por_grupos" | "por_integrantes"
+        self.modo = "por_grupos"
         self.valor = 4 if self.total_alumnos >= 4 else max(1, self.total_alumnos)
         self.sortear_temas = False
         self.temas_lista: list[str] = []
 
         trabajos_existentes = state.get_trabajos_grupo_curso(colegio, curso)
         num_nuevo = len(trabajos_existentes) + 1
+
         self.tf_titulo = ft.TextField(
             label="Título del Trabajo",
             value=f"Trabajo Práctico N° {num_nuevo}",
-            border_radius=8,
-            bgcolor=tok.bg_page,
-            border_color=tok.border_color,
-            text_size=13,
-            color=tok.text_main,
-            expand=True,
+            border_radius=RADIUS_SM,
+            bgcolor=tok.bg_canvas,
+            border_color=tok.border_hairline,
+            focused_border_color=tok.accent_primary,
+            cursor_color=tok.accent_primary,
+            text_size=14,
+            color=tok.text_primary,
+            label_style=ft.TextStyle(color=tok.text_secondary),
         )
 
         self.tf_valor = ft.TextField(
             value=str(self.valor),
-            width=50,
-            height=36,
-            content_padding=ft.Padding(2, 2, 2, 2),
+            width=48,
             text_align=ft.TextAlign.CENTER,
-            text_size=14,
-            border_radius=8,
-            bgcolor=tok.bg_page,
-            border_color=tok.border_color,
-            color=tok.text_main,
-            input_filter=ft.NumbersOnlyInputFilter(),
+            keyboard_type=ft.KeyboardType.NUMBER,
+            border_radius=RADIUS_SM,
+            bgcolor=tok.bg_canvas,
+            border_color=tok.border_hairline,
+            focused_border_color=tok.accent_primary,
+            color=tok.text_primary,
+            text_style=ft.TextStyle(font_family=FONT_MONO, weight=ft.FontWeight.BOLD),
+            content_padding=ft.Padding.symmetric(horizontal=4, vertical=8),
             on_change=self._on_valor_text_change,
         )
 
-        self.preview_text = ft.Text(
+        self.preview_text = tabular_text(
+            "",
             size=12,
-            weight=ft.FontWeight.W_500,
-            color=tok.text_main,
+            weight=ft.FontWeight.W_600,
+            color=tok.justif_fg,
+            expand=True,
         )
 
         self.tf_nuevo_tema = ft.TextField(
-            hint_text="Escribir tema o consigna...",
-            text_size=12,
-            border_radius=8,
-            bgcolor=tok.bg_page,
-            border_color=tok.border_color,
-            color=tok.text_main,
+            hint_text="Añadir tema (ej: Unidad 1)",
             expand=True,
-            on_submit=lambda _: self._agregar_tema(),
+            border_radius=RADIUS_SM,
+            bgcolor=tok.bg_canvas,
+            border_color=tok.border_hairline,
+            focused_border_color=tok.accent_primary,
+            color=tok.text_primary,
+            hint_style=ft.TextStyle(color=tok.text_placeholder),
+            text_size=13,
+            on_submit=lambda _e: self._agregar_tema(),
         )
+        self.temas_wrap = ft.Row(wrap=True, spacing=SPACE_XS, run_spacing=SPACE_XS)
 
-        self.temas_wrap = ft.Row(wrap=True, spacing=6, run_spacing=6)
+        self.stepper_row: ft.Row = ft.Row()
+        self.inner_controls_column = ft.Column(spacing=SPACE_MD, tight=True)
+        self._rebuild_inner_controls()
+
+        actions: list[ft.Control] = [
+            sheet_action_button("Cancelar", lambda _e: self._cerrar(), tokens=tok, primary=False),
+        ]
+        if self.total_alumnos > 0:
+            actions.append(
+                sheet_action_button(
+                    "Sortear y Crear",
+                    lambda _e: self._ejecutar_sorteo(),
+                    tokens=tok,
+                    primary=True,
+                )
+            )
 
         super().__init__(
-            modal=True,
-            bgcolor=tok.surface,
-            title=ft.Row(
-                spacing=8,
-                vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                controls=[
-                    ft.Icon(ft.Icons.CASINO, color=tok.primary, size=24),
-                    ft.Column(
-                        spacing=1,
-                        expand=True,
-                        controls=[
-                            ft.Text("Sortear Grupos de Trabajo", size=16, weight=ft.FontWeight.BOLD, color=tok.text_main),
-                            ft.Text(f"{curso} • {self.total_alumnos} alumnos", size=12, color=tok.text_muted),
-                        ],
-                    ),
-                ],
-            ),
-            content=self._build_content(),
-            actions=[
-                ft.TextButton(
-                    "Cancelar",
-                    style=ft.ButtonStyle(color=tok.text_muted),
-                    on_click=lambda _: self._cerrar(),
-                ),
-                ft.FilledButton(
-                    "¡Sortear y Crear!",
-                    style=ft.ButtonStyle(
-                        bgcolor=tok.primary,
-                        color=ft.Colors.WHITE,
-                        shape=ft.RoundedRectangleBorder(radius=8),
-                    ),
-                    on_click=lambda _: self._ejecutar_sorteo(),
-                ) if self.total_alumnos > 0 else ft.Container(),
-            ],
-            actions_alignment=ft.MainAxisAlignment.END,
+            page=page,
+            title="Sortear Grupos",
+            subtitle=f"{pluralizar(self.total_alumnos, 'alumno')} disponibles en el curso",
+            body=[self.inner_controls_column],
+            actions=actions,
+            tokens=tok,
+            state=state,
         )
         self._actualizar_preview()
 
+    def _safe_update(self) -> None:
+        try:
+            if self.page is not None:
+                self.update()
+                return
+        except Exception:
+            pass
+        if self.app_page:
+            try:
+                self.app_page.update()
+            except Exception:
+                pass
 
-    def _actualizar_preview(self):
+    def _actualizar_preview(self) -> None:
         prev = calcular_previsualizacion_grupos(self.total_alumnos, self.modo, self.valor)
-        self.preview_text.value = f"💡 {prev['resumen']}"
+        self.preview_text.value = _normalizar_plurales_resumen(prev.get("resumen", ""))
 
-    def _on_valor_text_change(self, e):
+    def _on_valor_text_change(self, _e: Any) -> None:
         val_str = self.tf_valor.value or ""
         if val_str.isdigit() and int(val_str) > 0:
             self.valor = int(val_str)
             self._actualizar_preview()
-            if self.app_page:
-                self.app_page.update()
+            self._safe_update()
 
-    def _ajustar_valor(self, delta: int):
+    def _ajustar_valor(self, delta: int) -> None:
         nuevo = max(1, self.valor + delta)
         if self.modo == "por_grupos":
             nuevo = min(nuevo, max(1, self.total_alumnos))
         self.valor = nuevo
         self.tf_valor.value = str(self.valor)
         self._actualizar_preview()
-        if self.app_page:
-            self.app_page.update()
+        self._safe_update()
 
-    def _cambiar_modo(self, nuevo_modo: str):
+    def _cambiar_modo(self, nuevo_modo: str) -> None:
         self.modo = nuevo_modo
-        # Ajustar valores sugeridos según modo
         if self.modo == "por_grupos":
             self.valor = min(4, max(1, self.total_alumnos))
         else:
             self.valor = 4 if self.total_alumnos >= 4 else max(1, self.total_alumnos)
         self.tf_valor.value = str(self.valor)
         self._actualizar_preview()
-        self.content = self._build_content()
-        if self.app_page:
-            self.app_page.update()
+        self._rebuild_inner_controls()
+        self._safe_update()
 
-    def _toggle_temas(self, e):
-        self.sortear_temas = e.control.value
-        self.content = self._build_content()
-        if self.app_page:
-            self.app_page.update()
+    def _toggle_temas(self, e: Any) -> None:
+        self.sortear_temas = bool(e.control.value)
+        self._rebuild_inner_controls()
+        self._safe_update()
 
-    def _agregar_tema(self):
+    def _agregar_tema(self) -> None:
         val = (self.tf_nuevo_tema.value or "").strip()
         if val and val not in self.temas_lista:
             self.temas_lista.append(val)
             self.tf_nuevo_tema.value = ""
             self._refrescar_chips_temas()
-            if self.app_page:
-                self.app_page.update()
+            self._rebuild_inner_controls()
+            self._safe_update()
 
-    def _eliminar_tema(self, tema: str):
+    def _eliminar_tema(self, tema: str) -> None:
         if tema in self.temas_lista:
             self.temas_lista.remove(tema)
             self._refrescar_chips_temas()
-            if self.app_page:
-                self.app_page.update()
+            self._rebuild_inner_controls()
+            self._safe_update()
 
-    def _refrescar_chips_temas(self):
-        chips = []
+    def _refrescar_chips_temas(self) -> None:
+        tok = self.tokens
+        tags: list[ft.Control] = []
         for t in self.temas_lista:
-            chips.append(
+            tags.append(
                 ft.Container(
-                    bgcolor="#F1F5F9",
-                    border=ft.Border.all(1, BORDER_COLOR),
-                    border_radius=16,
-                    padding=ft.Padding(left=10, right=6, top=3, bottom=3),
+                    bgcolor=tok.surface_subtle,
+                    border=ft.Border.all(1, tok.border_hairline),
+                    border_radius=RADIUS_SM,
+                    padding=ft.Padding(left=SPACE_SM, right=2, top=2, bottom=2),
                     content=ft.Row(
-                        spacing=4,
+                        spacing=SPACE_XS,
                         tight=True,
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
                         controls=[
-                            ft.Text(t, size=11, color=TEXT_MAIN),
+                            ft.Text(t, size=12, color=tok.text_primary),
                             ft.IconButton(
                                 icon=ft.Icons.CLOSE,
-                                icon_size=13,
-                                icon_color=TEXT_MUTED,
-                                tooltip="Eliminar",
-                                on_click=lambda _, item=t: self._eliminar_tema(item),
+                                icon_size=14,
+                                icon_color=tok.text_secondary,
+                                width=32,
+                                height=32,
+                                tooltip="Eliminar tema",
+                                on_click=lambda _e, item=t: self._eliminar_tema(item),
                             ),
                         ],
                     ),
                 )
             )
-        self.temas_wrap.controls = chips
+        self.temas_wrap.controls = tags
 
-    def _build_content(self) -> ft.Container:
-        if self.total_alumnos == 0:
-            return ft.Container(
-                width=340,
-                padding=12,
-                content=ft.Column(
-                    tight=True,
-                    horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                    spacing=8,
-                    controls=[
-                        ft.Icon(ft.Icons.PERSON_OFF, size=36, color=TEXT_MUTED),
-                        ft.Text(
-                            "Este curso no tiene alumnos cargados.",
-                            size=14,
-                            weight=ft.FontWeight.BOLD,
-                            color=TEXT_MAIN,
-                            text_align=ft.TextAlign.CENTER,
-                        ),
-                        ft.Text(
-                            "Carga primero a los alumnos en la pestaña de Notas para poder realizar el sorteo.",
-                            size=12,
-                            color=TEXT_MUTED,
-                            text_align=ft.TextAlign.CENTER,
-                        ),
-                    ],
-                ),
-            )
-
-        is_por_grupos = (self.modo == "por_grupos")
+    def _rebuild_inner_controls(self) -> None:
         tok = self.tokens
+        if self.total_alumnos == 0:
+            self.inner_controls_column.controls = [
+                EmptyStateView(
+                    icon=ft.Icons.PERSON_OFF_OUTLINED,
+                    title="No hay alumnos cargados en este curso",
+                    description="Agrega alumnos al curso antes de generar grupos de trabajo.",
+                    tokens=tok,
+                )
+            ]
+            return
 
-        # Selector de modo compacto
+        is_por_grupos = self.modo == "por_grupos"
+
         modo_tabs = ft.Container(
-            bgcolor=tok.surface_variant,
-            border_radius=8,
+            bgcolor=tok.surface_subtle,
+            border_radius=RADIUS_SM,
+            border=ft.Border.all(1, tok.border_hairline),
             padding=3,
             content=ft.Row(
-                spacing=4,
+                spacing=SPACE_XS,
                 controls=[
                     ft.Container(
                         expand=True,
-                        height=32,
-                        border_radius=6,
-                        bgcolor=tok.surface if is_por_grupos else ft.Colors.TRANSPARENT,
+                        height=44,
                         alignment=ft.Alignment.CENTER,
+                        border_radius=RADIUS_SM,
+                        bgcolor=tok.surface_primary if is_por_grupos else None,
+                        border=ft.Border.all(1, tok.border_hairline) if is_por_grupos else None,
                         ink=True,
-                        on_click=lambda _: self._cambiar_modo("por_grupos"),
+                        on_click=lambda _e: self._cambiar_modo("por_grupos"),
                         content=ft.Text(
-                            "N° de Grupos",
-                            size=11,
-                            weight=ft.FontWeight.BOLD,
-                            color=tok.primary if is_por_grupos else tok.text_muted,
+                            "N° de grupos",
+                            size=12,
+                            weight=ft.FontWeight.BOLD if is_por_grupos else ft.FontWeight.W_500,
+                            color=tok.accent_primary if is_por_grupos else tok.text_secondary,
                         ),
                     ),
                     ft.Container(
                         expand=True,
-                        height=32,
-                        border_radius=6,
-                        bgcolor=tok.surface if not is_por_grupos else ft.Colors.TRANSPARENT,
+                        height=44,
                         alignment=ft.Alignment.CENTER,
+                        border_radius=RADIUS_SM,
+                        bgcolor=tok.surface_primary if not is_por_grupos else None,
+                        border=ft.Border.all(1, tok.border_hairline) if not is_por_grupos else None,
                         ink=True,
-                        on_click=lambda _: self._cambiar_modo("por_integrantes"),
+                        on_click=lambda _e: self._cambiar_modo("por_integrantes"),
                         content=ft.Text(
-                            "Alumnos x Grupo",
-                            size=11,
-                            weight=ft.FontWeight.BOLD,
-                            color=tok.primary if not is_por_grupos else tok.text_muted,
+                            "Por grupo",
+                            size=12,
+                            weight=ft.FontWeight.BOLD if not is_por_grupos else ft.FontWeight.W_500,
+                            color=tok.accent_primary if not is_por_grupos else tok.text_secondary,
                         ),
                     ),
                 ],
             ),
         )
 
-        # Control numérico
-        stepper_label = "Cantidad de grupos a formar:" if is_por_grupos else "Alumnos por grupo deseados:"
-        stepper_row = ft.Row(
+        stepper_label = (
+            "Cantidad de grupos a formar"
+            if is_por_grupos
+            else "Alumnos por grupo deseados"
+        )
+        self.stepper_row = ft.Row(
             alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
             controls=[
-                ft.Text(stepper_label, size=12, color=tok.text_main, weight=ft.FontWeight.W_500, expand=True, max_lines=2),
+                ft.Text(
+                    stepper_label,
+                    size=13,
+                    color=tok.text_primary,
+                    weight=ft.FontWeight.W_500,
+                    expand=True,
+                    max_lines=2,
+                ),
                 ft.Row(
                     spacing=2,
                     tight=True,
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
                     controls=[
                         ft.IconButton(
                             icon=ft.Icons.REMOVE,
-                            icon_size=16,
-                            icon_color=tok.text_main,
-                            style=ft.ButtonStyle(padding=ft.Padding(4, 4, 4, 4)),
-                            on_click=lambda _: self._ajustar_valor(-1),
+                            icon_size=18,
+                            icon_color=tok.text_primary,
+                            width=44,
+                            height=44,
+                            tooltip="Disminuir",
+                            on_click=lambda _e: self._ajustar_valor(-1),
                         ),
                         self.tf_valor,
                         ft.IconButton(
                             icon=ft.Icons.ADD,
-                            icon_size=16,
-                            icon_color=tok.text_main,
-                            style=ft.ButtonStyle(padding=ft.Padding(4, 4, 4, 4)),
-                            on_click=lambda _: self._ajustar_valor(1),
+                            icon_size=18,
+                            icon_color=tok.text_primary,
+                            width=44,
+                            height=44,
+                            tooltip="Aumentar",
+                            on_click=lambda _e: self._ajustar_valor(1),
                         ),
                     ],
                 ),
             ],
         )
 
-        # Previsualización dinámica en caja
-        caja_preview = ft.Container(
-            bgcolor=tok.surface_variant,
-            border=ft.Border.all(1, tok.border_color),
-            border_radius=8,
-            padding=ft.Padding(left=10, right=10, top=8, bottom=8),
-            content=self.preview_text,
+        # Caja de previsualización expandida al 100% del ancho
+        caja_preview = ft.Row(
+            controls=[
+                ft.Container(
+                    expand=True,
+                    bgcolor=tok.justif_bg,
+                    border=ft.Border.all(1, tok.justif_border),
+                    border_radius=RADIUS_SM,
+                    padding=ft.Padding.symmetric(horizontal=SPACE_MD, vertical=SPACE_SM),
+                    content=ft.Row(
+                        spacing=SPACE_SM,
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                        controls=[
+                            ft.Icon(
+                                icon=ft.Icons.VIEW_MODULE_OUTLINED,
+                                size=18,
+                                color=tok.justif_fg,
+                            ),
+                            self.preview_text,
+                        ],
+                    ),
+                )
+            ]
         )
 
-        # Sección de temas
         switch_temas = ft.Switch(
             label="Sortear con temas",
             value=self.sortear_temas,
-            active_color=PRIMARY,
+            active_color=tok.accent_primary,
             on_change=self._toggle_temas,
         )
 
-        seccion_temas_controls = [switch_temas]
+        seccion_temas_controls: list[ft.Control] = [switch_temas]
         if self.sortear_temas:
             self._refrescar_chips_temas()
-            seccion_temas_controls.extend([
-                ft.Row(
-                    spacing=6,
-                    controls=[
-                        self.tf_nuevo_tema,
-                        ft.IconButton(
-                            icon=ft.Icons.ADD_CIRCLE,
-                            icon_color=PRIMARY,
-                            icon_size=24,
-                            tooltip="Añadir tema",
-                            on_click=lambda _: self._agregar_tema(),
-                        ),
-                    ],
-                ),
-                ft.Text(
-                    f"{len(self.temas_lista)} temas añadidos" if self.temas_lista else "Sin temas cargados aún.",
-                    size=11,
-                    color=TEXT_MUTED,
-                ),
-                self.temas_wrap,
-            ])
+            seccion_temas_controls.extend(
+                [
+                    ft.Row(
+                        spacing=SPACE_XS,
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                        controls=[
+                            self.tf_nuevo_tema,
+                            ft.IconButton(
+                                icon=ft.Icons.ADD_BOX_OUTLINED,
+                                icon_color=tok.accent_primary,
+                                icon_size=24,
+                                width=48,
+                                height=48,
+                                tooltip="Añadir tema",
+                                on_click=lambda _e: self._agregar_tema(),
+                            ),
+                        ],
+                    ),
+                    tabular_text(
+                        pluralizar(len(self.temas_lista), "tema cargado", "temas cargados")
+                        if self.temas_lista
+                        else "Sin temas cargados aún.",
+                        size=12,
+                        color=tok.text_secondary,
+                    ),
+                    self.temas_wrap,
+                ]
+            )
 
-        calc_w = 340
-        if self.app_page and hasattr(self.app_page, "width") and self.app_page.width:
-            calc_w = min(self.app_page.width - 24, 380)
+        self.inner_controls_column.controls = [
+            self.tf_titulo,
+            modo_tabs,
+            self.stepper_row,
+            caja_preview,
+            ft.Divider(height=1, thickness=1, color=tok.border_hairline),
+            *seccion_temas_controls,
+        ]
 
-        calc_max_h = 420
-        if self.app_page and hasattr(self.app_page, "height") and self.app_page.height:
-            calc_max_h = min(self.app_page.height * 0.65, 430)
+    def _cerrar(self) -> None:
+        self.close()
 
-        return ft.Container(
-            width=calc_w,
-            height=calc_max_h,
-            content=ft.Column(
-                tight=True,
-                spacing=10,
-                scroll=ft.ScrollMode.AUTO,
-                controls=[
-                    self.tf_titulo,
-                    modo_tabs,
-                    stepper_row,
-                    caja_preview,
-                    ft.Divider(height=8, color=BORDER_COLOR),
-                    *seccion_temas_controls,
-                ],
-            ),
-        )
-
-    def _cerrar(self):
-        if self.app_page:
-            self.app_page.pop_dialog()
-            self.app_page.update()
-
-    def _ejecutar_sorteo(self):
+    def _ejecutar_sorteo(self) -> None:
         if self.total_alumnos == 0:
             self._cerrar()
             return
@@ -424,17 +447,19 @@ class SorteadorGruposDialog(ft.AlertDialog):
         for i, integrantes in enumerate(grupos_generados):
             g_id = str(i + 1)
             tema_asignado = temas_asignados[i] if i < len(temas_asignados) else ""
-            grupos_data.append({
-                "id": g_id,
-                "nombre": f"Grupo {g_id}",
-                "integrantes": integrantes,
-                "tema": tema_asignado,
-                "nota": None,
-                "observacion": "",
-            })
+            grupos_data.append(
+                {
+                    "id": g_id,
+                    "nombre": f"Grupo {g_id}",
+                    "integrantes": integrantes,
+                    "tema": tema_asignado,
+                    "nota": None,
+                    "observacion": "",
+                }
+            )
 
         titulo = (self.tf_titulo.value or "Trabajo Grupal").strip()
-        ok, msg, nuevo_trabajo = self.app_state.create_trabajo_grupo(
+        ok, _msg, nuevo_trabajo = self.app_state.create_trabajo_grupo(
             titulo=titulo,
             grupos_data=grupos_data,
             temas=self.temas_lista if self.sortear_temas else [],
@@ -446,13 +471,13 @@ class SorteadorGruposDialog(ft.AlertDialog):
             self.on_created(nuevo_trabajo)
 
 
-class ReasignarAlumnoDialog(ft.AlertDialog):
-    """Diálogo para transferir un alumno a otro grupo o retirarlo."""
+class ReasignarAlumnoDialog(NotalySheet):
+    """Hoja modal plana para transferir un alumno a otro grupo o retirarlo."""
 
     def __init__(
         self,
         state: AppState,
-        page: ft.Page,
+        page: ft.Page | None,
         trabajo_id: str,
         alumno_id: str,
         alumno_nombre: str,
@@ -460,81 +485,76 @@ class ReasignarAlumnoDialog(ft.AlertDialog):
         grupos: list[dict],
         on_moved: Callable[[], Any],
         tokens: ThemeTokens | None = None,
-    ):
+    ) -> None:
         self.app_state = state
         self.app_page = page
         self.trabajo_id = trabajo_id
         self.alumno_id = alumno_id
         self.grupo_origen_id = grupo_origen_id
         self.on_moved = on_moved
-        self.tokens = tokens or getattr(state, "tokens", None) or get_tokens("dark" if getattr(page, "theme_mode", None) == ft.ThemeMode.DARK else "light")
+        self.tokens = resolve_tokens(tokens=tokens, page=page, state=state)
         tok = self.tokens
 
-        opciones = []
+        opciones: list[ft.Control] = []
         for g in grupos:
             gid = str(g.get("id"))
             gnom = g.get("nombre") or f"Grupo {gid}"
             if gid != grupo_origen_id:
+                cant_int = len(g.get("integrantes") or [])
                 opciones.append(
-                    ft.ListTile(
-                        leading=ft.Icon(ft.Icons.GROUP_ADD, color=tok.primary, size=20),
-                        title=ft.Text(f"Mover a {gnom}", size=13, weight=ft.FontWeight.W_500, color=tok.text_main),
-                        on_click=lambda _, target_id=gid: self._ejecutar_movimiento(target_id),
+                    NotalyListRow(
+                        title=f"Mover a {gnom}",
+                        tabular_summary=pluralizar(cant_int, "integrante"),
+                        leading=ft.Icon(
+                            icon=ft.Icons.GROUP_ADD_OUTLINED,
+                            color=tok.accent_primary,
+                            size=20,
+                        ),
+                        trailing=ft.Icon(
+                            icon=ft.Icons.CHEVRON_RIGHT,
+                            color=tok.text_secondary,
+                            size=18,
+                        ),
+                        tokens=tok,
+                        on_click=lambda _e, target_id=gid: self._ejecutar_movimiento(target_id),
                     )
                 )
 
-        # Opción para dejar sin grupo
         opciones.append(
-            ft.ListTile(
-                leading=ft.Icon(ft.Icons.PERSON_REMOVE, color="#EF4444", size=20),
-                title=ft.Text("Retirar de grupos (dejar sin grupo)", size=13, color="#EF4444"),
-                on_click=lambda _: self._ejecutar_movimiento("none"),
+            NotalyListRow(
+                title=ft.Text(
+                    "Retirar de grupos (dejar sin grupo)",
+                    size=14,
+                    weight=ft.FontWeight.W_600,
+                    color=tok.fail_fg,
+                ),
+                leading=ft.Icon(
+                    icon=ft.Icons.PERSON_REMOVE_OUTLINED,
+                    color=tok.fail_fg,
+                    size=20,
+                ),
+                show_divider=False,
+                tokens=tok,
+                on_click=lambda _e: self._ejecutar_movimiento("none"),
             )
         )
 
         super().__init__(
-            modal=True,
-            bgcolor=tok.surface,
-            title=ft.Row(
-                spacing=8,
-                vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                controls=[
-                    ft.Icon(ft.Icons.SWAP_HORIZ, color=tok.primary, size=22),
-                    ft.Column(
-                        spacing=1,
-                        expand=True,
-                        controls=[
-                            ft.Text("Reasignar Alumno", size=15, weight=ft.FontWeight.BOLD, color=tok.text_main),
-                            ft.Text(alumno_nombre, size=12, color=tok.text_muted, no_wrap=False),
-                        ],
-                    ),
-                ],
-            ),
-            content=ft.Container(
-                width=320,
-                content=ft.Column(
-                    tight=True,
-                    spacing=2,
-                    controls=opciones,
-                ),
-            ),
+            page=page,
+            title="Reasignar Alumno",
+            subtitle=alumno_nombre,
+            body=[ft.Column(controls=opciones, spacing=0, tight=True)],
             actions=[
-                ft.TextButton(
-                    "Cancelar",
-                    style=ft.ButtonStyle(color=tok.text_muted),
-                    on_click=lambda _: self._cerrar(),
-                ),
+                sheet_action_button("Cancelar", lambda _e: self._cerrar(), tokens=tok, primary=False)
             ],
-            actions_alignment=ft.MainAxisAlignment.END,
+            tokens=tok,
+            state=state,
         )
 
+    def _cerrar(self) -> None:
+        self.close()
 
-    def _cerrar(self):
-        if self.app_page:
-            self.app_page.pop_dialog()
-            self.app_page.update()
-
-    def _ejecutar_movimiento(self, target_gid: str):
+    def _ejecutar_movimiento(self, target_gid: str) -> None:
         self.app_state.mover_alumno_grupo(
             trabajo_id=self.trabajo_id,
             alumno_id=self.alumno_id,

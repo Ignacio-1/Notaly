@@ -101,52 +101,52 @@ def state_con_planillas(tmp_path):
         yield state, exports_dir
 
 
+def _obtener_filas_colegio(view: PlanillasView, colegio: str) -> list:
+    for sec in view.list_view.controls:
+        if getattr(sec, "data", None) == {"tipo": "header_colegio", "colegio": colegio}:
+            return list(sec.rows_column.controls)
+    return []
+
+
 def test_planillas_view_doble_visibilidad(state_con_planillas, mock_page):
     state, exports_dir = state_con_planillas
     with patch("core.gestor_planillas.obtener_directorio_exportaciones", return_value=exports_dir):
         view = PlanillasView(state=state, page=mock_page, on_navigate=lambda _: None)
 
-        # 1. Chip Todas: 4 planillas en total en Colegio Belgrano -> 3ro B
+        # 1. Tab Todas: 4 planillas en total agrupadas directamente bajo Colegio Belgrano (2 niveles)
         view._cambiar_filtro_tipo("todas")
-        assert len(view.colegios_expandidos) == 0  # Inicia colapsado (REQ-STA-024-001)
+        assert len(view.colegios_expandidos) == 0  # Inicia colapsado
         view._toggle_colegio("Colegio Belgrano")
         assert "Colegio Belgrano" in view.colegios_expandidos
-        assert len(view.cursos_expandidos) == 0  # Cursos inician colapsados por defecto
-        view._toggle_curso("Colegio Belgrano", "3ro B")
-        assert ("Colegio Belgrano", "3ro B") in view.cursos_expandidos
 
-        items_card = view._obtener_tarjetas_planillas_curso("Colegio Belgrano", "3ro B")
+        items_card = _obtener_filas_colegio(view, "Colegio Belgrano")
         assert len(items_card) == 4
 
-        # 2. Chip Asistencias: debe incluir "asistencias" y "estadisticas_asistencia" (2 planillas)
+        # 2. Tab Asistencias: incluye "asistencias" y "estadisticas_asistencia" (2 planillas)
         view._cambiar_filtro_tipo("asistencias")
-        # Al cambiar filtro, reinicia a colapsado (REQ-EVT-024-004)
         assert len(view.colegios_expandidos) == 0
         view._toggle_colegio("Colegio Belgrano")
-        view._toggle_curso("Colegio Belgrano", "3ro B")
-        items_asis = view._obtener_tarjetas_planillas_curso("Colegio Belgrano", "3ro B")
+        items_asis = _obtener_filas_colegio(view, "Colegio Belgrano")
         assert len(items_asis) == 2
-        nombres_asis = [card.content.controls[0].controls[1].value for card in items_asis]
+        nombres_asis = [row.title_control.value for row in items_asis]
         assert "Planilla Asistencias 3ro B - 12-10-2026.pdf" in nombres_asis
         assert "Planilla Asistencias Estadisticas 3ro B - 13-10-2026.pdf" in nombres_asis
 
-        # 3. Chip Estadísticas: debe incluir "estadisticas" y "estadisticas_asistencia" (2 planillas)
+        # 3. Tab Estadísticas: incluye "estadisticas" y "estadisticas_asistencia" (2 planillas)
         view._cambiar_filtro_tipo("estadisticas")
         view._toggle_colegio("Colegio Belgrano")
-        view._toggle_curso("Colegio Belgrano", "3ro B")
-        items_est = view._obtener_tarjetas_planillas_curso("Colegio Belgrano", "3ro B")
+        items_est = _obtener_filas_colegio(view, "Colegio Belgrano")
         assert len(items_est) == 2
-        nombres_est = [card.content.controls[0].controls[1].value for card in items_est]
+        nombres_est = [row.title_control.value for row in items_est]
         assert "Reporte Colegio Belgrano 3ro B - 12-10-2026.pdf" in nombres_est
         assert "Planilla Asistencias Estadisticas 3ro B - 13-10-2026.pdf" in nombres_est
 
-        # 4. Chip Notas: debe incluir únicamente "notas" (1 planilla)
+        # 4. Tab Notas: incluye únicamente "notas" (1 planilla)
         view._cambiar_filtro_tipo("notas")
         view._toggle_colegio("Colegio Belgrano")
-        view._toggle_curso("Colegio Belgrano", "3ro B")
-        items_notas = view._obtener_tarjetas_planillas_curso("Colegio Belgrano", "3ro B")
+        items_notas = _obtener_filas_colegio(view, "Colegio Belgrano")
         assert len(items_notas) == 1
-        assert items_notas[0].content.controls[0].controls[1].value == "Planilla 3ro B - 12-10-2026.pdf"
+        assert items_notas[0].title_control.value == "Planilla 3ro B - 12-10-2026.pdf"
 
 
 def test_planillas_view_agrupacion_institucional_estadisticas_asistencia(state_con_planillas, mock_page):
@@ -161,39 +161,32 @@ def test_planillas_view_agrupacion_institucional_estadisticas_asistencia(state_c
         view._cambiar_filtro_tipo("todas")
         view._toggle_colegio("Colegio Belgrano")
 
-        # Al expandir Colegio Belgrano, debe figurar "Ámbito: Institucional" como subsección
-        ambitos = view._obtener_nombres_cursos_mostrados("Colegio Belgrano")
-        assert "Ámbito: Institucional" in ambitos or "Institucional" in ambitos
+        # Al expandir Colegio Belgrano, el reporte institucional muestra "Institucional" en su subtítulo
+        filas = _obtener_filas_colegio(view, "Colegio Belgrano")
+        subtitulos = [row.subtitle_text.value for row in filas if row.subtitle_text is not None]
+        assert any("Institucional" in sub for sub in subtitulos)
 
 
 def test_planillas_view_jerarquia_colapsable_independiente(state_con_planillas, mock_page):
-    """Verifica estado inicial colapsado, glifos de flecha y plegado independiente."""
+    """Verifica estado inicial colapsado de instituciones y expansión/plegado en 2 niveles."""
     state, exports_dir = state_con_planillas
     with patch("core.gestor_planillas.obtener_directorio_exportaciones", return_value=exports_dir):
         view = PlanillasView(state=state, page=mock_page, on_navigate=lambda _: None)
 
-        # Estado inicial: colegios y cursos cerrados
+        # Estado inicial: colegios cerrados
         assert hasattr(view, "colegios_expandidos")
-        assert hasattr(view, "cursos_expandidos")
         assert len(view.colegios_expandidos) == 0
-        assert len(view.cursos_expandidos) == 0
+        assert len(_obtener_filas_colegio(view, "Colegio Belgrano")) == 0
 
-        # Toggle colegio
+        # Toggle colegio: muestra filas
         view._toggle_colegio("Colegio Belgrano")
         assert "Colegio Belgrano" in view.colegios_expandidos
-        assert len(view.cursos_expandidos) == 0  # Cursos inician cerrados
-
-        # Toggle curso
-        view._toggle_curso("Colegio Belgrano", "3ro B")
-        assert ("Colegio Belgrano", "3ro B") in view.cursos_expandidos
-
-        # Re-toggle curso: se cierra
-        view._toggle_curso("Colegio Belgrano", "3ro B")
-        assert ("Colegio Belgrano", "3ro B") not in view.cursos_expandidos
+        assert len(_obtener_filas_colegio(view, "Colegio Belgrano")) == 4
 
         # Re-toggle colegio: se cierra
         view._toggle_colegio("Colegio Belgrano")
         assert "Colegio Belgrano" not in view.colegios_expandidos
+        assert len(_obtener_filas_colegio(view, "Colegio Belgrano")) == 0
 
 
 def test_planillas_view_tarjeta_render_estadisticas_asistencia(state_con_planillas, mock_page):
@@ -211,11 +204,13 @@ def test_planillas_view_tarjeta_render_estadisticas_asistencia(state_con_planill
         "ruta": "dummy_path",
     }
 
-    card = view._build_planilla_card(planilla_data, state.tokens)
-    subtitulo = card.content.controls[1].value
-    icono = card.content.controls[0].controls[0]
+    row = view._build_planilla_row(planilla_data, state.tokens)
+    subtitulo = row.subtitle_text.value
+    resumen_tabular = row.summary_text.value
+    icono = row.row_widget.controls[0].content
 
     assert "Estadísticas Asistencias" in subtitulo
-    assert "13-10-2026 10:30" in subtitulo
+    assert "13-10-2026 10:30" in resumen_tabular
+    assert "45 KB" in resumen_tabular
     assert icono.icon == ft.Icons.BAR_CHART
-    assert icono.color == "#6366F1"
+    assert icono.color == state.tokens.justif_fg

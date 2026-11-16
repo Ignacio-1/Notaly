@@ -187,3 +187,41 @@ def test_clear_history(temp_state):
     assert temp_state.can_pop() is False
     assert temp_state.peek_history() is None
     assert temp_state.pop_history() is None
+
+
+def test_curso_roster_version_y_busqueda_no_pisa_current_screen(temp_state):
+    """T21 (B3/B4): curso_roster_version cambia en CRUD/orden y seleccionar_resultado_busqueda preserva historial."""
+    temp_state.add_colegio("Col A")
+    temp_state.add_curso("Col A", "1A")
+    temp_state.add_colegio("Col B")
+    temp_state.add_curso("Col B", "2B")
+
+    temp_state.selected_colegio = "Col A"
+    temp_state.selected_curso = "1A"
+    temp_state.current_screen = "notas"
+
+    v0 = temp_state.curso_roster_version
+    temp_state.add_alumno("Zeta", "Ana")
+    assert temp_state.curso_roster_version == v0 + 1
+    temp_state.add_alumno("Alfa", "Luis")
+    assert temp_state.curso_roster_version == v0 + 2
+    temp_state.rename_alumno("1", "Zeta", "Anabela")
+    assert temp_state.curso_roster_version == v0 + 3
+    temp_state.order_alumnos_alphabetically()
+    assert temp_state.curso_roster_version == v0 + 4
+    temp_state.delete_alumno("2")
+    assert temp_state.curso_roster_version == v0 + 5
+
+    destinos = []
+    temp_state.seleccionar_resultado_busqueda(
+        {"tipo": "curso", "colegio": "Col B", "curso": "2B"},
+        on_navigate=lambda d: destinos.append((d, temp_state.current_screen)),
+    )
+    assert destinos == [("notas", "notas")]
+    assert temp_state.selected_colegio == "Col B"
+    assert temp_state.selected_curso == "2B"
+    # El cuadro previo debe conservar el contexto de Col A / 1A al retroceder
+    frame = temp_state.pop_history()
+    assert frame is not None
+    assert frame["selected_colegio"] == "Col A"
+    assert frame["selected_curso"] == "1A"

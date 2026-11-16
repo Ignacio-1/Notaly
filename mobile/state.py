@@ -119,6 +119,7 @@ class AppState:
         self.active_trimestre: int = 0  # 0: 1° Trim, 1: 2° Trim, 2: 3° Trim, 3: Resumen Anual
         self.asistencia_fecha: str = datetime.now().strftime("%Y-%m-%d")
         self.footer_tab: str = "inicio"  # "inicio", "planillas", "estadisticas"
+        self.curso_roster_version: int = 0
 
         # Filtros de asistencia en estadísticas (SPEC-022 / REQ-EVT-001 / REQ-EVT-002)
         self.estadisticas_asistencia_fecha_desde: str | None = None
@@ -254,6 +255,7 @@ class AppState:
             self.data_path = path
             gestor_datos.escribir_ruta_config(path)
         self.data = gestor_datos.cargar_datos(self.data_path)
+        self.curso_roster_version += 1
         self.has_unsaved_changes = False
         self.has_unsaved_asistencias = False
         self.set_save_status("saved")
@@ -346,6 +348,16 @@ class AppState:
                 frame["screen"] = "cursos"
                 frame["selected_curso"] = None
                 frame["selected_alumno_id"] = None
+        elif col and not cur and frame.get("screen") in ("notas", "asistencias", "grupos"):
+            if col in colegios_existentes:
+                frame["screen"] = "cursos"
+                frame["selected_curso"] = None
+                frame["selected_alumno_id"] = None
+            else:
+                frame["screen"] = "colegios"
+                frame["selected_colegio"] = None
+                frame["selected_curso"] = None
+                frame["selected_alumno_id"] = None
 
         # Restaurar variables de AppState
         self.current_screen = frame["screen"]
@@ -400,43 +412,47 @@ class AppState:
     ):
         """
         Maneja la selección de una entidad desde el buscador global.
-        Actualiza el estado de selección (colegio_activo, curso_activo, alumno)
-        y ejecuta la navegación correspondiente.
+        Guarda el cuadro saliente antes de cambiar contexto y delega en `on_navigate`
+        sin sobrescribir prematuramente `current_screen` (B4).
         """
         tipo = resultado.get("tipo")
         colegio = resultado.get("colegio")
         curso = resultado.get("curso")
         alumno_id = resultado.get("id")
 
+        destino: str | None = None
+        if tipo == "colegio":
+            destino = "cursos"
+        elif tipo == "curso":
+            destino = "notas"
+        elif tipo == "alumno":
+            destino = "notas"
+
+        if not destino:
+            return
+
+        if on_navigate:
+            self.push_history()
+
         if tipo == "colegio":
             self.selected_colegio = colegio
+            self.selected_curso = None
             self.search_query_cursos = ""
             self.selected_alumno_id = None
-            self.current_screen = "cursos"
-            if on_navigate:
-                on_navigate("cursos")
-            else:
-                self.notify()
-
         elif tipo == "curso":
             self.selected_colegio = colegio
             self.selected_curso = curso
             self.selected_alumno_id = None
-            self.current_screen = "notas"
-            if on_navigate:
-                on_navigate("notas")
-            else:
-                self.notify()
-
         elif tipo == "alumno":
             self.selected_colegio = colegio
             self.selected_curso = curso
             self.selected_alumno_id = str(alumno_id) if alumno_id is not None else None
-            self.current_screen = "notas"
-            if on_navigate:
-                on_navigate("notas")
-            else:
-                self.notify()
+
+        if on_navigate:
+            on_navigate(destino)
+        else:
+            self.current_screen = destino
+            self.notify()
 
     # =========================================================================
     # --- GESTIÓN DE COLEGIOS ---
@@ -1151,6 +1167,7 @@ class AppState:
             K_NOMBRE_PILA: nom,
             K_TRIMESTRES: crear_trimestres_vacios(),
         }
+        self.curso_roster_version += 1
         self.save_data()
         return True, f"Alumno '{nombre_completo}' agregado exitosamente con ID #{next_id}."
 
@@ -1176,6 +1193,7 @@ class AppState:
             alumno[K_NOMBRE] = nombre_completo
             alumno[K_APELLIDO] = ap
             alumno[K_NOMBRE_PILA] = nom
+            self.curso_roster_version += 1
             if auto_save:
                 self.trigger_auto_save(delay=0.6)
             else:
@@ -1212,6 +1230,7 @@ class AppState:
             nuevas_asistencias[fecha] = nuevos_registros
         curso_dict[K_ASISTENCIAS] = nuevas_asistencias
 
+        self.curso_roster_version += 1
         self.save_data()
         return True, "Alumno eliminado y orden actualizado."
 
@@ -1260,6 +1279,7 @@ class AppState:
             nuevas_asistencias[fecha] = nuevos_registros
         curso_dict[K_ASISTENCIAS] = nuevas_asistencias
 
+        self.curso_roster_version += 1
         self.save_data()
 
     def set_nota(

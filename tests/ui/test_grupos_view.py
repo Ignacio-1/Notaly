@@ -224,3 +224,54 @@ def test_build_module_tabs_con_grupos():
         c.on_click(None)
 
     assert tabs_disparados == ["notas", "asistencias", "grupos"]
+
+
+def test_grupos_view_editorial_geometry_and_copiar_visibility(mock_state):
+    """T18: Valida estética editorial en GruposView (sin píldoras ovaladas ni emojis, objetivos >= 44dp)."""
+    from mobile.components.ledger_primitives import GradeCell
+    from mobile.components.ui_header import UnderlineTabBar
+
+    page = MockPage()
+    page.width = 390
+    view_vacio = GruposView(mock_state, page, on_navigate=lambda _: None)
+    assert view_vacio.btn_copiar_header.visible is False
+    # CTA Sortear Grupos >= 48dp
+    assert view_vacio.empty_cta_btn is not None
+    assert view_vacio.empty_cta_btn.height == 48
+
+    grupos_data = [
+        {"id": "1", "nombre": "Grupo 1", "integrantes": ["1", "2"], "tema": "Clima", "nota": 9, "observacion": ""},
+    ]
+    mock_state.create_trabajo_grupo(titulo="TP N° 1", grupos_data=grupos_data, auto_save=False)
+
+    view = GruposView(mock_state, page, on_navigate=lambda _: None)
+    assert view.btn_copiar_header.visible is True
+    assert view.lista_grupos_listview.padding.bottom >= 88
+    assert isinstance(view.trabajos_tabs, UnderlineTabBar)
+
+    # Tarjeta/sección de grupo con filete 3px, GradeCell >= 44dp y sin chips ovalados
+    sec = view.lista_grupos_listview.controls[0]
+    assert sec.border.left.width == 3
+    grade_cells = []
+    containers_ovales = []
+
+    def recolectar(ctrl):
+        if isinstance(ctrl, GradeCell):
+            grade_cells.append(ctrl)
+        if isinstance(ctrl, ft.Container) and getattr(ctrl, "border_radius", 0) not in (None, 0):
+            if isinstance(ctrl.border_radius, (int, float)) and ctrl.border_radius > 8:
+                containers_ovales.append(ctrl.border_radius)
+        if hasattr(ctrl, "controls") and isinstance(ctrl.controls, list):
+            for ch in ctrl.controls:
+                recolectar(ch)
+        if hasattr(ctrl, "content") and ctrl.content is not None:
+            recolectar(ctrl.content)
+
+    recolectar(view)
+    assert len(grade_cells) == 1
+    assert grade_cells[0].height >= 44
+    assert containers_ovales == []
+
+    # Copiar al portapapeles sin emojis
+    view._copiar_al_portapapeles()
+    assert "📋" not in (page.snack_bar.content.value or "")

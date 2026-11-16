@@ -304,19 +304,55 @@ class AndroidDriver:
             if self.is_visible("1° Trim"):
                 return
 
-        # Si estamos en CursosView
+        # Si estamos en CursosView con cursos existentes
         courses = [el for el in self.dump_hierarchy() if "Planilla y gestión" in el.content_desc or "3A" in el.content_desc]
         if courses:
             courses[0].tap()
             time.sleep(1.0)
-            return
+            if self.is_visible("1° Trim") or self.is_visible("+ Alumno"):
+                return
 
         # Si estamos en ColegiosView
-        schools = [el for el in self.dump_hierarchy() if "curso registrado" in el.content_desc or "PRUEBA 1" in el.content_desc]
-        if schools:
-            schools[0].tap()
-            time.sleep(1.0)
+        if self.is_visible("+ Colegio"):
+            schools = [el for el in self.dump_hierarchy() if "curso registrado" in el.content_desc or "PRUEBA 1" in el.content_desc]
+            if not schools:
+                # Bootstrap automático de colegio de prueba
+                self.tap("+ Colegio")
+                time.sleep(0.8)
+                self.type_text("PRUEBA 1")
+                time.sleep(0.5)
+                if self.is_visible("Crear Colegio"):
+                    self.tap("Crear Colegio")
+                elif self.is_visible("Crear"):
+                    self.tap("Crear")
+                time.sleep(1.0)
+                schools = [el for el in self.dump_hierarchy() if "curso registrado" in el.content_desc or "PRUEBA 1" in el.content_desc]
+
+            if schools:
+                schools[0].tap()
+                time.sleep(1.0)
+
+        # Si estamos en CursosView
+        if self.is_visible("+ Curso"):
             courses = [el for el in self.dump_hierarchy() if "Planilla y gestión" in el.content_desc or "3A" in el.content_desc]
+            if not courses:
+                # Bootstrap automático de curso de prueba
+                self.tap("+ Curso")
+                time.sleep(0.8)
+                inputs = [el for el in self.dump_hierarchy() if el.class_name == "android.widget.EditText"]
+                if inputs:
+                    inputs[0].set_text("3A")
+                    time.sleep(0.3)
+                    if len(inputs) > 1:
+                        inputs[1].set_text("3")
+                        time.sleep(0.3)
+                if self.is_visible("Crear Curso"):
+                    self.tap("Crear Curso")
+                elif self.is_visible("Crear"):
+                    self.tap("Crear")
+                time.sleep(1.0)
+                courses = [el for el in self.dump_hierarchy() if "Planilla y gestión" in el.content_desc or "3A" in el.content_desc]
+
             if courses:
                 courses[0].tap()
                 time.sleep(1.0)

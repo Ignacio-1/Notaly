@@ -1,38 +1,57 @@
 """
-Punto de entrada principal para la versión Android / Móvil de Notaly (Gestor Educativo).
-Desarrollado con Flet y Material 3 para interfaces táctiles y responsive.
+Punto de entrada principal para la versión móvil de Notaly (Gestor Educativo).
+
+Implementa la shell editorial única "Crisp Editorial Ledger" (SPEC-028):
+registro de fuentes offline (`LedgerSans` y `LedgerMono`), temas duales (`Light`
+y `Dark`), búsqueda global overlay a pantalla completa en `page.overlay`, cabecera
+consolidada sin `page.appbar` redundante, menú contextual en `NotalySheet` y
+sincronización reactiva de caché e historial (`B3`, `B4`, `B5`, `B6`).
 """
 
+from __future__ import annotations
+
+import inspect
+import logging
 import os
 import sys
-from pathlib import Path
-import json
-import logging
 import time
-import inspect
+from pathlib import Path
+
 import flet as ft
 
+from mobile.components.footer import AppFooter
+from mobile.components.global_search import GlobalSearchOverlay
+from mobile.components.local_backup_dialog import LocalBackupDialog
+from mobile.components.notaly_sheet import (
+    NotalyCompactDialog,
+    NotalySheet,
+    open_dialog_safe,
+    sheet_action_button,
+    sheet_menu_item,
+)
 from mobile.state import AppState
+from mobile.theme import (
+    DARK_TOKENS,
+    FONT_ASSETS,
+    FONT_SANS,
+    LIGHT_TOKENS,
+    SPACE_SM,
+    ThemeTokens,
+    resolve_tokens,
+)
+from mobile.views.asistencias_view import AsistenciasView
 from mobile.views.colegios_view import ColegiosView
 from mobile.views.cursos_view import CursosView
-from mobile.views.notas_view import NotasView
-from mobile.views.asistencias_view import AsistenciasView
 from mobile.views.estadisticas_view import EstadisticasView
 from mobile.views.grupos_view import GruposView
+from mobile.views.notas_view import NotasView
 from mobile.views.planillas_view import PlanillasView
-from mobile.components.footer import AppFooter
 
-# Configurar logging
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
-
-
-from mobile.components.local_backup_dialog import LocalBackupDialog
-from mobile.components.global_search import GlobalSearchBar
-from mobile.theme import PRIMARY, TEXT_MAIN, TEXT_MUTED, BORDER_COLOR, BG_PAGE, SURFACE_WHITE
 
 
 def _verificar_integridad_app() -> bool:
@@ -59,92 +78,120 @@ def _verificar_integridad_app() -> bool:
     return True
 
 
+def _build_flet_themes() -> tuple[ft.Theme, ft.Theme]:
+    """Construye los objetos `ft.Theme` Light y Dark con fuente base `LedgerSans`."""
+    light_theme = ft.Theme(
+        color_scheme_seed=LIGHT_TOKENS.accent_primary,
+        font_family=FONT_SANS,
+        use_material3=True,
+        divider_color=LIGHT_TOKENS.border_hairline,
+    )
+    dark_theme = ft.Theme(
+        color_scheme_seed=DARK_TOKENS.accent_primary,
+        font_family=FONT_SANS,
+        use_material3=True,
+        divider_color=DARK_TOKENS.border_hairline,
+    )
+    return light_theme, dark_theme
+
+
 def main(page: ft.Page):
     if not _verificar_integridad_app():
-        page.add(ft.Text("Error: Verificación de integridad fallida.", color="red"))
+        page.add(ft.Text("Error: Verificación de integridad fallida.", color=LIGHT_TOKENS.fail_fg))
         return
 
-    # Inicializar servicios de Flet (archivos y portapapeles)
+    # Servicios Flet (selector de archivos y portapapeles)
     file_picker = ft.FilePicker()
     clipboard = ft.Clipboard()
     if hasattr(page, "services") and isinstance(page.services, list):
         page.services.append(file_picker)
         page.services.append(clipboard)
 
-    # Inicializar estado global y tokens de tema
     state = AppState(on_change=lambda: page.update())
     tokens = state.tokens
 
+    # Tipografía offline y tema dual
     page.title = "Notaly - Gestor Educativo"
+    page.fonts = dict(FONT_ASSETS)
+    light_theme, dark_theme = _build_flet_themes()
+    page.theme = light_theme
+    page.dark_theme = dark_theme
     page.theme_mode = ft.ThemeMode.DARK if state.is_dark_mode else ft.ThemeMode.LIGHT
-    page.bgcolor = tokens.bg_page
-    page.theme = ft.Theme(
-        color_scheme_seed=tokens.primary,
-        font_family="Roboto",
-        use_material3=True,
-    )
-
-    # Configuración de márgenes y padding para móviles
+    page.bgcolor = tokens.bg_canvas
+    page.appbar = None
     page.padding = 0
     page.spacing = 0
 
-    # Contenedor principal donde se renderiza la vista activa
-    main_container = ft.Container(expand=True)
-
-    # Barra inferior de navegación principal (Footer SPEC-016)
+    main_container = ft.Container(expand=True, bgcolor=tokens.bg_canvas)
     footer = AppFooter(state=state, on_navigate=lambda v: navigate(v), tokens=tokens)
     page.navigation_bar = footer
 
-    global_search = None
+    global_search: GlobalSearchOverlay | None = None
     _last_back_time: float = 0.0
     _in_transition: bool = False
     EXIT_WINDOW_SECONDS: float = 2.0
     _curso_views: dict[str, ft.Control] = {}
+    _curso_views_versions: dict[str, int] = {}
     _curso_context: tuple[str | None, str | None] = (None, None)
 
-    def _mostrar_snackbar_doble_back():
-        t = state.tokens
+    def _sync_container_footer_divider(t: ThemeTokens | None = None) -> None:
+        tok = t or resolve_tokens(page=page, state=state)
+        main_container.bgcolor = tok.bg_canvas
+        # Divisor hairline superior para Material 3 en Android cuando Footer está visible
+        main_container.border = (
+            ft.Border.only(bottom=ft.BorderSide(1, tok.border_hairline))
+            if getattr(footer, "visible", False)
+            else None
+        )
+
+    def _mostrar_snackbar_doble_back() -> None:
+        t = resolve_tokens(page=page, state=state)
         if hasattr(page, "overlay") and isinstance(page.overlay, list):
-            # Mutación in-place segura: page.overlay es una propiedad de sólo lectura en Flet
             for c in list(page.overlay):
                 if isinstance(c, ft.SnackBar):
                     page.overlay.remove(c)
             sb = ft.SnackBar(
                 content=ft.Text(
                     "Presiona o haz el gesto de volver otra vez para salir",
-                    color=t.surface if t else ft.Colors.WHITE,
+                    color=t.surface_primary,
                     size=13,
                     weight=ft.FontWeight.W_500,
                 ),
-                bgcolor=t.text_main if t else ft.Colors.SURFACE_CONTAINER_HIGHEST,
+                bgcolor=t.text_primary,
                 duration=2000,
             )
             page.overlay.append(sb)
             sb.open = True
             page.update()
 
-    def _gestionar_retroceso_sistema(e=None):
+    def _gestionar_retroceso_sistema(e=None) -> None:
         nonlocal _last_back_time, _in_transition
         ahora = time.time()
 
-        # Nivel 0: Anti-bouncing / Reentrancia (< 200 ms o durante transición activa)
-        if _in_transition or (_last_back_time > 0 and (ahora - _last_back_time < 0.2) and state.can_pop()):
+        # Nivel 0: Anti-bouncing (< 200 ms)
+        if _in_transition or (
+            _last_back_time > 0 and (ahora - _last_back_time < 0.2) and state.can_pop()
+        ):
             return
 
-        # Nivel 1: Búsqueda Omnibox Abierta
+        # Nivel 1: Búsqueda overlay abierta
         if global_search is not None and getattr(global_search, "is_open", False):
             if global_search.cerrar_vista_si_abierta():
                 _last_back_time = 0.0
                 return
 
-        # Nivel 1.5: Teclado numérico / Dock retráctil abierto en la vista activa
+        # Nivel 1.5: Teclado numérico retráctil abierto
         current_view = getattr(main_container, "content", None)
-        if current_view is not None and hasattr(current_view, "cerrar_dock_si_abierto") and callable(current_view.cerrar_dock_si_abierto):
+        if (
+            current_view is not None
+            and hasattr(current_view, "cerrar_dock_si_abierto")
+            and callable(current_view.cerrar_dock_si_abierto)
+        ):
             if current_view.cerrar_dock_si_abierto():
                 _last_back_time = 0.0
                 return
 
-        # Nivel 2: Modales o Diálogos Abiertos
+        # Nivel 2: Modales, hojas o diálogos abiertos
         try:
             closed_dlg = page.pop_dialog()
             if closed_dlg is not None:
@@ -171,8 +218,7 @@ def main(page: ft.Page):
                 _in_transition = False
             _last_back_time = 0.0
             return
-        elif state.current_screen != "colegios":
-            # Fallback defensivo si no estamos en la raíz pero la pila estaba vacía
+        if state.current_screen != "colegios":
             _in_transition = True
             try:
                 state.flush_auto_save()
@@ -185,11 +231,9 @@ def main(page: ft.Page):
             _last_back_time = 0.0
             return
 
-        # Nivel 4: Pantalla Raíz ("Double Back to Exit")
+        # Nivel 4: Doble toque para salir
         if _last_back_time > 0 and (ahora - _last_back_time) <= EXIT_WINDOW_SECONDS:
-            # Segundo toque dentro de la ventana de 2.0s: Salida
             state.flush_auto_save()
-            # En dispositivos móviles (Flet / Flutter)
             try:
                 if e and hasattr(e, "control") and hasattr(e.control, "confirm_pop"):
                     if inspect.iscoroutinefunction(e.control.confirm_pop):
@@ -198,7 +242,6 @@ def main(page: ft.Page):
                         e.control.confirm_pop(True)
             except Exception:
                 pass
-            # Fallback en entorno de pruebas o escritorio
             win = getattr(page, "window", None)
             if win is not None and hasattr(win, "close"):
                 try:
@@ -206,11 +249,10 @@ def main(page: ft.Page):
                 except Exception:
                     pass
         else:
-            # Primer toque en pantalla raíz
             _last_back_time = ahora
             _mostrar_snackbar_doble_back()
 
-    def navigate(view_name: str, push_history: bool = True):
+    def navigate(view_name: str, push_history: bool = True) -> None:
         nonlocal _last_back_time, _curso_context
         _last_back_time = 0.0
 
@@ -219,44 +261,70 @@ def main(page: ft.Page):
             return
 
         current_context = (state.selected_colegio, state.selected_curso)
-        if current_context != _curso_context or view_name in ("colegios", "cursos"):
+        context_changed = current_context != _curso_context
+        if context_changed or view_name in ("colegios", "cursos"):
             _curso_views.clear()
+            _curso_views_versions.clear()
             _curso_context = current_context
 
-        if push_history and view_name != state.current_screen:
-            if state.can_pop() and state.peek_history() and state.peek_history().get("screen") == view_name:
+        if push_history and (view_name != state.current_screen or context_changed):
+            peek = state.peek_history()
+            # B4: valida (selected_colegio, selected_curso) antes de consumir peek_history()
+            if (
+                state.can_pop()
+                and peek is not None
+                and peek.get("screen") == view_name
+                and peek.get("selected_colegio") == state.selected_colegio
+                and peek.get("selected_curso") == state.selected_curso
+            ):
                 state.flush_auto_save()
                 state.pop_history()
-            else:
+            elif not (peek is not None and peek.get("screen") == state.current_screen):
                 state.push_history()
 
         state.current_screen = view_name
+        roster_ver = getattr(state, "curso_roster_version", 0)
+
         if view_name == "colegios":
             main_container.content = ColegiosView(state, page, on_navigate=navigate)
         elif view_name == "cursos":
             main_container.content = CursosView(state, page, on_navigate=navigate)
         elif view_name == "notas":
-            if "notas" not in _curso_views:
+            if (
+                "notas" not in _curso_views
+                or _curso_views_versions.get("notas") != roster_ver
+            ):
                 _curso_views["notas"] = NotasView(state, page, on_navigate=navigate)
+                _curso_views_versions["notas"] = roster_ver
             main_container.content = _curso_views["notas"]
         elif view_name == "asistencias":
-            if "asistencias" not in _curso_views:
+            if (
+                "asistencias" not in _curso_views
+                or _curso_views_versions.get("asistencias") != roster_ver
+            ):
                 _curso_views["asistencias"] = AsistenciasView(state, page, on_navigate=navigate)
+                _curso_views_versions["asistencias"] = roster_ver
             main_container.content = _curso_views["asistencias"]
         elif view_name == "grupos":
-            if "grupos" not in _curso_views:
+            if (
+                "grupos" not in _curso_views
+                or _curso_views_versions.get("grupos") != roster_ver
+            ):
                 _curso_views["grupos"] = GruposView(state, page, on_navigate=navigate)
+                _curso_views_versions["grupos"] = roster_ver
             main_container.content = _curso_views["grupos"]
         elif view_name == "estadisticas":
             main_container.content = EstadisticasView(state, page, on_navigate=navigate)
         elif view_name == "planillas":
             main_container.content = PlanillasView(state, page, on_navigate=navigate)
+
         footer.sincronizar_vista(view_name)
+        _sync_container_footer_divider()
         page.update()
 
-    def al_restaurar_copia():
-        # Validar consistencia tras la restauración (combinar o reemplazar)
+    def al_restaurar_copia() -> None:
         _curso_views.clear()
+        _curso_views_versions.clear()
         state.clear_history()
         colegios = state.get_colegios()
         if not state.selected_colegio or state.selected_colegio not in colegios:
@@ -276,167 +344,168 @@ def main(page: ft.Page):
 
     state.on_backup_restored = al_restaurar_copia
 
-    def abrir_estadisticas_global():
-        state.origen_pantalla = state.current_screen
-        state.estadisticas_nivel = "colegio"
-        navigate("estadisticas")
+    def abrir_modal_copias() -> None:
+        dlg = LocalBackupDialog(
+            state,
+            page,
+            file_picker=file_picker,
+            on_restored=al_restaurar_copia,
+        )
+        open_dialog_safe(page, dlg)
 
-    def abrir_modal_copias():
-        dlg = LocalBackupDialog(state, page, file_picker=file_picker, on_restored=al_restaurar_copia)
-        page.show_dialog(dlg)
-        page.update()
+    def abrir_modal_acerca_de() -> None:
+        t = resolve_tokens(page=page, state=state)
 
-    def abrir_modal_acerca_de():
-        t = state.tokens
-        dlg = ft.AlertDialog(
-            bgcolor=t.surface,
-            title=ft.Row(
-                [
-                    ft.Icon(ft.Icons.SCHOOL, color=t.primary, size=24),
-                    ft.Text("Acerca de Notaly", weight=ft.FontWeight.BOLD, size=16, color=t.text_main),
-                ],
-                spacing=8,
-                vertical_alignment=ft.CrossAxisAlignment.CENTER,
-            ),
-            content=ft.Column(
-                [
-                    ft.Text("Notaly - Gestor Educativo Móvil", size=15, weight=ft.FontWeight.BOLD, color=t.text_main),
-                    ft.Text("Versión 2.0 (Multiplataforma)", size=13, color=t.text_muted),
-                    ft.Divider(height=12, color=t.border_color),
+        def cerrar(_e=None):
+            try:
+                page.pop_dialog()
+            except Exception:
+                pass
+            page.update()
+
+        dlg = NotalyCompactDialog(
+            page=page,
+            title="Acerca de Notaly",
+            body=ft.Column(
+                spacing=SPACE_SM,
+                tight=True,
+                controls=[
                     ft.Text(
-                        "Gestión integral de colegios, cursos, calificaciones por trimestres, recuperatorios, asistencias y copias de seguridad locales.",
+                        "Notaly - Gestor Educativo Móvil",
+                        size=15,
+                        weight=ft.FontWeight.BOLD,
+                        color=t.text_primary,
+                    ),
+                    ft.Text(
+                        "Versión 2.0 (Multiplataforma)",
                         size=13,
-                        color=t.text_main,
+                        color=t.text_secondary,
+                    ),
+                    ft.Divider(height=1, color=t.border_hairline),
+                    ft.Text(
+                        "Gestión integral de colegios, cursos, calificaciones por trimestres, "
+                        "recuperatorios, asistencias y copias de seguridad locales.",
+                        size=13,
+                        color=t.text_primary,
                     ),
                 ],
-                tight=True,
-                width=320,
-                spacing=4,
             ),
             actions=[
-                ft.FilledButton(
-                    "Entendido",
-                    style=ft.ButtonStyle(
-                        bgcolor=t.primary,
-                        color=ft.Colors.WHITE,
-                        shape=ft.RoundedRectangleBorder(radius=8),
-                    ),
-                    on_click=lambda e: (page.pop_dialog(), page.update()),
-                ),
+                sheet_action_button("Entendido", cerrar, tokens=t, primary=True),
             ],
-            actions_alignment=ft.MainAxisAlignment.END,
+            tokens=t,
+            state=state,
             modal=True,
         )
-        page.show_dialog(dlg)
-        page.update()
+        open_dialog_safe(page, dlg)
 
-    # Barra de búsqueda omnibox global única en la parte superior (estilo Figma)
-    global_search = GlobalSearchBar(
+    def _on_search_open_change(is_open: bool) -> None:
+        if is_open:
+            footer.visible = False
+        else:
+            footer.sincronizar_vista(state.current_screen)
+        _sync_container_footer_divider()
+        try:
+            page.update()
+        except Exception:
+            pass
+
+    global_search = GlobalSearchOverlay(
         state=state,
         page=page,
         on_navigate=navigate,
         bar_hint_text="Buscar alumno, curso o colegio...",
+        on_open_change=_on_search_open_change,
+        tokens=tokens,
     )
+    if hasattr(page, "overlay") and isinstance(page.overlay, list):
+        page.overlay.append(global_search)
+    page._global_search = global_search
 
-    backup_btn = ft.IconButton(
-        icon=ft.Icons.SETTINGS_BACKUP_RESTORE_ROUNDED,
-        tooltip="Copia de Seguridad",
-        icon_color=tokens.primary,
-        on_click=lambda e: abrir_modal_copias(),
-    )
+    def abrir_menu_mas() -> None:
+        t = resolve_tokens(page=page, state=state)
 
-    theme_button = ft.IconButton(
-        icon=ft.Icons.LIGHT_MODE_OUTLINED if state.is_dark_mode else ft.Icons.DARK_MODE_OUTLINED,
-        tooltip="Modo Claro" if state.is_dark_mode else "Modo Oscuro",
-        icon_color=tokens.primary,
-        on_click=lambda e: conmutar_tema(),
-    )
+        def cerrar():
+            try:
+                page.pop_dialog()
+            except Exception:
+                pass
+            page.update()
 
-    theme_menu_item = ft.PopupMenuItem(
-        icon=ft.Icons.LIGHT_MODE_OUTLINED if state.is_dark_mode else ft.Icons.DARK_MODE_OUTLINED,
-        content=ft.Text("Modo Claro" if state.is_dark_mode else "Modo Oscuro"),
-        on_click=lambda e: conmutar_tema(),
-    )
+        def ir_copias(_e=None):
+            cerrar()
+            abrir_modal_copias()
 
-    def conmutar_tema():
-        nuevo_tema = state.toggle_theme()
+        def ir_acerca(_e=None):
+            cerrar()
+            abrir_modal_acerca_de()
+
+        dlg = NotalySheet(
+            page=page,
+            title="Opciones",
+            subtitle="Respaldo e información de Notaly",
+            body=[
+                sheet_menu_item(
+                    ft.Icons.SETTINGS_BACKUP_RESTORE_ROUNDED,
+                    "Copia de Seguridad",
+                    ir_copias,
+                    tokens=t,
+                    show_divider=True,
+                ),
+                sheet_menu_item(
+                    ft.Icons.INFO_OUTLINE,
+                    "Acerca de Notaly",
+                    ir_acerca,
+                    tokens=t,
+                    show_divider=False,
+                ),
+            ],
+            tokens=t,
+            state=state,
+        )
+        open_dialog_safe(page, dlg)
+
+    def conmutar_tema() -> None:
+        state.toggle_theme()
         t = state.tokens
         is_dark = state.is_dark_mode
 
-        # 1. Configuración de página y canvas Flet
         page.theme_mode = ft.ThemeMode.DARK if is_dark else ft.ThemeMode.LIGHT
-        page.bgcolor = t.bg_page
-        page.theme = ft.Theme(
-            color_scheme_seed=t.primary,
-            font_family="Roboto",
-            use_material3=True,
-        )
+        page.bgcolor = t.bg_canvas
+        main_container.bgcolor = t.bg_canvas
 
-        # 2. Barra superior
-        page.appbar.bgcolor = t.surface
-        if page.appbar.leading and isinstance(page.appbar.leading, ft.Icon):
-            page.appbar.leading.color = t.primary
-        backup_btn.icon_color = t.primary
-        theme_button.icon = ft.Icons.LIGHT_MODE_OUTLINED if is_dark else ft.Icons.DARK_MODE_OUTLINED
-        theme_button.tooltip = "Modo Claro" if is_dark else "Modo Oscuro"
-        theme_button.icon_color = t.primary
-        theme_menu_item.icon = ft.Icons.LIGHT_MODE_OUTLINED if is_dark else ft.Icons.DARK_MODE_OUTLINED
-        if isinstance(theme_menu_item.content, ft.Text):
-            theme_menu_item.content.value = "Modo Claro" if is_dark else "Modo Oscuro"
-
-        # 3. Barra de búsqueda global y footer
         if hasattr(global_search, "actualizar_tema"):
             global_search.actualizar_tema(t)
         footer.actualizar_tema(t)
 
-        # 4. Refrescar la vista actual manteniendo intacto el contexto docente
         _curso_views.clear()
-        navigate(state.current_screen)
+        _curso_views_versions.clear()
+        navigate(state.current_screen, push_history=False)
         page.update()
 
-    # Barra superior global de la aplicación con diseño unificado
-    page.appbar = ft.AppBar(
-        leading=ft.Icon(ft.Icons.SCHOOL, color=tokens.primary, size=24),
-        leading_width=38,
-        title=global_search,
-        center_title=False,
-        bgcolor=tokens.surface,
-        actions=[
-            theme_button,
-            backup_btn,
-            ft.PopupMenuButton(
-                icon=ft.Icons.MORE_VERT,
-                icon_color=tokens.text_muted,
-                items=[
-                    theme_menu_item,
-                    ft.PopupMenuItem(
-                        icon=ft.Icons.INFO_OUTLINE,
-                        content=ft.Text("Acerca de"),
-                        on_click=lambda e: abrir_modal_acerca_de(),
-                    ),
-                ],
-            ),
-        ],
-    )
+    page._shell_actions = {
+        "on_search": lambda: global_search.abrir(),
+        "on_toggle_theme": conmutar_tema,
+        "on_more": abrir_menu_mas,
+    }
 
     page.add(main_container)
 
-    # Gestión reactiva del ciclo de vida móvil (Android / iOS)
-    def _gestionar_ciclo_vida(e: ft.AppLifecycleStateChangeEvent):
+    def _gestionar_ciclo_vida(e: ft.AppLifecycleStateChangeEvent) -> None:
         try:
             estado_str = str(e.state).lower()
             if any(s in estado_str for s in ["pause", "inactive", "detach"]):
                 state.flush_auto_save()
-                state.verificar_y_ejecutar_auto_backup_en_background(tiene_cambios_recientes=True)
+                state.verificar_y_ejecutar_auto_backup_en_background(
+                    tiene_cambios_recientes=True
+                )
         except Exception as err:
             logger.warning("Error al procesar cambio de ciclo de vida: %s", err)
 
     page.on_app_lifecycle_state_change = _gestionar_ciclo_vida
-
-    # Enlace a eventos de retroceso del sistema (Android, iOS y Escritorio - SPEC-020)
     page.on_view_pop = _gestionar_retroceso_sistema
 
-    def _al_presionar_teclado(e: ft.KeyboardEvent):
+    def _al_presionar_teclado(e: ft.KeyboardEvent) -> None:
         if e.key == "Escape":
             _gestionar_retroceso_sistema(e)
 
@@ -449,11 +518,9 @@ def main(page: ft.Page):
         except Exception as err:
             logger.debug("Aviso al configurar can_pop en root view: %s", err)
 
-    # Iniciar en la pantalla de colegios
     navigate("colegios")
 
-    # Detección automática en primer inicio si la base está vacía (REQ-EARS-015)
-    def _verificar_primer_inicio():
+    def _verificar_primer_inicio() -> None:
         try:
             if state.is_database_empty():
                 copias = state.find_local_backups()
@@ -461,59 +528,59 @@ def main(page: ft.Page):
                     primera = copias[0]
                     nom = primera.get("nombre", "copia de seguridad")
                     fec = primera.get("fecha", "")
+                    t = resolve_tokens(page=page, state=state)
 
-                    def _restaurar_clic(e):
-                        page.pop_dialog()
+                    def cerrar_onboarding(_e=None):
+                        try:
+                            page.pop_dialog()
+                        except Exception:
+                            pass
                         page.update()
+
+                    def _restaurar_clic(_e=None):
+                        cerrar_onboarding()
                         abrir_modal_copias()
 
-                    dlg_onboarding = ft.AlertDialog(
-                        modal=True,
-                        title=ft.Row(
-                            [
-                                ft.Icon(ft.Icons.RESTORE_ROUNDED, color=tokens.primary, size=24),
-                                ft.Text("¿Restaurar tus datos?", size=16, weight=ft.FontWeight.BOLD),
-                            ],
-                            spacing=8,
-                        ),
-                        content=ft.Column(
-                            [
+                    dlg_onboarding = NotalyCompactDialog(
+                        page=page,
+                        title="¿Restaurar tus datos?",
+                        body=ft.Column(
+                            spacing=SPACE_SM,
+                            tight=True,
+                            controls=[
                                 ft.Text(
-                                    f"Detectamos una copia de seguridad previa en tu dispositivo:\n• {nom}",
+                                    f"Detectamos una copia de seguridad previa en tu dispositivo: {nom}",
                                     size=13,
-                                    color=tokens.text_main,
+                                    color=t.text_primary,
                                 ),
-                                ft.Text(f"Fecha: {fec}", size=12, color=tokens.text_muted),
+                                ft.Text(f"Fecha: {fec}", size=12, color=t.text_secondary),
                                 ft.Text(
                                     "¿Deseas restaurar tus instituciones y calificaciones ahora?",
                                     size=13,
                                     weight=ft.FontWeight.W_500,
-                                    color=tokens.text_main,
+                                    color=t.text_primary,
                                 ),
                             ],
-                            spacing=6,
-                            tight=True,
-                            width=320,
                         ),
                         actions=[
-                            ft.TextButton(
+                            sheet_action_button(
                                 "Comenzar de cero",
-                                on_click=lambda e: (page.pop_dialog(), page.update()),
+                                cerrar_onboarding,
+                                tokens=t,
+                                primary=False,
                             ),
-                            ft.FilledButton(
+                            sheet_action_button(
                                 "Restaurar Copia",
-                                style=ft.ButtonStyle(
-                                    bgcolor=tokens.primary,
-                                    color=ft.Colors.WHITE,
-                                    shape=ft.RoundedRectangleBorder(radius=8),
-                                ),
-                                on_click=_restaurar_clic,
+                                _restaurar_clic,
+                                tokens=t,
+                                primary=True,
                             ),
                         ],
-                        actions_alignment=ft.MainAxisAlignment.END,
+                        tokens=t,
+                        state=state,
+                        modal=True,
                     )
-                    page.show_dialog(dlg_onboarding)
-                    page.update()
+                    open_dialog_safe(page, dlg_onboarding)
         except Exception as err:
             logger.warning("Error al verificar copias en primer inicio: %s", err)
 
@@ -521,4 +588,5 @@ def main(page: ft.Page):
 
 
 if __name__ == "__main__":
-    ft.app(target=main, assets_dir="assets")
+    _assets_dir = str(Path(__file__).resolve().parent.parent / "assets")
+    ft.app(target=main, assets_dir=_assets_dir)

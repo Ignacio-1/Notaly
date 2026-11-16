@@ -187,7 +187,7 @@ def test_panel_copia_automatica_renderizado(populated_state, mock_page, monkeypa
     # Sin metadatos previos de hoy, el estado debe indicar 'Pendiente de creación'
     assert any("pendiente de creación" in t.lower() for t in textos)
     # Debe existir el aviso de que las copias son automáticas
-    assert any("al final del día sin que tengas que hacer nada" in t.lower() for t in textos)
+    assert any("se guardan automáticamente en descargas" in t.lower() for t in textos)
 
 
 def test_panel_copia_automatica_al_dia(populated_state, mock_page, tmp_path):
@@ -248,9 +248,9 @@ def test_copia_automatica_insignia_y_formato(populated_state, mock_page, tmp_pat
         dlg = LocalBackupDialog(populated_state, mock_page)
 
     textos_restaurar = _extraer_textos_recursivo(dlg.tabs_content_container.content)
-    # Debe visualizarse el nombre de archivo exacto y el distintivo visual 'Copia Diaria Automática'
-    assert any(gestor_datos.AUTO_BACKUP_FILENAME in t for t in textos_restaurar)
+    # Debe visualizarse el nombre humano legible 'Copia diaria automática' y los conteos tabulares
     assert any("copia diaria automática" in t.lower() for t in textos_restaurar)
+    assert any("1 colegio · 1 alumno" in t.lower() for t in textos_restaurar)
 
 
 def test_restaurar_copia_automatica_modo_replace_y_merge(populated_state, mock_page):
@@ -349,9 +349,9 @@ def test_restaurar_con_fallback_a_bak_si_json_esta_vacio(populated_state, mock_p
     with patch.object(populated_state, "find_local_backups", return_value=[b_info]):
         dlg._mostrar_vista_unificada()
 
-    # Buscar el botón de restaurar en los controles renderizados
+    # Buscar el botón de restaurar en los controles renderizados (ft.Button desde sheet_action_button)
     botones_restaurar = [
-        b for b in _buscar_controles_tipo(dlg.tabs_content_container.content, ft.FilledButton)
+        b for b in _buscar_controles_tipo(dlg.tabs_content_container.content, (ft.Button, ft.FilledButton))
         if "restaurar" in _obtener_texto_boton(b).lower()
     ]
     assert len(botones_restaurar) > 0
@@ -363,7 +363,7 @@ def test_restaurar_con_fallback_a_bak_si_json_esta_vacio(populated_state, mock_p
     assert len(mock_page.dialog_stack) >= 1
     confirm_dlg = mock_page.active_dialog
     textos_confirm = _extraer_textos_recursivo(confirm_dlg.content)
-    assert any("Instituciones: 1" in t for t in textos_confirm)
+    assert any("1 institución" in t for t in textos_confirm)
 
     # Confirmar Reemplazar Todo
     btn_reemplazar = next((a for a in confirm_dlg.actions if "Reemplazar" in _obtener_texto_boton(a)), None)

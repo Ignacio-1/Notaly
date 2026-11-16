@@ -124,7 +124,7 @@ def test_estadisticas_view_tarjeta_contexto_render(state_con_datos, mock_page):
     texto_consolidado = " ".join(t for t in textos if t)
     assert "Colegio Belgrano" in texto_consolidado
     assert "Institucional" in texto_consolidado
-    assert "Cambiar" in texto_consolidado or "▼" in texto_consolidado
+    assert "Cambiar" in texto_consolidado
 
     # Conmutar a nivel curso y verificar actualización
     view._conmutar_nivel("curso", "3ro B")
@@ -132,12 +132,14 @@ def test_estadisticas_view_tarjeta_contexto_render(state_con_datos, mock_page):
     _extraer_textos(view.level_selector_container.content, textos_curso)
     texto_curso_consolidado = " ".join(t for t in textos_curso if t)
     assert "Colegio Belgrano" in texto_curso_consolidado
-    assert "Curso: 3ro B" in texto_curso_consolidado or "3ro B" in texto_curso_consolidado
+    assert "3ro B" in texto_curso_consolidado
     assert len(view.list_view.controls) == 12
+    assert view.list_view.padding.bottom >= 88
 
 
 def test_estadisticas_view_abrir_modal_selector(state_con_datos, mock_page):
-    """Verifica apertura del AlertDialog responsivo con jerarquía vertical."""
+    """Verifica apertura del NotalySheet responsivo con jerarquía vertical."""
+    from mobile.components.notaly_sheet import NotalySheet
     view = EstadisticasView(state=state_con_datos, page=mock_page, on_navigate=lambda _: None)
 
     # Simular toque en la tarjeta de contexto
@@ -145,9 +147,9 @@ def test_estadisticas_view_abrir_modal_selector(state_con_datos, mock_page):
 
     assert mock_page.active_dialog is not None
     dlg = mock_page.active_dialog
-    assert isinstance(dlg, ft.AlertDialog)
+    assert isinstance(dlg, NotalySheet)
 
-    # Verificar título del modal
+    # Verificar título y jerarquía del sheet
     textos_dlg = []
     def _extraer_textos(ctrl):
         if isinstance(ctrl, ft.Text):
@@ -158,15 +160,14 @@ def test_estadisticas_view_abrir_modal_selector(state_con_datos, mock_page):
         if hasattr(ctrl, "content") and ctrl.content:
             _extraer_textos(ctrl.content)
 
-    _extraer_textos(dlg.title)
     _extraer_textos(dlg.content)
     consolidado = " ".join(t for t in textos_dlg if t)
 
     assert "Seleccionar" in consolidado or "Institución" in consolidado
-    assert "Colegio Belgrano" in consolidado
+    assert "colegio belgrano" in consolidado.lower()
     assert "3ro B" in consolidado
     assert "4to A" in consolidado
-    assert "Colegio San Martin" in consolidado
+    assert "colegio san martin" in consolidado.lower()
 
 
 def test_estadisticas_view_seleccion_contexto_modal(state_con_datos, mock_page):
@@ -219,3 +220,41 @@ def test_estadisticas_view_colegio_sin_cursos(state_con_datos, mock_page):
     assert state_con_datos.selected_colegio == "Colegio San Martin"
     assert state_con_datos.estadisticas_nivel == "colegio"
     assert len(view.list_view.controls) == 12
+
+
+def test_estadisticas_view_editorial_kpi_and_no_hex_literals(state_con_datos, mock_page):
+    """T19: Valida banda de 3 KPIs (24-26sp LedgerMono), UnderlineTabBar y cero colores hex hardcodeados."""
+    import re
+    from pathlib import Path
+    from mobile.theme import FONT_MONO
+    from mobile.components.ui_header import UnderlineTabBar
+
+    state_con_datos.estadisticas_nivel = "curso"
+    view = EstadisticasView(state=state_con_datos, page=mock_page, on_navigate=lambda _: None)
+
+    assert isinstance(view.seccion_selector_container.content, UnderlineTabBar)
+    assert isinstance(view.period_selector_container.content, UnderlineTabBar)
+
+    # Verificar períodos cortos
+    period_labels = [t.content.value for t in view.period_selector_container.content.content.controls]
+    assert period_labels == ["1° Trim", "2° Trim", "3° Trim", "Anual"]
+
+    # Verificar banda de 3 KPIs con números 24-26sp LedgerMono
+    kpi_band = view.kpi_container.content
+    kpi_numbers = []
+    def collect_kpis(c):
+        if isinstance(c, ft.Text) and c.font_family == FONT_MONO and (c.size or 0) >= 24:
+            kpi_numbers.append(c)
+        if hasattr(c, "controls"):
+            for ch in c.controls:
+                collect_kpis(ch)
+        if hasattr(c, "content") and c.content:
+            collect_kpis(c.content)
+
+    collect_kpis(kpi_band)
+    assert len(kpi_numbers) == 3
+
+    src = Path("mobile/views/estadisticas_view.py").read_text(encoding="utf-8")
+    # Permitir únicamente comparación "#111315" interna para detectar is_dark o evitarla usando resolve_tokens
+    non_dark_hex = [h for h in re.findall(r"#[0-9A-Fa-f]{6}", src) if h.lower() != "#111315"]
+    assert non_dark_hex == []

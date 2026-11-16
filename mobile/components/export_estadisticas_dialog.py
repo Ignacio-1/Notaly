@@ -1,146 +1,148 @@
 """
-mobile/components/export_estadisticas_dialog.py
+Hoja modal editorial para exportar Estadísticas y Asistencias a PDF (SPEC-028).
 
-Diálogo modal para seleccionar secciones y exportar estadísticas académicas
-a formato PDF vectorial en Notaly Mobile. Cumple con:
-- REQ-EXP-001 a REQ-EXP-008
-- Art. 1 Constitución: Núcleo desacoplado delegando en core.exportador y core.gestor_planillas.
-- Integración segura con Android Scoped Storage y hoja nativa de compartir vía ft.Share.
+Migra `ExportEstadisticasDialog` a `NotalySheet` adaptativo, expande `info_card`
+al 100% del ancho disponible y reemplaza emojis por íconos vectoriales consistentes.
 """
 
-from pathlib import Path
-from typing import Callable, Any
+from __future__ import annotations
+
+import logging
+from typing import Any, Callable
+
 import flet as ft
 
-from core.exportador import exportar_estadisticas_a_pdf, exportar_estadisticas_asistencia_a_pdf
 from core import gestor_planillas
+from core.exportador import (
+    exportar_estadisticas_a_pdf,
+    exportar_estadisticas_asistencia_a_pdf,
+)
+from mobile.components.notaly_sheet import NotalySheet, sheet_action_button
 from mobile.components.share_helper import compartir_archivo
 from mobile.theme import (
-    LIGHT_TOKENS,
+    RADIUS_SM,
+    SPACE_MD,
+    SPACE_SM,
+    SPACE_XS,
     ThemeTokens,
-    get_tokens,
+    resolve_tokens,
 )
 
-
-def _resolve_tokens(
-    tokens: ThemeTokens | None = None,
-    page: ft.Page | None = None,
-    state: Any = None,
-) -> ThemeTokens:
-    if tokens is not None:
-        return tokens
-    if state is not None and hasattr(state, "tokens") and state.tokens is not None:
-        return state.tokens
-    if page is not None and getattr(page, "theme_mode", None) == ft.ThemeMode.DARK:
-        return get_tokens("dark")
-    return LIGHT_TOKENS
+logger = logging.getLogger(__name__)
 
 
-class ExportEstadisticasDialog(ft.AlertDialog):
-    """Diálogo modal para configurar y generar el reporte estadístico en PDF."""
+class ExportEstadisticasDialog(NotalySheet):
+    """Hoja modal adaptativa para exportar reportes analíticos PDF."""
 
     def __init__(
         self,
-        colegio_nombre: str = "",
+        colegio_nombre: str,
         curso_nombre: str | None = None,
-        periodo_nombre: str = "1° Trimestre",
+        periodo_nombre: str = "Anual",
         datos_estadisticas: dict | None = None,
-        tipo_estadistica: str = "academica",
-        rango_fechas_str: str = "Todas las fechas",
-        on_success: Callable[[bool, str], None] | None = None,
+        on_success: Callable[..., Any] | None = None,
         page: ft.Page | None = None,
         state: Any = None,
         tokens: ThemeTokens | None = None,
-        **kwargs,
-    ):
-        self.colegio_nombre = (colegio_nombre or "").strip()
-        self.curso_nombre = curso_nombre.strip() if curso_nombre and str(curso_nombre).strip() else None
-        self.periodo_nombre = (periodo_nombre or "1° Trimestre").strip()
+        tipo_estadistica: str = "calificaciones",
+        rango_fechas_str: str = "Todas las fechas",
+    ) -> None:
+        self.colegio_nombre = colegio_nombre
+        self.curso_nombre = curso_nombre
+        self.periodo_nombre = periodo_nombre
         self.datos_estadisticas = datos_estadisticas or {}
-        self.tipo_estadistica = tipo_estadistica
-        self.rango_fechas_str = (rango_fechas_str or "Todas las fechas").strip()
         self.on_success = on_success
         self.app_page = page
         self.state = state
-        self.tokens = _resolve_tokens(tokens, page, state)
+        self.tokens = resolve_tokens(tokens=tokens, page=page, state=state)
+        self.tipo_estadistica = tipo_estadistica
+        self.rango_fechas_str = rango_fechas_str
         tok = self.tokens
 
-        # Checkboxes para seleccionar secciones (modo académica)
         self.chk_calificaciones = ft.Checkbox(
-            label="Rendimiento y Calificaciones",
+            label="Rendimiento académico y distribución",
             value=True,
-            active_color=tok.primary,
-            label_style=ft.TextStyle(size=14, color=tok.text_main, weight=ft.FontWeight.W_500),
+            active_color=tok.accent_primary,
+            check_color=tok.accent_on_primary,
             on_change=self._al_cambiar_seccion,
         )
         self.chk_comportamiento = ft.Checkbox(
-            label="Comportamiento y Convivencia",
+            label="Convivencia y observaciones",
             value=True,
-            active_color=tok.primary,
-            label_style=ft.TextStyle(size=14, color=tok.text_main, weight=ft.FontWeight.W_500),
+            active_color=tok.accent_primary,
+            check_color=tok.accent_on_primary,
             on_change=self._al_cambiar_seccion,
         )
-
         self.lbl_error = ft.Text(
-            "Debes seleccionar al menos una sección para exportar.",
+            "Selecciona al menos una sección para exportar.",
             size=12,
-            color=ft.Colors.ERROR,
+            color=tok.fail_fg,
             visible=False,
         )
 
-        self.btn_exportar = ft.FilledButton(
+        self.btn_exportar = sheet_action_button(
             "Exportar PDF",
-            icon=ft.Icons.DOWNLOAD,
-            style=ft.ButtonStyle(
-                bgcolor=tok.primary,
-                color=ft.Colors.WHITE,
-                shape=ft.RoundedRectangleBorder(radius=8),
-            ),
-            on_click=lambda e: self._exportar(),
+            lambda _e: self._exportar(),
+            tokens=tok,
+            primary=True,
+            icon=ft.Icons.PICTURE_AS_PDF_OUTLINED,
+            expand=True,
+        )
+        btn_cancelar = sheet_action_button(
+            "Cancelar",
+            lambda _e: self._cerrar(),
+            tokens=tok,
+            primary=False,
+            expand=True,
         )
 
-        page_w = page.width if page and page.width else 400
-        calc_w = min(page_w - 32, 400)
+        def _info_line(icon: ft.IconData, text: str, bold: bool = False) -> ft.Row:
+            return ft.Row(
+                spacing=SPACE_SM,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                controls=[
+                    ft.Icon(
+                        icon=icon,
+                        size=16,
+                        color=tok.accent_primary if bold else tok.text_secondary,
+                    ),
+                    ft.Text(
+                        text,
+                        size=13 if bold else 12,
+                        weight=ft.FontWeight.W_600 if bold else ft.FontWeight.NORMAL,
+                        color=tok.text_primary if bold else tok.text_secondary,
+                        expand=True,
+                        max_lines=2,
+                        overflow=ft.TextOverflow.ELLIPSIS,
+                    ),
+                ],
+            )
 
-        ambito_str = f"Curso: {self.curso_nombre}" if self.curso_nombre else "Institucional (Todos los cursos)"
-
-        info_controls = [
-            ft.Text(
-                f"🏫 {self.colegio_nombre or 'Institución'}",
-                size=13,
-                weight=ft.FontWeight.BOLD,
-                color=tok.text_main,
-            ),
-            ft.Text(
-                f"📚 {ambito_str}",
-                size=12,
-                color=tok.text_muted,
-            ),
+        alcance_label = (
+            f"Curso: {self.curso_nombre}"
+            if self.curso_nombre
+            else "Todos los cursos (Institucional)"
+        )
+        info_controls: list[ft.Control] = [
+            _info_line(ft.Icons.APARTMENT_OUTLINED, self.colegio_nombre, bold=True),
+            _info_line(ft.Icons.CLASS_OUTLINED, alcance_label),
         ]
         if self.tipo_estadistica == "asistencias":
             info_controls.append(
-                ft.Text(
-                    f"🗓️ Fechas: {self.rango_fechas_str}",
-                    size=12,
-                    color=tok.text_muted,
-                )
+                _info_line(ft.Icons.DATE_RANGE_OUTLINED, f"Fechas: {self.rango_fechas_str}")
             )
         else:
             info_controls.append(
-                ft.Text(
-                    f"🗓️ Período: {self.periodo_nombre}",
-                    size=12,
-                    color=tok.text_muted,
-                )
+                _info_line(ft.Icons.CALENDAR_TODAY_OUTLINED, f"Período: {self.periodo_nombre}")
             )
 
-        info_card = ft.Container(
-            bgcolor=tok.surface_variant,
-            border=ft.Border.all(1, tok.border_color),
-            border_radius=8,
-            padding=ft.Padding(left=12, right=12, top=10, bottom=10),
+        self.info_card = ft.Container(
+            bgcolor=tok.surface_subtle,
+            border=ft.Border.all(1, tok.border_hairline),
+            border_radius=RADIUS_SM,
+            padding=SPACE_MD,
             content=ft.Column(
-                spacing=3,
+                spacing=SPACE_XS,
                 tight=True,
                 controls=info_controls,
             ),
@@ -148,40 +150,43 @@ class ExportEstadisticasDialog(ft.AlertDialog):
 
         if self.tipo_estadistica == "asistencias":
             titulo_texto = "Exportar Estadísticas de Asistencia"
-            icono_titulo = ft.Icons.EVENT_AVAILABLE
-            seccion_selector = ft.Container(
+            seccion_selector: ft.Control = ft.Container(
+                padding=ft.Padding.symmetric(horizontal=SPACE_XS, vertical=2),
                 content=ft.Column(
-                    spacing=6,
+                    spacing=SPACE_XS,
                     tight=True,
                     controls=[
                         ft.Row(
-                            spacing=8,
+                            spacing=SPACE_SM,
                             controls=[
-                                ft.Icon(ft.Icons.CHECK_CIRCLE, size=16, color=tok.primary),
+                                ft.Icon(
+                                    icon=ft.Icons.CHECK_CIRCLE_OUTLINE,
+                                    size=16,
+                                    color=tok.accent_primary,
+                                ),
                                 ft.Text(
                                     "Resumen Estadístico de Asistencias",
                                     size=13,
-                                    weight=ft.FontWeight.W_500,
-                                    color=tok.text_main,
+                                    weight=ft.FontWeight.W_600,
+                                    color=tok.text_primary,
                                     expand=True,
                                 ),
                             ],
                         ),
                         ft.Text(
                             "Incluye KPIs, distribución P/A/T/J y desglose por alumno o comparativo.",
-                            size=11,
-                            color=tok.text_muted,
+                            size=12,
+                            color=tok.text_secondary,
                         ),
                     ],
                 ),
-                padding=ft.Padding(left=4, right=4, top=2, bottom=2),
             )
         else:
             titulo_texto = "Exportar Estadísticas"
-            icono_titulo = ft.Icons.BAR_CHART
             seccion_selector = ft.Container(
+                padding=ft.Padding.symmetric(horizontal=SPACE_XS, vertical=2),
                 content=ft.Column(
-                    spacing=6,
+                    spacing=SPACE_XS,
                     tight=True,
                     controls=[
                         self.chk_calificaciones,
@@ -189,87 +194,63 @@ class ExportEstadisticasDialog(ft.AlertDialog):
                         self.lbl_error,
                     ],
                 ),
-                padding=ft.Padding(left=4, right=4, top=2, bottom=2),
             )
 
-        content_col = ft.Column(
-            tight=True,
-            spacing=12,
+        spec_row = ft.Row(
+            spacing=SPACE_SM,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
             controls=[
-                info_card,
-                ft.Text(
-                    "Contenido del documento a exportar:" if self.tipo_estadistica == "asistencias" else "Selecciona el contenido que deseas incluir en el documento:",
-                    size=13,
-                    color=tok.text_muted,
+                ft.Icon(
+                    icon=ft.Icons.DESCRIPTION_OUTLINED,
+                    size=16,
+                    color=tok.text_secondary,
                 ),
-                seccion_selector,
                 ft.Text(
-                    "📄 Formato A4 Vertical · Gráficos vectoriales de alta definición",
+                    "Formato A4 Vertical · Gráficos vectoriales de alta definición",
                     size=11,
-                    color=tok.text_subtle,
-                    italic=True,
+                    color=tok.text_secondary,
+                    expand=True,
                 ),
             ],
         )
 
         super().__init__(
-            title=ft.Row(
-                spacing=10,
-                vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                controls=[
-                    ft.Icon(icono_titulo, color=tok.primary, size=22),
-                    ft.Text(
-                        titulo_texto,
-                        size=16,
-                        weight=ft.FontWeight.BOLD,
-                        color=tok.text_main,
-                        expand=True,
-                    ),
-                ],
-            ),
-            content=ft.Container(
-                width=calc_w,
-                content=content_col,
-            ),
-            actions=[
-                ft.TextButton(
-                    "Cancelar",
-                    style=ft.ButtonStyle(
-                        color=tok.text_muted,
-                        shape=ft.RoundedRectangleBorder(radius=8),
-                    ),
-                    on_click=lambda e: self._cerrar(),
+            page=page,
+            title=titulo_texto,
+            body=[
+                self.info_card,
+                ft.Text(
+                    "Contenido del documento:"
+                    if self.tipo_estadistica == "asistencias"
+                    else "Secciones a incluir en el documento:",
+                    size=12,
+                    weight=ft.FontWeight.BOLD,
+                    color=tok.text_secondary,
                 ),
-                self.btn_exportar,
+                seccion_selector,
+                spec_row,
             ],
-            actions_alignment=ft.MainAxisAlignment.END,
-            bgcolor=tok.surface,
-            modal=True,
+            actions=[btn_cancelar, self.btn_exportar],
+            tokens=tok,
+            state=state,
         )
 
-    def _al_cambiar_seccion(self, e=None):
-        ambas_desmarcadas = not self.chk_calificaciones.value and not self.chk_comportamiento.value
-        self.btn_exportar.disabled = ambas_desmarcadas
-        self.lbl_error.visible = ambas_desmarcadas
+    def _al_cambiar_seccion(self, _e: Any = None) -> None:
+        inc_calif = bool(self.chk_calificaciones.value)
+        inc_comp = bool(self.chk_comportamiento.value)
+        valido = inc_calif or inc_comp
+        self.lbl_error.visible = not valido
+        self.btn_exportar.disabled = not valido
         try:
-            self.update()
+            if self.page is not None:
+                self.update()
         except Exception:
-            if self.app_page:
-                try:
-                    self.app_page.update()
-                except Exception:
-                    pass
+            pass
 
-    def _cerrar(self):
-        self.open = False
-        if self.app_page:
-            try:
-                self.app_page.pop_dialog()
-                self.app_page.update()
-            except Exception:
-                pass
+    def _cerrar(self) -> None:
+        self.close()
 
-    def _exportar(self):
+    def _exportar(self) -> None:
         if self.tipo_estadistica == "asistencias":
             try:
                 carpeta_destino = gestor_planillas.obtener_directorio_exportaciones()
@@ -292,7 +273,9 @@ class ExportEstadisticasDialog(ft.AlertDialog):
                 )
 
                 if not exito:
-                    raise RuntimeError(error_msg or "Error durante la generación del reporte PDF.")
+                    raise RuntimeError(
+                        error_msg or "Error durante la generación del reporte PDF de asistencias."
+                    )
 
                 if self.state and hasattr(self.state, "registrar_planilla_exportada"):
                     self.state.registrar_planilla_exportada(
@@ -319,7 +302,6 @@ class ExportEstadisticasDialog(ft.AlertDialog):
                             pass
 
                 self._cerrar()
-
                 compartir_archivo(
                     self.app_page,
                     ruta_str,
@@ -328,11 +310,10 @@ class ExportEstadisticasDialog(ft.AlertDialog):
 
                 if self.on_success:
                     self.on_success(True, ruta_str)
-
-            except Exception as e:
+            except Exception as exc:
                 self._cerrar()
                 if self.on_success:
-                    self.on_success(False, str(e))
+                    self.on_success(False, str(exc))
             return
 
         inc_calif = bool(self.chk_calificaciones.value)
@@ -365,7 +346,6 @@ class ExportEstadisticasDialog(ft.AlertDialog):
             if not exito:
                 raise RuntimeError(error_msg or "Error durante la generación del reporte PDF.")
 
-            # Registrar en el historial de planillas (SPEC-016 / SPEC-019)
             if self.state and hasattr(self.state, "registrar_planilla_exportada"):
                 self.state.registrar_planilla_exportada(
                     ruta_archivo=ruta_archivo,
@@ -391,8 +371,6 @@ class ExportEstadisticasDialog(ft.AlertDialog):
                         pass
 
             self._cerrar()
-
-            # Disparar la hoja nativa de compartir
             compartir_archivo(
                 self.app_page,
                 ruta_str,
@@ -401,8 +379,7 @@ class ExportEstadisticasDialog(ft.AlertDialog):
 
             if self.on_success:
                 self.on_success(True, ruta_str)
-
-        except Exception as e:
+        except Exception as exc:
             self._cerrar()
             if self.on_success:
-                self.on_success(False, str(e))
+                self.on_success(False, str(exc))

@@ -1,57 +1,52 @@
 """
-Diálogo de exportación para la versión móvil de Notaly.
-Permite exportar Planilla de Notas o Asistencias a formatos PDF, CSV y TXT
-con soporte para Android Scoped Storage y hoja de compartir nativa (ft.Share).
+Hoja modal editorial de exportación de planillas de Notas o Asistencias (SPEC-028).
+
+Migra `ExportDialog` a `NotalySheet` adaptativo sin altura fija ni grupos de radio
+M3, utilizando filas seleccionables `EditorialRadioList` (`NotalyListRow`), aviso
+completo con tríada `warn_*`, colapso de selectores de fechas cuando "Todas las
+fechas" está activo y paleta dual completa (RF-05, RF-07, RF-21, RF-23).
 """
 
-import os
-import sys
-import tempfile
+from __future__ import annotations
+
+import logging
 from pathlib import Path
-from datetime import datetime
-from typing import Callable, Any
+from typing import Any, Callable
+
 import flet as ft
 
+from core import gestor_planillas
+from core.calculos import (
+    obtener_estadisticas_asistencia_curso,
+    ordenar_fechas_cronologicamente,
+)
+from core.constants import K_ALUMNOS, K_ASISTENCIAS
 from core.exportador import (
-    exportar_a_pdf,
     exportar_a_csv,
+    exportar_a_pdf,
     exportar_a_texto,
-    exportar_asistencias_a_pdf,
     exportar_asistencias_a_csv,
+    exportar_asistencias_a_pdf,
     exportar_asistencias_a_texto,
     exportar_estadisticas_asistencia_a_pdf,
     generar_texto_notas_whatsapp,
 )
-from core.calculos import (
-    ordenar_fechas_cronologicamente,
-    filtrar_fechas_asistencia,
-    obtener_estadisticas_asistencia_curso,
-)
-from core.constants import K_ALUMNOS, K_ASISTENCIAS
-from core import gestor_datos
-from core import gestor_planillas
+from mobile.components.ledger_primitives import EditorialRadioList
+from mobile.components.notaly_sheet import NotalySheet, sheet_action_button
 from mobile.components.share_helper import compartir_archivo
 from mobile.theme import (
-    PRIMARY,
-    TEXT_MAIN,
-    TEXT_MUTED,
-    BORDER_COLOR,
-    LIGHT_TOKENS,
+    RADIUS_SM,
+    SPACE_MD,
+    SPACE_SM,
     ThemeTokens,
-    get_tokens,
+    resolve_tokens,
 )
 
-
-def _resolve_tokens(tokens: ThemeTokens | None = None, page: ft.Page | None = None) -> ThemeTokens:
-    if tokens is not None:
-        return tokens
-    if page is not None and getattr(page, "theme_mode", None) == ft.ThemeMode.DARK:
-        return get_tokens("dark")
-    return LIGHT_TOKENS
+logger = logging.getLogger(__name__)
 
 
-class ExportDialog(ft.AlertDialog):
-    """Diálogo modal para seleccionar formato y exportar planillas."""
+class ExportDialog(NotalySheet):
+    """Hoja modal adaptativa para seleccionar formato y exportar planillas."""
 
     def __init__(
         self,
@@ -59,12 +54,12 @@ class ExportDialog(ft.AlertDialog):
         colegio_nombre: str = "",
         curso_nombre: str = "",
         curso_data: dict | None = None,
-        on_success: Callable | None = None,
+        on_success: Callable[..., Any] | None = None,
         page: ft.Page | None = None,
         periodo_activo: int = 0,
         tokens: ThemeTokens | None = None,
-        **kwargs,
-    ):
+        **kwargs: Any,
+    ) -> None:
         self.tipo_exportacion = tipo_exportacion
         self.colegio_nombre = colegio_nombre
         self.curso_nombre = curso_nombre
@@ -72,105 +67,123 @@ class ExportDialog(ft.AlertDialog):
         self.on_success = on_success or kwargs.get("on_exportar")
         self.app_page = page
         self.state = kwargs.get("state")
-        self.tokens = _resolve_tokens(tokens, page)
+        self.tokens = resolve_tokens(tokens=tokens, page=page, state=self.state)
         tok = self.tokens
         self.periodo_activo = int(periodo_activo) if str(periodo_activo).isdigit() else 0
-
         self._user_on_dismiss = kwargs.get("on_dismiss")
 
-        radios = [
-            ft.Radio(value="pdf", label="Documento PDF (.pdf)"),
-            ft.Radio(value="csv", label="Hoja de Cálculo (.csv / Excel)"),
-            ft.Radio(value="txt", label="Archivo de Texto Plano (.txt)"),
+        opciones_formato: list[tuple[str, str, str | None]] = [
+            ("pdf", "Documento PDF (.pdf)", "Lista formateada para impresión"),
+            ("csv", "Hoja de cálculo (.csv)", "Compatible con Excel / LibreOffice"),
+            ("txt", "Texto plano (.txt)", "Lectura universal compacta"),
         ]
         if tipo_exportacion == "notas":
-            radios.append(
-                ft.Radio(value="whatsapp", label="Texto para WhatsApp")
+            opciones_formato.append(
+                ("whatsapp", "Texto para WhatsApp", "Resumen listo para compartir")
             )
 
-        self.formato_selector = ft.RadioGroup(
-            content=ft.Column(radios, spacing=8),
+        self.formato_selector = EditorialRadioList(
+            options=opciones_formato,
             value="pdf",
             on_change=self._al_cambiar_formato,
+            tokens=tok,
         )
 
-        # --- Selector de tipo de reporte para asistencias (SPEC-022) ---
+        # --- Selector de tipo de reporte para asistencias ---
         if tipo_exportacion == "asistencias":
-            self.tipo_reporte_asistencias = ft.RadioGroup(
-                content=ft.Column(
-                    [
-                        ft.Radio(value="detallada", label="Planilla Detallada con Fechas"),
-                        ft.Radio(value="estadistica", label="Resumen Estadístico (KPIs, Donut y Nómina)"),
-                    ],
-                    spacing=4,
-                ),
+            self.tipo_reporte_asistencias = EditorialRadioList(
+                options=[
+                    ("detallada", "Planilla detallada con fechas", None),
+                    ("estadistica", "Resumen estadístico (KPIs y nómina)", None),
+                ],
                 value="detallada",
                 on_change=self._al_cambiar_tipo_reporte_asistencias,
+                tokens=tok,
             )
         else:
             self.tipo_reporte_asistencias = None
 
-        # --- Controles específicos de PDF (Modo de Paginación y Banner) ---
-        label_recomendado = "Por páginas (Recomendado: 15/hoja)" if tipo_exportacion == "notas" else "Por páginas (Recomendado: 10/hoja)"
-        self.modo_pdf_selector = ft.RadioGroup(
-            content=ft.Column(
-                [
-                    ft.Radio(value="paginado", label=label_recomendado),
-                    ft.Radio(value="una_pagina", label="Una sola página"),
-                ],
-                spacing=4,
-            ),
+        # --- Controles específicos de PDF ---
+        label_recomendado = (
+            "Por páginas (15 por hoja)"
+            if tipo_exportacion == "notas"
+            else "Por páginas (10 por hoja)"
+        )
+        self.modo_pdf_selector = EditorialRadioList(
+            options=[
+                ("paginado", label_recomendado, "Lectura óptima recomendada"),
+                ("una_pagina", "Una sola página", "Ajuste compacto continuo"),
+            ],
             value="paginado",
             on_change=self._al_cambiar_modo_pdf,
+            tokens=tok,
         )
 
         self.banner_advertencia = ft.Container(
             visible=False,
-            bgcolor=tok.surface_variant,
-            border=ft.Border.all(1, ft.Colors.AMBER_400),
-            border_radius=8,
-            padding=ft.Padding(10, 8, 10, 8),
+            bgcolor=tok.warn_bg,
+            border=ft.Border.all(1, tok.warn_border),
+            border_radius=RADIUS_SM,
+            padding=SPACE_SM,
             content=ft.Row(
-                [
-                    ft.Icon(ft.Icons.WARNING_AMBER_ROUNDED, color=ft.Colors.AMBER_600, size=20),
+                spacing=SPACE_SM,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                controls=[
+                    ft.Icon(
+                        icon=ft.Icons.WARNING_AMBER_ROUNDED,
+                        size=18,
+                        color=tok.warn_fg,
+                    ),
                     ft.Text(
-                        "Al generar en una sola página, el tamaño de la letra y las filas se reducirá automáticamente según la cantidad de alumnos.",
-                        size=11,
-                        color=tok.text_main,
+                        "En listas largas el texto puede reducirse para caber en una sola hoja.",
+                        size=12,
+                        color=tok.warn_fg,
                         expand=True,
                     ),
                 ],
-                spacing=8,
-                vertical_alignment=ft.CrossAxisAlignment.CENTER,
             ),
         )
 
-        self.modo_pdf_header = ft.Text("Modo de diseño PDF:", size=12, weight=ft.FontWeight.BOLD, color=tok.text_main)
+        self.modo_pdf_header = ft.Text(
+            "Modo de paginación PDF",
+            size=12,
+            weight=ft.FontWeight.BOLD,
+            color=tok.text_secondary,
+        )
 
-        if tipo_exportacion == "asistencias":
-            pdf_controls = [
-                ft.Text("Tipo de reporte de asistencias:", size=12, weight=ft.FontWeight.BOLD, color=tok.text_main),
-                self.tipo_reporte_asistencias,
-                ft.Divider(height=10, color=tok.border_color),
+        pdf_controls: list[ft.Control] = []
+        if self.tipo_reporte_asistencias is not None:
+            pdf_controls.extend(
+                [
+                    ft.Divider(height=1, thickness=1, color=tok.border_hairline),
+                    ft.Text(
+                        "Tipo de reporte",
+                        size=12,
+                        weight=ft.FontWeight.BOLD,
+                        color=tok.text_secondary,
+                    ),
+                    self.tipo_reporte_asistencias,
+                ]
+            )
+
+        pdf_controls.extend(
+            [
+                ft.Divider(height=1, thickness=1, color=tok.border_hairline),
                 self.modo_pdf_header,
                 self.modo_pdf_selector,
                 self.banner_advertencia,
             ]
-        else:
-            pdf_controls = [
-                self.modo_pdf_header,
-                self.modo_pdf_selector,
-                self.banner_advertencia,
-            ]
+        )
 
-        # --- Selector de rango de fechas para asistencias ---
         if tipo_exportacion == "asistencias":
-            fechas_existentes = list(self.curso_data.get(K_ASISTENCIAS, {}).keys())
-            fechas_ordenadas = ordenar_fechas_cronologicamente(fechas_existentes)
+            fechas_raw = list(self.curso_data.get(K_ASISTENCIAS, {}).keys())
+            fechas_ordenadas = ordenar_fechas_cronologicamente(fechas_raw)
 
             self.chk_todas_fechas = ft.Checkbox(
                 label="Todas las fechas",
                 value=True,
+                active_color=tok.accent_primary,
+                check_color=tok.accent_on_primary,
                 on_change=self._al_cambiar_todas_fechas,
             )
 
@@ -184,7 +197,11 @@ class ExportDialog(ft.AlertDialog):
                 value=val_desde,
                 disabled=True,
                 expand=True,
-                content_padding=ft.Padding(8, 4, 8, 4),
+                border_radius=RADIUS_SM,
+                border_color=tok.border_hairline,
+                focused_border_color=tok.accent_primary,
+                color=tok.text_primary,
+                content_padding=ft.Padding.symmetric(horizontal=SPACE_SM, vertical=4),
             )
             self.dd_hasta = ft.Dropdown(
                 label="Hasta",
@@ -192,190 +209,231 @@ class ExportDialog(ft.AlertDialog):
                 value=val_hasta,
                 disabled=True,
                 expand=True,
-                content_padding=ft.Padding(8, 4, 8, 4),
+                border_radius=RADIUS_SM,
+                border_color=tok.border_hairline,
+                focused_border_color=tok.accent_primary,
+                color=tok.text_primary,
+                content_padding=ft.Padding.symmetric(horizontal=SPACE_SM, vertical=4),
             )
 
-            rango_row = ft.Row([self.dd_desde, self.dd_hasta], spacing=8)
-            pdf_controls.extend([
-                ft.Divider(height=10, color=tok.border_color),
-                ft.Text("Rango de fechas a incluir:", size=12, weight=ft.FontWeight.BOLD, color=tok.text_main),
-                self.chk_todas_fechas,
-                rango_row,
-            ])
+            self.fechas_row = ft.Row(
+                [self.dd_desde, self.dd_hasta],
+                spacing=SPACE_SM,
+                visible=False,
+            )
+            pdf_controls.extend(
+                [
+                    ft.Divider(height=1, thickness=1, color=tok.border_hairline),
+                    ft.Text(
+                        "Rango de fechas",
+                        size=12,
+                        weight=ft.FontWeight.BOLD,
+                        color=tok.text_secondary,
+                    ),
+                    self.chk_todas_fechas,
+                    self.fechas_row,
+                ]
+            )
         else:
             self.chk_todas_fechas = None
             self.dd_desde = None
             self.dd_hasta = None
+            self.fechas_row = None
 
         self.pdf_opciones_container = ft.Container(
             visible=True,
-            content=ft.Column(pdf_controls, spacing=6, tight=True),
+            content=ft.Column(pdf_controls, spacing=SPACE_SM, tight=True),
             padding=ft.Padding(top=4, bottom=4, left=0, right=0),
         )
 
-        self.periodo_container = None
+        self.periodo_container: ft.Container | None = None
         if tipo_exportacion == "notas":
-            nombres_periodos = ["1° Trimestre", "2° Trimestre", "3° Trimestre", "Resumen Anual"]
+            nombres_periodos = [
+                "1° Trimestre",
+                "2° Trimestre",
+                "3° Trimestre",
+                "Resumen Anual",
+            ]
             periodo_val_inicial = str(min(3, max(0, self.periodo_activo)))
-            self.periodo_selector = ft.RadioGroup(
-                content=ft.Column(
-                    [
-                        ft.Radio(value=str(i), label=nom)
-                        for i, nom in enumerate(nombres_periodos)
-                    ],
-                    spacing=4,
-                ),
+            self.periodo_selector = EditorialRadioList(
+                options=[(str(i), nom, None) for i, nom in enumerate(nombres_periodos)],
                 value=periodo_val_inicial,
+                tokens=tok,
             )
             self.periodo_container = ft.Container(
                 visible=False,
                 content=ft.Column(
                     [
-                        ft.Divider(height=12, color=tok.border_color),
-                        ft.Text("Selecciona el período a copiar:", size=13, weight=ft.FontWeight.BOLD, color=tok.text_main),
+                        ft.Divider(height=1, thickness=1, color=tok.border_hairline),
+                        ft.Text(
+                            "Período a copiar",
+                            size=12,
+                            weight=ft.FontWeight.BOLD,
+                            color=tok.text_secondary,
+                        ),
                         self.periodo_selector,
                     ],
-                    spacing=6,
+                    spacing=SPACE_SM,
                     tight=True,
                 ),
                 padding=ft.Padding(top=4, bottom=4, left=0, right=0),
             )
 
-        titulo_str = "Exportar Planilla de Notas" if tipo_exportacion == "notas" else "Exportar Asistencias"
+        context_box = ft.Container(
+            bgcolor=tok.surface_subtle,
+            border=ft.Border.all(1, tok.border_hairline),
+            border_radius=RADIUS_SM,
+            padding=SPACE_MD,
+            content=ft.Row(
+                spacing=SPACE_SM,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                controls=[
+                    ft.Icon(
+                        icon=ft.Icons.CLASS_OUTLINED,
+                        size=20,
+                        color=tok.accent_primary,
+                    ),
+                    ft.Column(
+                        spacing=2,
+                        tight=True,
+                        expand=True,
+                        controls=[
+                            ft.Text(
+                                colegio_nombre,
+                                size=13,
+                                weight=ft.FontWeight.W_600,
+                                color=tok.text_primary,
+                                max_lines=1,
+                                overflow=ft.TextOverflow.ELLIPSIS,
+                            ),
+                            ft.Text(
+                                curso_nombre,
+                                size=12,
+                                color=tok.text_secondary,
+                                max_lines=1,
+                                overflow=ft.TextOverflow.ELLIPSIS,
+                            ),
+                        ],
+                    ),
+                ],
+            ),
+        )
 
-        controls_col = [
-            ft.Text(f"Colegio: {colegio_nombre}", size=13, weight=ft.FontWeight.W_500, color=tok.text_main),
-            ft.Text(f"Curso: {curso_nombre}", size=13, color=tok.text_muted),
-            ft.Divider(height=16, color=tok.border_color),
-            ft.Text("Selecciona el formato de exportación:", size=13, weight=ft.FontWeight.BOLD, color=tok.text_main),
+        body_controls: list[ft.Control] = [
+            context_box,
+            ft.Text(
+                "Formato de exportación",
+                size=12,
+                weight=ft.FontWeight.BOLD,
+                color=tok.text_secondary,
+            ),
             self.formato_selector,
             self.pdf_opciones_container,
         ]
         if self.periodo_container:
-            controls_col.append(self.periodo_container)
+            body_controls.append(self.periodo_container)
 
-        self.btn_exportar = ft.FilledButton(
+        self.btn_exportar = sheet_action_button(
             "Generar y Exportar",
+            lambda _e: self._exportar(),
+            tokens=tok,
+            primary=True,
             icon=ft.Icons.DOWNLOAD,
-            style=ft.ButtonStyle(bgcolor=tok.primary, color=ft.Colors.WHITE, shape=ft.RoundedRectangleBorder(radius=8)),
-            on_click=lambda e: self._exportar(),
+            expand=True,
+        )
+        btn_cancelar = sheet_action_button(
+            "Cancelar",
+            lambda _e: self._cerrar(),
+            tokens=tok,
+            primary=False,
+            expand=True,
         )
 
-        calc_w = 340
-        calc_max_h = 560
-        if self.app_page and hasattr(self.app_page, "width") and self.app_page.width:
-            calc_w = min(self.app_page.width - 24, 380)
-        if self.app_page and hasattr(self.app_page, "height") and self.app_page.height:
-            calc_max_h = self.app_page.height * 0.70
-
-        self.content_col = ft.Column(
-            controls_col,
-            tight=True,
-            scroll=ft.ScrollMode.AUTO,
+        titulo_str = (
+            "Exportar Planilla de Notas"
+            if tipo_exportacion == "notas"
+            else "Exportar Asistencias"
         )
 
         super().__init__(
-            title=ft.Row(
-                [
-                    ft.Icon(ft.Icons.SCHOOL, color=tok.primary, size=24),
-                    ft.Text(titulo_str, weight=ft.FontWeight.BOLD, size=16, color=tok.text_main, expand=True),
-                ],
-                spacing=8,
-                vertical_alignment=ft.CrossAxisAlignment.CENTER,
-            ),
-            content=ft.Container(
-                width=calc_w,
-                height=min(480, calc_max_h),
-                content=self.content_col,
-            ),
-            actions=[
-                ft.TextButton(
-                    "Cancelar",
-                    style=ft.ButtonStyle(color=tok.text_muted, shape=ft.RoundedRectangleBorder(radius=8)),
-                    on_click=lambda e: self._cerrar(),
-                ),
-                self.btn_exportar,
-            ],
-            actions_alignment=ft.MainAxisAlignment.END,
-            bgcolor=tok.surface,
-            modal=True,
+            page=page,
+            title=titulo_str,
+            body=body_controls,
+            actions=[btn_cancelar, self.btn_exportar],
+            tokens=tok,
+            state=self.state,
             on_dismiss=self._on_internal_dismiss,
         )
+        # Alias esperado por tests responsivos y de exportación
+        self.content_col = self.body_column
 
-    def _on_internal_dismiss(self, e):
+    def _safe_update(self) -> None:
+        try:
+            if self.page is not None:
+                self.update()
+        except Exception:
+            pass
+
+    def _on_internal_dismiss(self, e: Any = None) -> None:
         if callable(self._user_on_dismiss):
             self._user_on_dismiss(e)
 
-    def _al_cambiar_tipo_reporte_asistencias(self, e):
-        es_est = bool(self.tipo_reporte_asistencias and self.tipo_reporte_asistencias.value == "estadistica")
+    def _al_cambiar_tipo_reporte_asistencias(self, _e: Any) -> None:
+        es_est = bool(
+            self.tipo_reporte_asistencias
+            and self.tipo_reporte_asistencias.value == "estadistica"
+        )
         if self.modo_pdf_header:
             self.modo_pdf_header.visible = not es_est
         if self.modo_pdf_selector:
             self.modo_pdf_selector.visible = not es_est
         if self.banner_advertencia:
-            self.banner_advertencia.visible = (not es_est) and (self.modo_pdf_selector.value == "una_pagina")
-        try:
-            self.update()
-        except Exception:
-            pass
+            self.banner_advertencia.visible = (not es_est) and (
+                self.modo_pdf_selector.value == "una_pagina"
+            )
+        self._safe_update()
 
-    def _al_cambiar_modo_pdf(self, e):
-        self.banner_advertencia.visible = (self.modo_pdf_selector.value == "una_pagina")
-        try:
-            self.update()
-        except Exception:
-            pass
+    def _al_cambiar_modo_pdf(self, _e: Any) -> None:
+        self.banner_advertencia.visible = self.modo_pdf_selector.value == "una_pagina"
+        self._safe_update()
 
-    def _al_cambiar_todas_fechas(self, e):
+    def _al_cambiar_todas_fechas(self, _e: Any) -> None:
         todas = bool(self.chk_todas_fechas.value)
         if self.dd_desde:
             self.dd_desde.disabled = todas
         if self.dd_hasta:
             self.dd_hasta.disabled = todas
-        try:
-            self.update()
-        except Exception:
-            pass
+        if self.fechas_row is not None:
+            self.fechas_row.visible = not todas
+        self._safe_update()
 
-    def _al_cambiar_formato(self, e):
+    def _al_cambiar_formato(self, _e: Any) -> None:
         formato = self.formato_selector.value
-        es_wa = (formato == "whatsapp")
-        es_pdf = (formato == "pdf")
+        es_wa = formato == "whatsapp"
+        es_pdf = formato == "pdf"
 
         if self.periodo_container:
             self.periodo_container.visible = es_wa
         self.pdf_opciones_container.visible = es_pdf
 
         if es_wa:
-            self.btn_exportar.content = "Copiar al Portapapeles"
+            if isinstance(self.btn_exportar.content, ft.Text):
+                self.btn_exportar.content.value = "Copiar al Portapapeles"
             self.btn_exportar.icon = ft.Icons.COPY_ALL
         else:
-            self.btn_exportar.content = "Generar y Exportar"
+            if isinstance(self.btn_exportar.content, ft.Text):
+                self.btn_exportar.content.value = "Generar y Exportar"
             self.btn_exportar.icon = ft.Icons.DOWNLOAD
-        try:
-            self.update()
-        except Exception:
-            pass
+        self._safe_update()
 
-    def _cerrar(self):
-        self.open = False
-        if self.app_page:
-            try:
-                self.app_page.pop_dialog()
-                self.app_page.update()
-            except Exception:
-                pass
+    def _cerrar(self) -> None:
+        self.close()
         self._on_internal_dismiss(None)
 
     def _obtener_carpeta_exportacion(self) -> Path:
-        """
-        Determina un directorio con permisos reales de escritura.
-        Delega en core.gestor_planillas.obtener_directorio_exportaciones().
-        """
         return gestor_planillas.obtener_directorio_exportaciones()
 
-    def _intentar_compartir(self, ruta_str: str, nombre_archivo: str):
-        """Dispara la hoja de compartir nativa (await real de ft.Share.share_files)."""
+    def _intentar_compartir(self, ruta_str: str, nombre_archivo: str) -> None:
         if self.app_page:
             compartir_archivo(
                 self.app_page,
@@ -390,7 +448,9 @@ class ExportDialog(ft.AlertDialog):
                 cb = getattr(self.app_page, "_clipboard_service", None)
                 if not cb:
                     cb = ft.Clipboard()
-                    if hasattr(self.app_page, "services") and isinstance(self.app_page.services, list):
+                    if hasattr(self.app_page, "services") and isinstance(
+                        self.app_page.services, list
+                    ):
                         self.app_page.services.append(cb)
                     self.app_page._clipboard_service = cb
                 if hasattr(self.app_page, "run_task"):
@@ -399,13 +459,17 @@ class ExportDialog(ft.AlertDialog):
         except Exception:
             pass
 
-        if self.app_page and hasattr(self.app_page, "set_clipboard") and callable(self.app_page.set_clipboard):
+        if (
+            self.app_page
+            and hasattr(self.app_page, "set_clipboard")
+            and callable(self.app_page.set_clipboard)
+        ):
             self.app_page.set_clipboard(texto)
             copiado = True
 
         return copiado
 
-    def _exportar(self):
+    def _exportar(self) -> None:
         alumnos = self.curso_data.get(K_ALUMNOS, {})
         if not alumnos:
             self._cerrar()
@@ -416,14 +480,20 @@ class ExportDialog(ft.AlertDialog):
         formato = self.formato_selector.value or "pdf"
         if formato == "whatsapp":
             try:
-                periodo_val = self.periodo_selector.value if hasattr(self, "periodo_selector") and self.periodo_selector else "0"
+                periodo_val = (
+                    self.periodo_selector.value
+                    if hasattr(self, "periodo_selector") and self.periodo_selector
+                    else "0"
+                )
                 mapa_periodos = {
                     "0": "1° Trimestre",
                     "1": "2° Trimestre",
                     "2": "3° Trimestre",
                     "3": "Resumen Anual",
                 }
-                nombre_periodo = mapa_periodos.get(str(periodo_val), "el período seleccionado")
+                nombre_periodo = mapa_periodos.get(
+                    str(periodo_val), "el período seleccionado"
+                )
 
                 texto = generar_texto_notas_whatsapp(
                     curso_data=self.curso_data,
@@ -439,11 +509,13 @@ class ExportDialog(ft.AlertDialog):
                     if copiado:
                         self.on_success(True, "portapapeles", nombre_periodo)
                     else:
-                        self.on_success(False, "No se pudo acceder al servicio de portapapeles.")
-            except Exception as e:
+                        self.on_success(
+                            False, "No se pudo acceder al servicio de portapapeles."
+                        )
+            except Exception as exc:
                 self._cerrar()
                 if self.on_success:
-                    self.on_success(False, str(e))
+                    self.on_success(False, str(exc))
             return
 
         try:
@@ -471,7 +543,7 @@ class ExportDialog(ft.AlertDialog):
 
             exito = False
             error_msg = None
-            es_paginado = (self.modo_pdf_selector.value == "paginado")
+            es_paginado = self.modo_pdf_selector.value == "paginado"
 
             if self.tipo_exportacion == "notas":
                 if formato == "pdf":
@@ -487,8 +559,10 @@ class ExportDialog(ft.AlertDialog):
                     exito, error_msg = exportar_a_csv(self.curso_data, ruta_str)
                 elif formato == "txt":
                     titulo_txt = f"{self.colegio_nombre} - {self.curso_nombre}"
-                    exito, error_msg = exportar_a_texto(self.curso_data, ruta_str, titulo_txt)
-            else:  # "asistencias"
+                    exito, error_msg = exportar_a_texto(
+                        self.curso_data, ruta_str, titulo_txt
+                    )
+            else:
                 if formato == "pdf":
                     fecha_desde = None
                     fecha_hasta = None
@@ -496,12 +570,16 @@ class ExportDialog(ft.AlertDialog):
                         fecha_desde = self.dd_desde.value if self.dd_desde else None
                         fecha_hasta = self.dd_hasta.value if self.dd_hasta else None
 
-                        # Normalización defensiva si viene invertido (REQ-EXC-01)
                         if fecha_desde and fecha_hasta:
-                            fechas_norm = ordenar_fechas_cronologicamente([fecha_desde, fecha_hasta])
+                            fechas_norm = ordenar_fechas_cronologicamente(
+                                [fecha_desde, fecha_hasta]
+                            )
                             fecha_desde, fecha_hasta = fechas_norm[0], fechas_norm[-1]
 
-                    if self.tipo_reporte_asistencias and self.tipo_reporte_asistencias.value == "estadistica":
+                    if (
+                        self.tipo_reporte_asistencias
+                        and self.tipo_reporte_asistencias.value == "estadistica"
+                    ):
                         rango_str = "Todas las fechas"
                         if fecha_desde and fecha_hasta:
                             rango_str = f"Desde: {fecha_desde} | Hasta: {fecha_hasta}"
@@ -518,7 +596,9 @@ class ExportDialog(ft.AlertDialog):
                             rango_fechas_str=rango_str,
                         )
                     else:
-                        titulo_pdf = f"Asistencias - {self.colegio_nombre} - {self.curso_nombre}"
+                        titulo_pdf = (
+                            f"Asistencias - {self.colegio_nombre} - {self.curso_nombre}"
+                        )
                         exito, error_msg = exportar_asistencias_a_pdf(
                             self.curso_data,
                             ruta_str,
@@ -529,15 +609,20 @@ class ExportDialog(ft.AlertDialog):
                             fecha_hasta=fecha_hasta,
                         )
                 elif formato == "csv":
-                    exito, error_msg = exportar_asistencias_a_csv(self.curso_data, ruta_str)
+                    exito, error_msg = exportar_asistencias_a_csv(
+                        self.curso_data, ruta_str
+                    )
                 elif formato == "txt":
-                    titulo_txt = f"Asistencias - {self.colegio_nombre} - {self.curso_nombre}"
-                    exito, error_msg = exportar_asistencias_a_texto(self.curso_data, ruta_str, titulo_txt)
+                    titulo_txt = (
+                        f"Asistencias - {self.colegio_nombre} - {self.curso_nombre}"
+                    )
+                    exito, error_msg = exportar_asistencias_a_texto(
+                        self.curso_data, ruta_str, titulo_txt
+                    )
 
             if not exito:
                 raise RuntimeError(error_msg or "Error durante la generación del archivo")
 
-            # Registrar en el historial de planillas (SPEC-016 / SPEC-023)
             gestor_planillas.registrar_exportacion(
                 ruta_archivo=ruta_archivo,
                 colegio=self.colegio_nombre,
@@ -558,7 +643,7 @@ class ExportDialog(ft.AlertDialog):
             if self.on_success:
                 self.on_success(True, ruta_str)
 
-        except Exception as e:
+        except Exception as exc:
             self._cerrar()
             if self.on_success:
-                self.on_success(False, str(e))
+                self.on_success(False, str(exc))

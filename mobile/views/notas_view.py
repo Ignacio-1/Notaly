@@ -1,121 +1,122 @@
 """
-Vista de Planilla de Notas: Interfaz táctil móvil responsive basada en tarjetas
-expandibles de alumnos, píldoras de trimestres (.grade-pill) y teclado numérico flotante (.key-button).
-Cumple con las especificaciones de diseño Slate 50 / Indigo 600 y Material Design 3.
+Vista editorial de Planilla de Notas ("Crisp Editorial Ledger") (SPEC-028).
+
+Presenta la nómina del curso como un registro plano continuo (`border_radius=0`)
+con filete semántico izquierdo de `3px`, monogramas `4px`, resumen tabular continuo
+sin cápsulas, casilleros `GradeCell` con foco semántico y teclado numérico retráctil
+dentro de `ft.SafeArea` (RF-15, RF-16, RNF-01, B1, B2, B6, B7).
 """
 
+from __future__ import annotations
+
 import math
-from typing import Callable
+from typing import Any, Callable
+
 import flet as ft
-from mobile.state import AppState
-from mobile.components.grade_editor import GradeEditorDialog
+
+from core.calculos import procesar_calificaciones_alumno
+from core.constants import (
+    NOMBRES_TRIMESTRES,
+    NOTA_MINIMA_APROBACION,
+    NUM_EXTRAS,
+    NUM_PRINCIPALES,
+    separar_nombre_completo,
+)
+from mobile.components.comportamiento_dialog import ComportamientoDialog
+from mobile.components.export_dialog import ExportDialog
+from mobile.components.ledger_primitives import EmptyStateView, GradeCell
+from mobile.components.notaly_sheet import (
+    NotalyCompactDialog,
+    open_dialog_safe,
+    sheet_action_button,
+)
+from mobile.components.planificacion_dialog import PlanificacionCursoDialog
+from mobile.components.planillas_curso_dialog import PlanillasCursoDialog
 from mobile.components.student_dialog import (
     ConfirmDeleteDialog,
     CustomizeColumnsDialog,
     StudentFormDialog,
 )
-from mobile.components.export_dialog import ExportDialog
-from mobile.components.planillas_curso_dialog import PlanillasCursoDialog
-from mobile.components.planificacion_dialog import PlanificacionCursoDialog
-from mobile.components.comportamiento_dialog import ComportamientoDialog
 from mobile.components.ui_header import (
-    build_app_header,
-    build_module_tabs,
-    build_save_status_indicator,
+    NotalyTopHeader,
     SaveStatusIndicator,
+    UnderlineTabBar,
+    build_module_tabs,
 )
+from mobile.state import AppState
 from mobile.theme import (
-    BG_PAGE,
-    SURFACE_WHITE,
-    BORDER_COLOR,
-    PRIMARY,
-    PRIMARY_LIGHT,
-    PRIMARY_HOVER,
-    TEXT_MAIN,
-    TEXT_MUTED,
-    TEXT_SUBTLE,
-    WARNING_AMBER,
-    GRADE_PASS_BG,
-    GRADE_PASS_TEXT,
-    GRADE_FAIL_BG,
-    GRADE_FAIL_TEXT,
-    GRADE_EMPTY_BG,
-    GRADE_EMPTY_TEXT,
+    RADIUS_MD,
+    RADIUS_NONE,
+    RADIUS_SM,
+    SPACE_LG,
+    SPACE_MD,
+    SPACE_SM,
+    SPACE_XS,
     ThemeTokens,
-    LIGHT_TOKENS,
-    DARK_TOKENS,
-    get_grade_tone,
-    get_avatar_palette,
+    constrain_tablet_content,
     extract_initials,
+    get_avatar_palette,
+    get_grade_triad,
+    is_dark_tokens,
+    pluralizar,
+    resolve_tokens,
+    responsive_gutter,
+    tabular_text,
 )
-from core.constants import (
-    NOMBRES_TRIMESTRES,
-    NUM_PRINCIPALES,
-    NUM_EXTRAS,
-    UMBRAL_RECUPERATORIO,
-    NOTA_MINIMA_APROBACION,
-    separar_nombre_completo,
-)
-from core.calculos import procesar_calificaciones_alumno
 
 
-def build_grade_pill(
-    label: str,
-    value: float | int | str | None,
-    is_dark: bool = False,
-    tokens: ThemeTokens | None = None,
-) -> ft.Container:
-    """Construye una píldora visual de calificación para un trimestre (.grade-pill)."""
-    tok = tokens or (DARK_TOKENS if is_dark else LIGHT_TOKENS)
-    is_dark_eff = is_dark or (tok == DARK_TOKENS)
-    if value is None or value == "" or value == "--":
-        val_str = "--"
-    else:
-        try:
-            val_str = str(int(math.floor(float(str(value).replace(",", ".")) + 0.5)))
-        except (ValueError, TypeError):
-            val_str = str(value)
-    bg, fg = get_grade_tone(value, is_dark=is_dark_eff)
-    return ft.Container(
-        data="grade-pill",
-        bgcolor=bg,
-        border_radius=6,
-        padding=ft.Padding(left=6, right=6, top=2, bottom=2),
-        content=ft.Row(
-            spacing=2,
-            tight=True,
-            controls=[
-                ft.Text(f"{label}:", size=10, color=tok.text_muted),
-                ft.Text(val_str, size=11, weight=ft.FontWeight.BOLD, color=fg),
-            ],
-        ),
-    )
+def _round_grade_str(val: float | int | str | None, empty: str = "--") -> str:
+    """Formatea una nota entera redondeada al entero más cercano o retorna fallback."""
+    if val is None or val == "" or str(val).strip() in ("-", "--"):
+        return empty
+    try:
+        return str(int(math.floor(float(str(val).replace(",", ".")) + 0.5)))
+    except (ValueError, TypeError):
+        return str(val)
+
+
+def format_tabular_trimester_summary(notas_trimestres: list[Any] | tuple[Any, ...]) -> str:
+    """Construye el resumen continuo tabular '1°T X · 2°T Y · 3°T Z' sin cápsulas."""
+    t1 = _round_grade_str(notas_trimestres[0] if len(notas_trimestres) > 0 else None)
+    t2 = _round_grade_str(notas_trimestres[1] if len(notas_trimestres) > 1 else None)
+    t3 = _round_grade_str(notas_trimestres[2] if len(notas_trimestres) > 2 else None)
+    return f"1°T {t1} · 2°T {t2} · 3°T {t3}"
 
 
 def build_key_button(
     text: str | None = None,
-    icon: str | None = None,
-    on_click: Callable | None = None,
+    icon: ft.IconData | None = None,
+    on_click: Callable[[Any], Any] | None = None,
     is_primary: bool = False,
     expand: bool = True,
-    height: int = 42,
+    height: int = 44,
     tokens: ThemeTokens | None = None,
+    tooltip: str | None = None,
 ) -> ft.Container:
-    """Construye un botón táctil para el teclado numérico anclado al pie (.key-button)."""
-    tok = tokens or LIGHT_TOKENS
+    """Construye una tecla editorial táctil (`>= 44dp`, `radius=4px`) para el dock."""
+    tok = tokens or resolve_tokens()
     if is_primary:
-        bg = tok.primary
-        fg = ft.Colors.WHITE
+        bg = tok.accent_primary
+        fg = tok.accent_on_primary
         border = None
     else:
-        bg = tok.surface_variant
-        fg = tok.text_main
-        border = ft.Border.all(1, tok.border_color)
+        bg = tok.surface_subtle
+        fg = tok.text_primary
+        border = ft.Border.all(1, tok.border_hairline)
 
-    if icon:
-        content = ft.Icon(icon, size=16, color=tok.text_muted if not is_primary else ft.Colors.WHITE)
+    if icon is not None:
+        content: ft.Control = ft.Icon(
+            icon=icon,
+            size=18,
+            color=fg if is_primary else tok.text_secondary,
+        )
     else:
-        content = ft.Text(text or "", size=14 if len(text or "") <= 2 else 12, weight=ft.FontWeight.BOLD, color=fg)
+        content = tabular_text(
+            text or "",
+            size=15 if len(text or "") <= 2 else 13,
+            weight=ft.FontWeight.BOLD,
+            color=fg,
+        )
 
     return ft.Container(
         data="key-button",
@@ -123,90 +124,141 @@ def build_key_button(
         height=height,
         bgcolor=bg,
         border=border,
-        border_radius=10,
+        border_radius=RADIUS_SM,
         alignment=ft.Alignment.CENTER,
         ink=True,
+        tooltip=tooltip,
         on_click=on_click,
         content=content,
     )
 
 
 class NotasView(ft.Container):
-    def __init__(self, state: AppState, page: ft.Page, on_navigate: Callable):
-        super().__init__(expand=True, bgcolor=state.tokens.bg_page)
+    """Pantalla editorial principal para calificación por trimestres y resumen anual."""
+
+    def __init__(
+        self,
+        state: AppState,
+        page: ft.Page | None,
+        on_navigate: Callable[[str], Any],
+        *,
+        tokens: ThemeTokens | None = None,
+    ) -> None:
         self.state = state
         self.app_page = page
         self.on_navigate = on_navigate
-        self.padding = 0
+        self.tokens = resolve_tokens(tokens=tokens, page=page, state=state)
+        super().__init__(expand=True, bgcolor=self.tokens.bg_canvas, padding=0)
 
-        # Estado visual interno
         self.expanded_student_id: str | None = None
-        self.active_grade_index: int = -1  # -1 indica ningún slot activo
-        self.alumnos_celdas: dict = {}
-        self.tarjetas_alumnos: dict = {}
-        self.name_drafts: dict = {}
-        self.pills_alumnos: dict = {}
-        self.promedio_anual_labels: dict = {}
-        self.slots_controls_by_student: dict = {}
+        self.active_grade_index: int = -1
+        self.alumnos_celdas: dict[str, dict[str, Any]] = {}
+        self.tarjetas_alumnos: dict[str, ft.Container] = {}
+        self.name_drafts: dict[str, dict[str, str]] = {}
+        self.promedio_anual_labels: dict[str, ft.Text] = {}
+        self.resumen_trimestres_labels: dict[str, ft.Text] = {}
+        self.expanded_period_labels: dict[str, ft.Text] = {}
+        self.slots_controls_by_student: dict[str, dict[str, Any]] = {}
         self.expanded_containers: dict[str, ft.Container] = {}
         self.chevron_icons: dict[str, ft.Icon] = {}
         self.lista_tarjetas_listview: ft.ListView | None = None
 
-        self.paneles_anuales: dict[str, dict] = {}
-        self.header_pills_containers: dict[str, ft.Container] = {}
+        self.paneles_anuales: dict[str, dict[str, Any]] = {}
         self.sub_header_container: ft.Container | None = None
         self.collapsible_header: ft.Container | None = None
-        self._ultimo_scroll_offset: float = 0.0
         self.dock_container: ft.Container | None = None
 
         self.dock_label_active: ft.Text | None = None
         self.dock_badge_trimestre: ft.Text | None = None
         self.top_trimester_tabs: list[ft.Container] = []
-        self.local_trim_buttons: dict[str, list[ft.Container]] = {}
-        self.btn_guardar: ft.FilledButton | None = None
+        self.edit_tools_row: ft.Row | None = None
+        self.export_tools_row: ft.Row | None = None
+        self.anual_readonly_label: ft.Text | None = None
+        self.module_tabs: UnderlineTabBar | None = None
 
-        # Indicador de estado de auto-guardado
-        self.save_indicator = SaveStatusIndicator(status=self.state.save_status, tokens=self.state.tokens)
+        self.save_indicator = SaveStatusIndicator(
+            status=self.state.save_status,
+            tokens=self.tokens,
+            state=self.state,
+            page=self.app_page,
+        )
         self.state.on_save_status_change = self._on_save_status_change
 
         self._build_ui()
 
-    def _on_save_status_change(self, status: str):
-        """Notificación reactiva de cambio de estado de auto-guardado."""
+    def _safe_update(self) -> None:
+        try:
+            if self.app_page is not None:
+                self.app_page.update()
+        except Exception:
+            pass
+
+    def _on_save_status_change(self, status: str) -> None:
+        """Notificación reactiva del indicador editorial de autoguardado."""
         if hasattr(self, "save_indicator") and self.save_indicator:
             self.save_indicator.set_status(status)
-            if hasattr(self, "app_page") and self.app_page:
-                try:
-                    self.app_page.update()
-                except Exception:
-                    pass
+            self._safe_update()
 
     def _color_por_nota(self, nota: int | float | None) -> tuple[str, str]:
-        """Retorna (color_fondo, color_texto) según la calificación."""
-        return get_grade_tone(nota, is_dark=self.state.is_dark_mode)
+        """Retorna (bgcolor, fgcolor) accesibles según calificación y tema."""
+        tok = resolve_tokens(page=self.app_page, state=self.state)
+        bg, fg, _ = get_grade_triad(nota, tok)
+        return bg, fg
+
+    def _stripe_color_for_alumno(
+        self,
+        nota_trim: int | float | None,
+        nota_anual: int | float | None,
+        is_expanded: bool,
+        es_anual: bool,
+        tok: ThemeTokens,
+    ) -> str:
+        """Determina el color del filete lateral izquierdo (`3px`) del alumno."""
+        if is_expanded and not es_anual:
+            return tok.accent_primary
+        ref_nota = nota_anual if es_anual else nota_trim
+        if ref_nota is None:
+            return tok.border_hairline
+        try:
+            val = float(str(ref_nota).replace(",", "."))
+            return tok.pass_fg if val >= NOTA_MINIMA_APROBACION else tok.fail_fg
+        except (ValueError, TypeError):
+            return tok.border_hairline
 
     def _get_slot_meta(self, slot_idx: int, nombres_cols: list[str]) -> tuple[str, int, str, str]:
         """Retorna (tipo, sub_index, nombre_columna, cell_key)."""
         if slot_idx == 0:
             return "P", 0, nombres_cols[0] if len(nombres_cols) > 0 else "P1", "P0"
-        elif slot_idx == 1:
+        if slot_idx == 1:
             return "P", 1, nombres_cols[1] if len(nombres_cols) > 1 else "P2", "P1"
-        elif slot_idx == 2:
+        if slot_idx == 2:
             return "P", 2, nombres_cols[2] if len(nombres_cols) > 2 else "P3", "P2"
-        elif slot_idx == 3:
+        if slot_idx == 3:
             return "E", 0, nombres_cols[3] if len(nombres_cols) > 3 else "Extra", "E0"
-        else:
-            return "R", 0, "Recup", "R0"
+        return "R", 0, "Recup", "R0"
 
-    def _build_ui(self):
-        tok = self.state.tokens
-        self.bgcolor = tok.bg_page
+    def _sync_list_bottom_padding(self) -> None:
+        """Ajusta padding.bottom (`>= 176dp` con dock visible, `>= 88dp` oculto)."""
+        if self.lista_tarjetas_listview is None:
+            return
+        dock_visible = bool(self.dock_container and self.dock_container.visible)
+        bottom_pad = 176 if dock_visible else 88
+        self.lista_tarjetas_listview.padding = ft.Padding(
+            left=0, right=0, top=0, bottom=bottom_pad
+        )
+
+    def _build_ui(self) -> None:
+        tok = resolve_tokens(page=self.app_page, state=self.state)
+        self.tokens = tok
+        self.bgcolor = tok.bg_canvas
+        pw = getattr(self.app_page, "width", None) if self.app_page else None
+        gutter = responsive_gutter(pw if isinstance(pw, (int, float)) else None)
+
         colegio = self.state.selected_colegio or ""
         curso = self.state.selected_curso or ""
         alumnos = self.state.get_alumnos(colegio, curso)
         alumnos_keys = list(alumnos.keys())
 
-        # Si no hay alumno expandido, seleccionar el alumno en estado o el primero de la lista
         if self.state.selected_alumno_id and str(self.state.selected_alumno_id) in alumnos:
             self.expanded_student_id = str(self.state.selected_alumno_id)
         elif self.expanded_student_id not in alumnos:
@@ -216,163 +268,187 @@ class NotasView(ft.Container):
             self.active_grade_index = 0
 
         trim_idx = self.state.active_trimestre if 0 <= self.state.active_trimestre < 3 else 0
+        es_anual = self.state.active_trimestre >= 3
         nombres_cols = self.state.get_nombres_columnas(colegio, curso, trim_idx)
 
-        # 1. Header principal con botón de retroceso y títulos
-        header = build_app_header(
-            eyebrow=colegio,
-            title=curso,
+        # Nivel fijo 1: cabecera editorial consolidada dentro de SafeArea superior
+        header = NotalyTopHeader(
+            title=curso or "Planilla",
+            eyebrow=colegio or "Curso",
             on_back=self._accion_volver,
             status_indicator=self.save_indicator,
             tokens=tok,
-            trailing=ft.Row(
-                spacing=4,
-                tight=True,
-                controls=[
-                    ft.IconButton(
-                        icon=ft.Icons.EDIT_CALENDAR,
-                        tooltip="Planificación de Clases",
-                        icon_color=tok.primary,
-                        icon_size=20,
-                        on_click=lambda _: self._abrir_planificacion_curso(),
-                    ),
-                    ft.IconButton(
-                        icon=ft.Icons.INSIGHTS,
-                        tooltip="Estadísticas del Curso",
-                        icon_color=tok.primary,
-                        icon_size=20,
-                        on_click=lambda _: self._abrir_estadisticas_curso(),
-                    ),
-                ],
-            ),
+            page=self.app_page,
+            state=self.state,
+            actions=[
+                ft.IconButton(
+                    icon=ft.Icons.EDIT_CALENDAR,
+                    tooltip="Planificación de Clases",
+                    icon_color=tok.accent_primary,
+                    icon_size=20,
+                    width=48,
+                    height=48,
+                    on_click=lambda _: self._abrir_planificacion_curso(),
+                ),
+                ft.IconButton(
+                    icon=ft.Icons.INSIGHTS,
+                    tooltip="Estadísticas del Curso",
+                    icon_color=tok.text_secondary,
+                    icon_size=20,
+                    width=48,
+                    height=48,
+                    on_click=lambda _: self._abrir_estadisticas_curso(),
+                ),
+            ],
         )
 
-        # 2. Selector de módulo (Notas / Asistencias)
-        module_tabs = ft.Container(
-            padding=ft.Padding(left=16, right=16, top=6, bottom=4),
-            content=build_module_tabs(active_tab="notas", on_change=lambda dest: self._cambiar_pestana([dest]), tokens=tok),
+        # Nivel fijo 2: selector subrayado de módulos (Notas | Asistencia | Grupos)
+        self.module_tabs = build_module_tabs(
+            active_tab="notas",
+            on_change=lambda dest: self._cambiar_pestana([dest]),
+            tokens=tok,
         )
 
-        # 3. Selector superior de trimestre (1°, 2°, 3°, Anual)
+        # Sub-header integrado al scroll: períodos planos subrayados + barra de herramientas
         self.top_trimester_tabs = []
         labels = ["1° Trim", "2° Trim", "3° Trim", "Anual"]
         for idx, lbl in enumerate(labels):
-            is_active = (self.state.active_trimestre == idx)
+            is_active = self.state.active_trimestre == idx
+            tab_txt = ft.Text(
+                lbl,
+                size=12,
+                weight=ft.FontWeight.W_600 if is_active else ft.FontWeight.W_500,
+                color=tok.accent_primary if is_active else tok.text_secondary,
+                max_lines=1,
+                overflow=ft.TextOverflow.ELLIPSIS,
+            )
             self.top_trimester_tabs.append(
                 ft.Container(
                     expand=True,
-                    height=32,
-                    border_radius=8,
-                    bgcolor=tok.surface if is_active else ft.Colors.TRANSPARENT,
+                    height=44,
+                    border_radius=RADIUS_NONE,
+                    border=(
+                        ft.Border.only(bottom=ft.BorderSide(2, tok.accent_primary))
+                        if is_active
+                        else None
+                    ),
                     alignment=ft.Alignment.CENTER,
                     ink=True,
-                    on_click=lambda e, t_idx=idx: self._seleccionar_trimestre(t_idx),
-                    content=ft.Row(
-                        alignment=ft.MainAxisAlignment.CENTER,
-                        spacing=4,
-                        tight=True,
-                        controls=[
-                            ft.Icon(ft.Icons.ANALYTICS, size=13, color=tok.primary if is_active else tok.text_muted)
-                            if idx == 3
-                            else ft.Container(),
-                            ft.Text(
-                                lbl,
-                                size=11,
-                                weight=ft.FontWeight.BOLD,
-                                color=tok.primary if is_active else tok.text_muted,
-                            ),
-                        ],
-                    ),
+                    on_click=lambda _e, t_idx=idx: self._seleccionar_trimestre(t_idx),
+                    content=tab_txt,
                 )
             )
 
         trim_selector_bar = ft.Container(
-            padding=ft.Padding(left=16, right=16, top=2, bottom=4),
-            content=ft.Container(
-                bgcolor=tok.surface_variant,
-                border_radius=10,
-                padding=2,
-                content=ft.Row(spacing=2, controls=self.top_trimester_tabs),
-            ),
+            bgcolor=tok.surface_primary,
+            border=ft.Border.only(bottom=ft.BorderSide(1, tok.border_hairline)),
+            padding=0,
+            content=ft.Row(spacing=0, controls=self.top_trimester_tabs),
         )
 
-        # 4. Barra de acciones rápidas (+ Alumno, herramientas)
+        btn_agregar_alumno = ft.OutlinedButton(
+            content=ft.Text("Alumno", size=13, weight=ft.FontWeight.W_600),
+            icon=ft.Icons.PERSON_ADD_OUTLINED,
+            height=44,
+            style=ft.ButtonStyle(
+                color=tok.accent_primary,
+                side=ft.BorderSide(1, tok.accent_primary),
+                shape=ft.RoundedRectangleBorder(radius=RADIUS_SM),
+                padding=ft.Padding.symmetric(horizontal=SPACE_MD, vertical=0),
+            ),
+            on_click=lambda _e: self._abrir_modal_agregar_alumno(),
+        )
+        btn_columnas = ft.IconButton(
+            icon=ft.Icons.TUNE,
+            icon_size=20,
+            width=44,
+            height=44,
+            icon_color=tok.text_secondary,
+            tooltip="Personalizar Columnas",
+            on_click=lambda _e: self._abrir_modal_columnas(),
+        )
+        btn_ordenar_az = ft.IconButton(
+            icon=ft.Icons.SORT_BY_ALPHA,
+            icon_size=20,
+            width=44,
+            height=44,
+            icon_color=tok.text_secondary,
+            tooltip="Ordenar Alumnos (A-Z)",
+            on_click=lambda _e: self._ordenar_alumnos_az(),
+        )
+
+        self.edit_tools_row = ft.Row(
+            spacing=SPACE_XS,
+            tight=True,
+            visible=(not es_anual),
+            controls=[btn_agregar_alumno, btn_columnas, btn_ordenar_az],
+        )
+        self.anual_readonly_label = ft.Text(
+            "Resumen anual (solo lectura)",
+            size=12,
+            weight=ft.FontWeight.W_600,
+            color=tok.text_secondary,
+            visible=es_anual,
+        )
+        self.export_tools_row = ft.Row(
+            spacing=0,
+            tight=True,
+            visible=True,
+            controls=[
+                ft.IconButton(
+                    icon=ft.Icons.FOLDER_SHARED_OUTLINED,
+                    icon_size=20,
+                    width=48,
+                    height=48,
+                    icon_color=tok.text_secondary,
+                    tooltip="Historial de Planillas",
+                    on_click=lambda _e: self._abrir_modal_planillas_curso(),
+                ),
+                ft.IconButton(
+                    icon=ft.Icons.SHARE,
+                    icon_size=20,
+                    width=48,
+                    height=48,
+                    icon_color=tok.text_secondary,
+                    tooltip="Exportar Planilla (PDF/CSV/TXT)",
+                    on_click=lambda _e: self._abrir_modal_exportar(),
+                ),
+            ],
+        )
+
         actions_bar = ft.Container(
-            padding=ft.Padding(left=16, right=16, top=2, bottom=6),
+            bgcolor=tok.surface_primary,
+            padding=ft.Padding.symmetric(horizontal=gutter, vertical=SPACE_XS),
             content=ft.Row(
                 alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
                 controls=[
-                    ft.OutlinedButton(
-                        "+ Alumno",
-                        icon=ft.Icons.PERSON_ADD,
-                        height=34,
-                        style=ft.ButtonStyle(
-                            color=tok.primary,
-                            side=ft.BorderSide(1, tok.primary),
-                            shape=ft.RoundedRectangleBorder(radius=8),
-                            padding=ft.Padding(left=10, right=10, top=0, bottom=0),
-                        ),
-                        on_click=lambda e: self._abrir_modal_agregar_alumno(),
-                    ),
                     ft.Row(
-                        spacing=2,
+                        spacing=0,
                         tight=True,
-                        controls=[
-                            ft.IconButton(
-                                icon=ft.Icons.TUNE,
-                                icon_size=18,
-                                icon_color=tok.text_muted,
-                                tooltip="Personalizar Columnas",
-                                on_click=lambda e: self._abrir_modal_columnas(),
-                            ),
-                            ft.IconButton(
-                                icon=ft.Icons.SORT_BY_ALPHA,
-                                icon_size=18,
-                                icon_color=tok.text_muted,
-                                tooltip="Ordenar Alumnos (A-Z)",
-                                on_click=lambda e: self._ordenar_alumnos_az(),
-                            ),
-                            ft.IconButton(
-                                icon=ft.Icons.FOLDER_SHARED_OUTLINED,
-                                icon_size=18,
-                                icon_color=tok.text_muted,
-                                tooltip="Historial de Planillas",
-                                on_click=lambda e: self._abrir_modal_planillas_curso(),
-                            ),
-                            ft.IconButton(
-                                icon=ft.Icons.SHARE,
-                                icon_size=18,
-                                icon_color=tok.text_muted,
-                                tooltip="Exportar Planilla (PDF/CSV/TXT)",
-                                on_click=lambda e: self._abrir_modal_exportar(),
-                            ),
-                        ],
+                        controls=[self.edit_tools_row, self.anual_readonly_label],
                     ),
+                    self.export_tools_row,
                 ],
             ),
         )
 
-        # Agrupar sub-header colapsable (Pestañas, Trimestres, Acciones) que fluirá dentro del ListView
         self.sub_header_container = ft.Container(
+            bgcolor=tok.surface_primary,
+            border=ft.Border.only(bottom=ft.BorderSide(1, tok.border_hairline)),
             content=ft.Column(
                 spacing=0,
-                controls=[
-                    module_tabs,
-                    trim_selector_bar,
-                    actions_bar,
-                ],
+                controls=[trim_selector_bar, actions_bar],
             ),
             visible=True,
         )
         self.collapsible_header = self.sub_header_container
 
-        # 5. Lista de tarjetas expandibles de alumnos (con el sub-header integrado al inicio del scroll)
-        lista_tarjetas = self._construir_lista_tarjetas(alumnos, trim_idx, nombres_cols)
-
-        # 6. Teclado Flotante Inferior anclado al pie (Dock Numérico retráctil)
         self.dock_container = self._construir_dock_teclado(alumnos, trim_idx, nombres_cols)
-        # Oculto por defecto hasta que el usuario toque un casillero de nota
         self.dock_container.visible = False
+
+        lista_tarjetas = self._construir_lista_tarjetas(alumnos, trim_idx, nombres_cols)
+        self._sync_list_bottom_padding()
 
         self.content = ft.Column(
             expand=True,
@@ -381,177 +457,132 @@ class NotasView(ft.Container):
                 header,
                 ft.Container(
                     expand=True,
-                    padding=ft.Padding(left=16, right=16, top=2, bottom=4),
-                    content=lista_tarjetas,
+                    padding=0,
+                    content=ft.Column(
+                        expand=True,
+                        spacing=0,
+                        controls=[
+                            self.module_tabs,
+                            ft.Container(
+                                expand=True,
+                                padding=0,
+                                content=constrain_tablet_content(lista_tarjetas, pw, tok),
+                            ),
+                        ],
+                    ),
                 ),
                 self.dock_container,
             ],
         )
 
-    def _actualizar_boton_guardar(self):
-        if self.btn_guardar:
-            tok = self.state.tokens
-            self.btn_guardar.style = ft.ButtonStyle(
-                bgcolor=tok.warning_amber if self.state.has_unsaved_changes else tok.primary,
-                color=ft.Colors.WHITE,
-                shape=ft.RoundedRectangleBorder(radius=8),
-                padding=ft.Padding(left=12, right=12, top=0, bottom=0),
-            )
-
     def _construir_panel_anual_alumno(self, id_str: str, calcs: dict) -> tuple[ft.Container, dict]:
-        """Construye el panel informativo de solo lectura para la pestaña 'Anual'."""
-        tok = self.state.tokens
-        is_dark = self.state.is_dark_mode
+        """Construye el panel anual de solo lectura usando GradeCell y surface_elevated."""
+        tok = self.tokens
         t1 = calcs["notas_finales_redondeadas"][0]
         t2 = calcs["notas_finales_redondeadas"][1]
         t3 = calcs["notas_finales_redondeadas"][2]
         total = calcs["nota_final_total_redondeada"]
 
         promedios_validos = [t for t in [t1, t2, t3] if t is not None]
-        promedio_crudo_total = (sum(promedios_validos) / len(promedios_validos)) if promedios_validos else None
+        promedio_crudo_total = (
+            (sum(promedios_validos) / len(promedios_validos)) if promedios_validos else None
+        )
 
         if promedio_crudo_total is not None:
             if promedio_crudo_total >= 5.50:
                 estado_str = "Aprobado"
-                estado_bg = tok.grade_pass_bg
-                estado_fg = tok.grade_pass_text
+                estado_bg = tok.pass_bg
+                estado_fg = tok.pass_fg
                 estado_icon = ft.Icons.CHECK_CIRCLE_OUTLINE
             else:
                 estado_str = "Desaprobado"
-                estado_bg = tok.grade_fail_bg
-                estado_fg = tok.grade_fail_text
+                estado_bg = tok.fail_bg
+                estado_fg = tok.fail_fg
                 estado_icon = ft.Icons.CANCEL_OUTLINED
         else:
             estado_str = "--"
-            estado_bg = tok.grade_empty_bg
-            estado_fg = tok.grade_empty_text
+            estado_bg = tok.empty_bg
+            estado_fg = tok.empty_fg
             estado_icon = ft.Icons.REMOVE_CIRCLE_OUTLINE
 
-        # 1. Bloque T1
-        t1_str = str(t1) if t1 is not None else "--"
-        bg1, fg1 = get_grade_tone(t1, is_dark=is_dark)
-        t1_text = ft.Text(t1_str, size=13, weight=ft.FontWeight.BOLD, color=fg1)
-        t1_cont = ft.Container(
-            bgcolor=bg1,
-            border_radius=6,
-            padding=ft.Padding(left=8, right=8, top=2, bottom=2),
-            alignment=ft.Alignment.CENTER,
-            content=t1_text,
-        )
-        box_t1 = ft.Container(
-            expand=True,
-            bgcolor=tok.surface_variant,
-            border=ft.Border.all(1, tok.border_color),
-            border_radius=8,
-            padding=ft.Padding(left=6, right=6, top=6, bottom=6),
-            content=ft.Column(
-                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                spacing=3,
-                controls=[
-                    ft.Text("1° Trim (T1)", size=10, weight=ft.FontWeight.W_500, color=tok.text_muted),
-                    t1_cont,
-                ],
-            ),
+        def _make_trim_box(lbl: str, val: int | float | None) -> tuple[ft.Container, GradeCell]:
+            cell = GradeCell(
+                value=str(val) if val is not None else "--",
+                tokens=tok,
+                elevated_empty=True,
+                height=38,
+                expand=True,
+            )
+            box = ft.Container(
+                expand=True,
+                bgcolor=tok.surface_primary,
+                border=ft.Border.all(1, tok.border_hairline),
+                border_radius=RADIUS_SM,
+                padding=ft.Padding.all(SPACE_XS),
+                content=ft.Column(
+                    horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                    spacing=4,
+                    controls=[
+                        ft.Text(lbl, size=10, weight=ft.FontWeight.W_600, color=tok.text_secondary),
+                        cell,
+                    ],
+                ),
+            )
+            return box, cell
+
+        box_t1, t1_cell = _make_trim_box("1° Trim", t1)
+        box_t2, t2_cell = _make_trim_box("2° Trim", t2)
+        box_t3, t3_cell = _make_trim_box("3° Trim", t3)
+
+        promedio_anual_cell = GradeCell(
+            value=str(total) if total is not None else "--",
+            tokens=tok,
+            dominant=True,
+            elevated_empty=True,
+            width=52,
+            height=40,
         )
 
-        # 2. Bloque T2
-        t2_str = str(t2) if t2 is not None else "--"
-        bg2, fg2 = get_grade_tone(t2, is_dark=is_dark)
-        t2_text = ft.Text(t2_str, size=13, weight=ft.FontWeight.BOLD, color=fg2)
-        t2_cont = ft.Container(
-            bgcolor=bg2,
-            border_radius=6,
-            padding=ft.Padding(left=8, right=8, top=2, bottom=2),
-            alignment=ft.Alignment.CENTER,
-            content=t2_text,
+        estado_icon_widget = ft.Icon(icon=estado_icon, size=14, color=estado_fg)
+        estado_text_widget = ft.Text(
+            estado_str,
+            size=12,
+            weight=ft.FontWeight.BOLD,
+            color=estado_fg,
         )
-        box_t2 = ft.Container(
-            expand=True,
-            bgcolor=tok.surface_variant,
-            border=ft.Border.all(1, tok.border_color),
-            border_radius=8,
-            padding=ft.Padding(left=6, right=6, top=6, bottom=6),
-            content=ft.Column(
-                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                spacing=3,
-                controls=[
-                    ft.Text("2° Trim (T2)", size=10, weight=ft.FontWeight.W_500, color=tok.text_muted),
-                    t2_cont,
-                ],
-            ),
-        )
-
-        # 3. Bloque T3
-        t3_str = str(t3) if t3 is not None else "--"
-        bg3, fg3 = get_grade_tone(t3, is_dark=is_dark)
-        t3_text = ft.Text(t3_str, size=13, weight=ft.FontWeight.BOLD, color=fg3)
-        t3_cont = ft.Container(
-            bgcolor=bg3,
-            border_radius=6,
-            padding=ft.Padding(left=8, right=8, top=2, bottom=2),
-            alignment=ft.Alignment.CENTER,
-            content=t3_text,
-        )
-        box_t3 = ft.Container(
-            expand=True,
-            bgcolor=tok.surface_variant,
-            border=ft.Border.all(1, tok.border_color),
-            border_radius=8,
-            padding=ft.Padding(left=6, right=6, top=6, bottom=6),
-            content=ft.Column(
-                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                spacing=3,
-                controls=[
-                    ft.Text("3° Trim (T3)", size=10, weight=ft.FontWeight.W_500, color=tok.text_muted),
-                    t3_cont,
-                ],
-            ),
-        )
-
-        # 4. Fila Resumen Anual (Calificación Anual / Promedio Final y Estado)
-        total_str = str(total) if total is not None else "--"
-        bg_tot, fg_tot = get_grade_tone(total, is_dark=is_dark)
-        promedio_anual_text = ft.Text(total_str, size=13, weight=ft.FontWeight.BOLD, color=fg_tot)
-        promedio_anual_cont = ft.Container(
-            bgcolor=bg_tot,
-            border_radius=6,
-            padding=ft.Padding(left=8, right=8, top=2, bottom=2),
-            alignment=ft.Alignment.CENTER,
-            content=promedio_anual_text,
-        )
-
-        estado_icon_widget = ft.Icon(estado_icon, size=14, color=estado_fg)
-        estado_text_widget = ft.Text(estado_str, size=11, weight=ft.FontWeight.BOLD, color=estado_fg)
         estado_badge = ft.Container(
             bgcolor=estado_bg,
-            border_radius=6,
-            padding=ft.Padding(left=8, right=8, top=3, bottom=3),
+            border_radius=RADIUS_SM,
+            padding=ft.Padding.symmetric(horizontal=10, vertical=6),
             content=ft.Row(
                 spacing=4,
                 tight=True,
-                controls=[
-                    estado_icon_widget,
-                    estado_text_widget,
-                ],
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                controls=[estado_icon_widget, estado_text_widget],
             ),
         )
 
         resumen_anual_row = ft.Container(
-            bgcolor=tok.surface_variant,
-            border=ft.Border.all(1, tok.border_color),
-            border_radius=8,
-            padding=ft.Padding(left=10, right=10, top=6, bottom=6),
+            bgcolor=tok.surface_primary,
+            border=ft.Border.all(1, tok.border_hairline),
+            border_radius=RADIUS_SM,
+            padding=ft.Padding.symmetric(horizontal=SPACE_MD, vertical=SPACE_XS),
             content=ft.Row(
                 alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
                 controls=[
                     ft.Row(
-                        spacing=6,
+                        spacing=SPACE_SM,
                         tight=True,
                         vertical_alignment=ft.CrossAxisAlignment.CENTER,
                         controls=[
-                            ft.Text("Calificación Anual:", size=11, weight=ft.FontWeight.W_500, color=tok.text_muted),
-                            promedio_anual_cont,
+                            ft.Text(
+                                "Calificación Anual:",
+                                size=12,
+                                weight=ft.FontWeight.W_600,
+                                color=tok.text_secondary,
+                            ),
+                            promedio_anual_cell,
                         ],
                     ),
                     estado_badge,
@@ -559,14 +590,18 @@ class NotasView(ft.Container):
             ),
         )
 
+        pw = getattr(self.app_page, "width", None) if self.app_page else None
+        gutter = responsive_gutter(pw if isinstance(pw, (int, float)) else None)
+
         panel_container = ft.Container(
-            visible=(self.state.active_trimestre == 3),
-            padding=ft.Padding(left=12, right=12, top=6, bottom=12),
-            border=ft.Border.only(top=ft.BorderSide(1, tok.border_color)),
+            visible=(self.state.active_trimestre >= 3),
+            bgcolor=tok.surface_subtle,
+            padding=ft.Padding(left=gutter, right=gutter, top=SPACE_SM, bottom=SPACE_MD),
+            border=ft.Border.only(top=ft.BorderSide(1, tok.border_hairline)),
             content=ft.Column(
-                spacing=8,
+                spacing=SPACE_SM,
                 controls=[
-                    ft.Row(spacing=6, controls=[box_t1, box_t2, box_t3]),
+                    ft.Row(spacing=SPACE_XS, controls=[box_t1, box_t2, box_t3]),
                     resumen_anual_row,
                 ],
             ),
@@ -574,327 +609,326 @@ class NotasView(ft.Container):
 
         ref_dict = {
             "container": panel_container,
-            "t1_text": t1_text,
-            "t1_container": t1_cont,
-            "t2_text": t2_text,
-            "t2_container": t2_cont,
-            "t3_text": t3_text,
-            "t3_container": t3_cont,
-            "promedio_anual_text": promedio_anual_text,
-            "promedio_anual_container": promedio_anual_cont,
+            "t1_text": t1_cell.text_control,
+            "t1_container": t1_cell,
+            "t2_text": t2_cell.text_control,
+            "t2_container": t2_cell,
+            "t3_text": t3_cell.text_control,
+            "t3_container": t3_cell,
+            "promedio_anual_text": promedio_anual_cell.text_control,
+            "promedio_anual_container": promedio_anual_cell,
             "estado_text": estado_text_widget,
             "estado_badge": estado_badge,
             "estado_icon": estado_icon_widget,
         }
-
         return panel_container, ref_dict
 
-    def _actualizar_panel_anual_ui(self, id_al: str):
-        """Actualiza in-place los datos y estado del panel anual informativo del alumno."""
+    def _actualizar_panel_anual_ui(self, id_al: str) -> None:
+        """Actualiza in-place los datos y estado del panel anual del alumno."""
         id_str = str(id_al)
-        if not hasattr(self, "paneles_anuales") or id_str not in self.paneles_anuales:
+        if id_str not in self.paneles_anuales:
             return
 
         ref_anual = self.paneles_anuales[id_str]
         colegio = self.state.selected_colegio or ""
         curso = self.state.selected_curso or ""
-        alumnos = self.state.get_alumnos(colegio, curso)
-        al_data = alumnos.get(id_str)
+        al_data = self.state.get_alumnos(colegio, curso).get(id_str)
         if not al_data:
             return
 
-        tok = self.state.tokens
-        is_dark = self.state.is_dark_mode
-        trimestres = al_data.get("trimestres", {})
-        calcs = procesar_calificaciones_alumno(trimestres)
-        t1 = calcs["notas_finales_redondeadas"][0]
-        t2 = calcs["notas_finales_redondeadas"][1]
-        t3 = calcs["notas_finales_redondeadas"][2]
+        tok = resolve_tokens(page=self.app_page, state=self.state)
+        calcs = procesar_calificaciones_alumno(al_data.get("trimestres", {}))
+        t1, t2, t3 = calcs["notas_finales_redondeadas"][:3]
         total = calcs["nota_final_total_redondeada"]
 
         promedios_validos = [t for t in [t1, t2, t3] if t is not None]
-        promedio_crudo_total = (sum(promedios_validos) / len(promedios_validos)) if promedios_validos else None
+        promedio_crudo_total = (
+            (sum(promedios_validos) / len(promedios_validos)) if promedios_validos else None
+        )
 
         if promedio_crudo_total is not None:
             if promedio_crudo_total >= 5.50:
                 estado_str = "Aprobado"
-                estado_bg = tok.grade_pass_bg
-                estado_fg = tok.grade_pass_text
+                estado_bg = tok.pass_bg
+                estado_fg = tok.pass_fg
                 estado_icon = ft.Icons.CHECK_CIRCLE_OUTLINE
             else:
                 estado_str = "Desaprobado"
-                estado_bg = tok.grade_fail_bg
-                estado_fg = tok.grade_fail_text
+                estado_bg = tok.fail_bg
+                estado_fg = tok.fail_fg
                 estado_icon = ft.Icons.CANCEL_OUTLINED
         else:
             estado_str = "--"
-            estado_bg = tok.grade_empty_bg
-            estado_fg = tok.grade_empty_text
+            estado_bg = tok.empty_bg
+            estado_fg = tok.empty_fg
             estado_icon = ft.Icons.REMOVE_CIRCLE_OUTLINE
 
-        # Actualizar T1
-        t1_str = str(t1) if t1 is not None else "--"
-        bg1, fg1 = get_grade_tone(t1, is_dark=is_dark)
-        ref_anual["t1_text"].value = t1_str
-        ref_anual["t1_text"].color = fg1
-        ref_anual["t1_container"].bgcolor = bg1
+        ref_anual["t1_container"].set_state(
+            value=str(t1) if t1 is not None else "--",
+            elevated_empty=True,
+            tokens=tok,
+        )
+        ref_anual["t2_container"].set_state(
+            value=str(t2) if t2 is not None else "--",
+            elevated_empty=True,
+            tokens=tok,
+        )
+        ref_anual["t3_container"].set_state(
+            value=str(t3) if t3 is not None else "--",
+            elevated_empty=True,
+            tokens=tok,
+        )
+        ref_anual["promedio_anual_container"].set_state(
+            value=str(total) if total is not None else "--",
+            elevated_empty=True,
+            tokens=tok,
+        )
 
-        # Actualizar T2
-        t2_str = str(t2) if t2 is not None else "--"
-        bg2, fg2 = get_grade_tone(t2, is_dark=is_dark)
-        ref_anual["t2_text"].value = t2_str
-        ref_anual["t2_text"].color = fg2
-        ref_anual["t2_container"].bgcolor = bg2
-
-        # Actualizar T3
-        t3_str = str(t3) if t3 is not None else "--"
-        bg3, fg3 = get_grade_tone(t3, is_dark=is_dark)
-        ref_anual["t3_text"].value = t3_str
-        ref_anual["t3_text"].color = fg3
-        ref_anual["t3_container"].bgcolor = bg3
-
-        # Actualizar Promedio Final / Calificación Anual
-        total_str = str(total) if total is not None else "--"
-        bg_tot, fg_tot = get_grade_tone(total, is_dark=is_dark)
-        ref_anual["promedio_anual_text"].value = total_str
-        ref_anual["promedio_anual_text"].color = fg_tot
-        ref_anual["promedio_anual_container"].bgcolor = bg_tot
-
-        # Actualizar Estado
         ref_anual["estado_text"].value = estado_str
         ref_anual["estado_text"].color = estado_fg
         ref_anual["estado_badge"].bgcolor = estado_bg
-        if "estado_icon" in ref_anual and ref_anual["estado_icon"]:
-            ref_anual["estado_icon"].name = estado_icon
+        if ref_anual.get("estado_icon"):
+            ref_anual["estado_icon"].icon = estado_icon
             ref_anual["estado_icon"].color = estado_fg
 
-    def _seleccionar_trimestre(self, trim_idx: int):
+    def _seleccionar_trimestre(self, trim_idx: int) -> None:
         self.state.active_trimestre = trim_idx
-        dock_estaba_abierto = bool(hasattr(self, "dock_container") and self.dock_container and self.dock_container.visible)
+        dock_estaba_abierto = bool(self.dock_container and self.dock_container.visible)
         if not dock_estaba_abierto:
             self.active_grade_index = -1
-        tok = self.state.tokens
 
-        # Si no tenemos tarjetas montadas, construir UI
-        if not hasattr(self, "tarjetas_alumnos") or not self.tarjetas_alumnos:
+        tok = resolve_tokens(page=self.app_page, state=self.state)
+        self.tokens = tok
+
+        if not self.tarjetas_alumnos:
             self._build_ui()
-            self.app_page.update()
+            self._safe_update()
             return
 
-        # 1. Actualización quirúrgica in-place de las pestañas superiores
-        if hasattr(self, "top_trimester_tabs"):
-            for idx, tab in enumerate(self.top_trimester_tabs):
-                is_act = (idx == trim_idx)
-                tab.bgcolor = tok.surface if is_act else ft.Colors.TRANSPARENT
-                if hasattr(tab, "content") and hasattr(tab.content, "controls"):
-                    controls = tab.content.controls
-                    if len(controls) > 0 and isinstance(controls[0], ft.Icon):
-                        controls[0].color = tok.primary if is_act else tok.text_muted
-                    if len(controls) > 1 and isinstance(controls[1], ft.Text):
-                        controls[1].color = tok.primary if is_act else tok.text_muted
+        # 1. Actualizar pestañas de período subrayadas in-place
+        for idx, tab in enumerate(self.top_trimester_tabs):
+            is_act = idx == trim_idx
+            tab.border = (
+                ft.Border.only(bottom=ft.BorderSide(2, tok.accent_primary))
+                if is_act
+                else None
+            )
+            if isinstance(tab.content, ft.Text):
+                tab.content.color = tok.accent_primary if is_act else tok.text_secondary
+                tab.content.weight = ft.FontWeight.W_600 if is_act else ft.FontWeight.W_500
 
-        # Caso A: Conmutar a pestaña 'Anual' (vista informativa de solo lectura)
-        if trim_idx >= 3:
-            # Ocultar el dock numérico inferior (dock_container.visible = False)
-            if hasattr(self, "dock_container") and self.dock_container:
-                self.dock_container.visible = False
+        es_anual = trim_idx >= 3
+        if self.edit_tools_row is not None:
+            self.edit_tools_row.visible = not es_anual
+        if self.anual_readonly_label is not None:
+            self.anual_readonly_label.visible = es_anual
 
-            # Conmutar cada tarjeta a vista anual informativa de solo lectura
-            if hasattr(self, "tarjetas_alumnos"):
-                for sid in self.tarjetas_alumnos:
-                    if sid in self.paneles_anuales:
-                        self.paneles_anuales[sid]["container"].visible = True
-                    if sid in self.expanded_containers:
-                        self.expanded_containers[sid].visible = False
-                    if sid in self.chevron_icons:
-                        self.chevron_icons[sid].visible = False
-                    if sid in self.header_pills_containers:
-                        self.header_pills_containers[sid].visible = False
-
-                    self.tarjetas_alumnos[sid].border = ft.Border.all(1.5, tok.border_color)
-                    self.tarjetas_alumnos[sid].shadow = ft.BoxShadow(spread_radius=0, blur_radius=8, color=ft.Colors.TRANSPARENT)
-                    self._actualizar_panel_anual_ui(sid)
-
-            self.app_page.update()
-            return
-
-        # Caso B: Regreso a Trimestres (T1, T2, T3) (restablecer edición normal)
-        if hasattr(self, "dock_container") and self.dock_container:
-            # Solo mostrar el dock si previamente estaba abierto y hay un slot de nota activo
-            self.dock_container.visible = bool(dock_estaba_abierto and self.active_grade_index >= 0 and self.expanded_student_id is not None)
-
-        if hasattr(self, "tarjetas_alumnos"):
-            for sid in self.tarjetas_alumnos:
-                if sid in self.paneles_anuales:
-                    self.paneles_anuales[sid]["container"].visible = False
-                if sid in self.chevron_icons:
-                    self.chevron_icons[sid].visible = True
-
-                is_exp = (str(self.expanded_student_id) == str(sid))
-                if sid in self.expanded_containers:
-                    self.expanded_containers[sid].visible = is_exp
-                if sid in self.chevron_icons:
-                    self.chevron_icons[sid].name = ft.Icons.EXPAND_LESS if is_exp else ft.Icons.EXPAND_MORE
-                    self.chevron_icons[sid].color = tok.primary if is_exp else tok.text_muted
-
-                self.tarjetas_alumnos[sid].border = ft.Border.all(1.5, tok.primary if is_exp else tok.border_color)
-                self.tarjetas_alumnos[sid].shadow = ft.BoxShadow(spread_radius=0, blur_radius=8, color="#0F172A0D" if is_exp else ft.Colors.TRANSPARENT)
-
-        # 2. Actualización quirúrgica in-place de botones de trimestre locales en cada tarjeta
-        if hasattr(self, "local_trim_buttons"):
-            for sid, btns in self.local_trim_buttons.items():
-                for t_idx, btn in enumerate(btns):
-                    is_sel = (t_idx == trim_idx)
-                    btn.bgcolor = tok.surface if is_sel else ft.Colors.TRANSPARENT
-                    if hasattr(btn, "content") and isinstance(btn.content, ft.Text):
-                        btn.content.color = tok.primary if is_sel else tok.text_muted
-
-        # 3. Actualizar metadatos y etiquetas de columnas para los 5 slots por alumno
         colegio = self.state.selected_colegio or ""
         curso = self.state.selected_curso or ""
-        nombres_cols = self.state.get_nombres_columnas(colegio, curso, trim_idx)
+        alumnos = self.state.get_alumnos(colegio, curso)
 
-        if hasattr(self, "slots_controls_by_student"):
-            for sid, slots_map in self.slots_controls_by_student.items():
-                for s_idx in range(5):
-                    tipo, sub_i, col_name, cell_key = self._get_slot_meta(s_idx, nombres_cols)
-                    if cell_key in slots_map:
-                        ref = slots_map[cell_key]
-                        ref["tipo"] = tipo
-                        ref["sub_idx"] = sub_i
-                        ref["col_name"] = col_name
-                        if "label_widget" in ref and ref["label_widget"] is not None:
-                            ref["label_widget"].value = col_name
-
-        # 4. Actualizar las filas de calificaciones y cálculos de todos los alumnos
-        if hasattr(self, "tarjetas_alumnos"):
+        if es_anual:
+            if self.dock_container:
+                self.dock_container.visible = False
             for sid in self.tarjetas_alumnos:
-                self._actualizar_fila_alumno_ui(sid)
+                if sid in self.paneles_anuales:
+                    self.paneles_anuales[sid]["container"].visible = True
+                if sid in self.expanded_containers:
+                    self.expanded_containers[sid].visible = False
+                if sid in self.chevron_icons:
+                    self.chevron_icons[sid].visible = False
 
-        # 5. Resaltar slots activos en el alumno expandido (si hay uno)
+                calcs = procesar_calificaciones_alumno(alumnos.get(sid, {}).get("trimestres", {}))
+                total = calcs["nota_final_total_redondeada"]
+                row_cell = self.alumnos_celdas.get(sid, {}).get("row_fin_cell")
+                if row_cell is not None:
+                    row_cell.set_state(
+                        value=str(total) if total is not None else "--",
+                        elevated_empty=True,
+                        tokens=tok,
+                    )
+                stripe = self._stripe_color_for_alumno(None, total, False, True, tok)
+                self.tarjetas_alumnos[sid].border = ft.Border.only(
+                    left=ft.BorderSide(3, stripe),
+                    bottom=ft.BorderSide(1, tok.border_hairline),
+                )
+                self._actualizar_panel_anual_ui(sid)
+
+            self._sync_list_bottom_padding()
+            self._safe_update()
+            return
+
+        # Regreso a trimestre editable (T1, T2, T3)
+        if self.dock_container:
+            self.dock_container.visible = bool(
+                dock_estaba_abierto
+                and self.active_grade_index >= 0
+                and self.expanded_student_id is not None
+            )
+
+        for sid in self.tarjetas_alumnos:
+            if sid in self.paneles_anuales:
+                self.paneles_anuales[sid]["container"].visible = False
+            is_exp = str(self.expanded_student_id) == str(sid)
+            if sid in self.expanded_containers:
+                self.expanded_containers[sid].visible = is_exp
+            if sid in self.chevron_icons:
+                self.chevron_icons[sid].visible = True
+                self.chevron_icons[sid].icon = (
+                    ft.Icons.EXPAND_LESS if is_exp else ft.Icons.EXPAND_MORE
+                )
+                self.chevron_icons[sid].color = (
+                    tok.accent_primary if is_exp else tok.text_secondary
+                )
+            if sid in self.expanded_period_labels:
+                self.expanded_period_labels[sid].value = f"{trim_idx + 1}° Trimestre"
+
+        nombres_cols = self.state.get_nombres_columnas(colegio, curso, trim_idx)
+        for sid, slots_map in self.slots_controls_by_student.items():
+            for s_idx in range(5):
+                tipo, sub_i, col_name, cell_key = self._get_slot_meta(s_idx, nombres_cols)
+                if cell_key in slots_map:
+                    ref = slots_map[cell_key]
+                    ref["tipo"] = tipo
+                    ref["sub_idx"] = sub_i
+                    ref["col_name"] = col_name
+                    if ref.get("label_widget") is not None:
+                        ref["label_widget"].value = col_name
+
+        for sid in self.tarjetas_alumnos:
+            self._actualizar_fila_alumno_ui(sid)
+
         if self.expanded_student_id:
             self._actualizar_slots_ui(self.expanded_student_id)
 
-        # 6. Actualizar labels y badge del dock flotante inferior
         self._actualizar_dock_labels()
+        self._sync_list_bottom_padding()
+        self._safe_update()
 
-        # 7. Un solo update de la página sin tocar la estructura del ft.ListView -> SCROLL PRESERVADO
-        self.app_page.update()
+    def _construir_lista_tarjetas(
+        self,
+        alumnos: dict,
+        trim_idx: int,
+        nombres_cols: list[str],
+    ) -> ft.ListView:
+        tok = self.tokens
+        colegio = self.state.selected_colegio or ""
+        curso = self.state.selected_curso or ""
+        is_dark = is_dark_tokens(tok)
+        pw = getattr(self.app_page, "width", None) if self.app_page else None
+        gutter = responsive_gutter(pw if isinstance(pw, (int, float)) else None)
 
-    def _construir_lista_tarjetas(self, alumnos: dict, trim_idx: int, nombres_cols: list[str]) -> ft.Control:
-        tok = self.state.tokens
-        is_dark = self.state.is_dark_mode
         self.alumnos_celdas = {}
         self.tarjetas_alumnos = {}
-        self.pills_alumnos = {}
         self.promedio_anual_labels = {}
+        self.resumen_trimestres_labels = {}
+        self.expanded_period_labels = {}
         self.slots_controls_by_student = {}
         self.expanded_containers = {}
         self.chevron_icons = {}
-        self.local_trim_buttons = {}
         self.paneles_anuales = {}
-        self.header_pills_containers = {}
 
         if not alumnos:
-            empty_msg = ft.Container(
-                content=ft.Column(
-                    [
-                        ft.Container(
-                            width=56,
-                            height=56,
-                            bgcolor=tok.primary_light,
-                            border_radius=16,
-                            alignment=ft.Alignment.CENTER,
-                            content=ft.Icon(ft.Icons.GROUP_OUTLINED, size=28, color=tok.primary),
-                        ),
-                        ft.Text("No hay alumnos en este curso", size=15, weight=ft.FontWeight.BOLD, color=tok.text_main),
-                        ft.Text("Toca '+ Alumno' para cargar los estudiantes a la planilla.", size=12, color=tok.text_muted),
-                    ],
-                    horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                    alignment=ft.MainAxisAlignment.CENTER,
-                    spacing=6,
-                ),
-                alignment=ft.Alignment.CENTER,
-                padding=30,
+            empty_msg = EmptyStateView(
+                icon=ft.Icons.GROUP_OUTLINED,
+                title="No hay alumnos en este curso",
+                description="Toca 'Alumno' para cargar estudiantes en la planilla.",
+                cta_label="Agregar alumno" if self.state.active_trimestre < 3 else None,
+                on_cta=(lambda _: self._abrir_modal_agregar_alumno())
+                if self.state.active_trimestre < 3
+                else None,
+                tokens=tok,
+                state=self.state,
+                page=self.app_page,
             )
-            ctrls = [self.sub_header_container, empty_msg] if getattr(self, "sub_header_container", None) else [empty_msg]
+            ctrls = (
+                [self.sub_header_container, empty_msg]
+                if self.sub_header_container
+                else [empty_msg]
+            )
             self.lista_tarjetas_listview = ft.ListView(
-                spacing=10,
-                padding=ft.Padding(left=0, top=0, right=0, bottom=56),
+                spacing=0,
+                padding=ft.Padding(left=0, top=0, right=0, bottom=88),
                 controls=ctrls,
                 expand=True,
             )
             return self.lista_tarjetas_listview
 
-        student_cards = []
-        es_modo_anual = (self.state.active_trimestre == 3)
+        student_rows: list[ft.Control] = []
+        es_modo_anual = self.state.active_trimestre >= 3
 
         for id_al, al_data in alumnos.items():
             id_str = str(id_al)
-            nombre_al = al_data.get("nombre", "Sin nombre")
+            nombre_al = (al_data.get("nombre") or "").strip() or "Sin nombre"
             ap_act, nom_act = separar_nombre_completo(nombre_al)
-
-            # Inicializar drafts de edición de nombre
             if id_str not in self.name_drafts:
                 self.name_drafts[id_str] = {"apellido": ap_act, "nombre": nom_act}
 
             trimestres = al_data.get("trimestres", {})
             calcs = procesar_calificaciones_alumno(trimestres)
-            t1 = calcs["notas_finales_redondeadas"][0]
-            t2 = calcs["notas_finales_redondeadas"][1]
-            t3 = calcs["notas_finales_redondeadas"][2]
+            t1, t2, t3 = calcs["notas_finales_redondeadas"][:3]
             total = calcs["nota_final_total_redondeada"]
-            prom_crudo_red = calcs["promedios_crudos_redondeados"][trim_idx] if trim_idx < 3 else None
-            nota_final_red = calcs["notas_finales_redondeadas"][trim_idx] if trim_idx < 3 else None
+            prom_crudo_red = (
+                calcs["promedios_crudos_redondeados"][trim_idx] if trim_idx < 3 else None
+            )
+            nota_final_red = (
+                calcs["notas_finales_redondeadas"][trim_idx] if trim_idx < 3 else None
+            )
 
-            # Panel anual informativo de solo lectura
             panel_anual, ref_anual = self._construir_panel_anual_alumno(id_str, calcs)
             self.paneles_anuales[id_str] = ref_anual
 
-            # Píldoras de trimestres (.grade-pill)
-            pill1 = build_grade_pill("1ºT", t1, is_dark=is_dark, tokens=tok)
-            pill2 = build_grade_pill("2ºT", t2, is_dark=is_dark, tokens=tok)
-            pill3 = build_grade_pill("3ºT", t3, is_dark=is_dark, tokens=tok)
-            self.pills_alumnos[id_str] = [pill1, pill2, pill3]
+            is_open = str(self.expanded_student_id) == id_str
 
-            is_open = (str(self.expanded_student_id) == id_str)
-
-            # Avatar y colores
             num_id = int(id_str) if id_str.isdigit() else 0
             avatar_bg, avatar_fg = get_avatar_palette(num_id, is_dark=is_dark)
             iniciales = extract_initials(nombre_al)
 
-            prom_anual_txt = ft.Text(
+            # Resumen tabular continuo (B2: reemplaza cápsulas/píldoras)
+            resumen_trim_lbl = tabular_text(
+                format_tabular_trimester_summary([t1, t2, t3]),
+                size=11,
+                color=tok.text_secondary,
+                max_lines=1,
+                overflow=ft.TextOverflow.ELLIPSIS,
+            )
+            self.resumen_trimestres_labels[id_str] = resumen_trim_lbl
+
+            prom_anual_txt = tabular_text(
                 f"Promedio anual: {total if total is not None else '--'}",
                 size=11,
-                color=tok.text_muted,
+                color=tok.text_secondary,
             )
             self.promedio_anual_labels[id_str] = prom_anual_txt
 
-            # Celdas calculadas del trimestre activo
-            bg_prom, fg_prom = self._color_por_nota(prom_crudo_red)
-            prom_text = ft.Text(str(prom_crudo_red) if prom_crudo_red is not None else "-", weight=ft.FontWeight.BOLD, color=fg_prom, size=13)
-            prom_container = ft.Container(
-                content=prom_text,
-                bgcolor=bg_prom,
-                padding=ft.Padding(left=8, right=8, top=4, bottom=4),
-                border_radius=6,
-                alignment=ft.Alignment.CENTER,
+            # Celdas del período activo (prom y nota final dominante)
+            prom_cell = GradeCell(
+                value=str(prom_crudo_red) if prom_crudo_red is not None else "--",
+                tokens=tok,
+                dominant=False,
+                width=48,
+                height=38,
+            )
+            fin_cell = GradeCell(
+                value=str(nota_final_red) if nota_final_red is not None else "--",
+                tokens=tok,
+                dominant=True,
+                width=52,
+                height=40,
+            )
+            row_fin_val = total if es_modo_anual else nota_final_red
+            row_fin_cell = GradeCell(
+                value=str(row_fin_val) if row_fin_val is not None else "--",
+                tokens=tok,
+                dominant=True,
+                elevated_empty=es_modo_anual,
+                width=48,
+                height=40,
             )
 
-            bg_fin, fg_fin = self._color_por_nota(nota_final_red)
-            fin_text = ft.Text(str(nota_final_red) if nota_final_red is not None else "-", weight=ft.FontWeight.BOLD, color=fg_fin, size=13)
-            fin_container = ft.Container(
-                content=fin_text,
-                bgcolor=bg_fin,
-                padding=ft.Padding(left=8, right=8, top=4, bottom=4),
-                border_radius=6,
-                alignment=ft.Alignment.CENTER,
-            )
-
-            # Construir slots de notas (5 slots: P0, P1, P2, E0, R0)
-            slots_map = {}
-            slots_widgets = []
+            # 5 slots interactivos de notas (P0, P1, P2, E0, R0)
+            slots_map: dict[str, Any] = {}
+            slots_widgets: list[ft.Control] = []
             nombre_trim = NOMBRES_TRIMESTRES[trim_idx] if trim_idx < 3 else NOMBRES_TRIMESTRES[0]
             trim_data = trimestres.get(nombre_trim, {})
             principales = trim_data.get("principales", [None] * NUM_PRINCIPALES)
@@ -909,15 +943,16 @@ class NotasView(ft.Container):
                 recuperatorio,
             ]
 
-            # Regla de corte: promedio < 5.50 habilita recuperación. Si >= 5.50 o no hay notas, bloqueado.
-            prom_crudo_sin_red = calcs["promedios_crudos_sin_redondear"][trim_idx] if trim_idx < 3 else None
+            prom_crudo_sin_red = (
+                calcs["promedios_crudos_sin_redondear"][trim_idx] if trim_idx < 3 else None
+            )
             habilita_recup = prom_crudo_sin_red is not None and prom_crudo_sin_red < 5.50
 
             for s_idx in range(5):
                 tipo, sub_i, col_name, cell_key = self._get_slot_meta(s_idx, nombres_cols)
                 val_actual = raw_valores[s_idx]
-                is_active_slot = (self.active_grade_index == s_idx and is_open)
-                deshabilitado = (s_idx == 4 and not habilita_recup)
+                is_active_slot = self.active_grade_index == s_idx and is_open
+                deshabilitado = s_idx == 4 and not habilita_recup
 
                 cell_widget, ref_dict = self._crear_slot_control(
                     id_al=id_str,
@@ -931,23 +966,113 @@ class NotasView(ft.Container):
                     is_active=is_active_slot,
                     deshabilitado=deshabilitado,
                 )
-
                 slots_map[cell_key] = ref_dict
                 slots_widgets.append(cell_widget)
 
-            # Registrar referencias para tests y actualizaciones in-place
+            self.slots_controls_by_student[id_str] = slots_map
+
+            # Barra superior interna expandida (sin selector duplicado de trimestres)
+            lbl_periodo_exp = ft.Text(
+                f"{trim_idx + 1}° Trimestre",
+                size=11,
+                weight=ft.FontWeight.W_600,
+                color=tok.text_secondary,
+            )
+            self.expanded_period_labels[id_str] = lbl_periodo_exp
+
+            btn_editar_alumno = ft.IconButton(
+                icon=ft.Icons.EDIT_OUTLINED,
+                icon_color=tok.accent_primary,
+                icon_size=20,
+                width=48,
+                height=48,
+                tooltip="Editar o eliminar alumno",
+                on_click=lambda _, i=id_str, n=nombre_al: self._abrir_modal_renombrar_alumno(i, n),
+            )
+            cabecera_desplegada_row = ft.Row(
+                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                controls=[lbl_periodo_exp, btn_editar_alumno],
+            )
+
+            resumen_trimestre_row = ft.Row(
+                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                controls=[
+                    ft.Row(
+                        spacing=SPACE_SM,
+                        tight=True,
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                        controls=[
+                            ft.Text("Prom. Trimestre:", size=12, color=tok.text_secondary),
+                            prom_cell,
+                        ],
+                    ),
+                    ft.Row(
+                        spacing=SPACE_SM,
+                        tight=True,
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                        controls=[
+                            ft.Text(
+                                "Nota Final:",
+                                size=12,
+                                weight=ft.FontWeight.W_600,
+                                color=tok.text_primary,
+                            ),
+                            fin_cell,
+                        ],
+                    ),
+                ],
+            )
+
+            comps_alumno = self.state.get_comportamientos_alumno(id_str, colegio, curso)
+            cant_comps = len(comps_alumno)
+            texto_resumen_comp = (
+                pluralizar(cant_comps, "observación", "observaciones")
+                if cant_comps > 0
+                else "Sin observaciones"
+            )
+            lbl_resumen_comp = ft.Text(texto_resumen_comp, size=12, color=tok.text_secondary)
+
+            btn_comportamiento = ft.OutlinedButton(
+                icon=ft.Icons.RULE,
+                height=44,
+                content=ft.Text("Comportamiento", size=12, weight=ft.FontWeight.W_600),
+                style=ft.ButtonStyle(
+                    color=tok.accent_primary,
+                    side=ft.BorderSide(1, tok.border_hairline),
+                    shape=ft.RoundedRectangleBorder(radius=RADIUS_SM),
+                    padding=ft.Padding.symmetric(horizontal=SPACE_MD, vertical=0),
+                ),
+                on_click=lambda _, sid=id_str, nom=nombre_al: self._abrir_modal_comportamiento(
+                    sid, nom
+                ),
+            )
+
+            fila_comportamiento = ft.Container(
+                bgcolor=tok.surface_primary,
+                border=ft.Border.all(1, tok.border_hairline),
+                border_radius=RADIUS_SM,
+                padding=ft.Padding.symmetric(horizontal=SPACE_MD, vertical=SPACE_XS),
+                content=ft.Row(
+                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                    controls=[btn_comportamiento, lbl_resumen_comp],
+                ),
+            )
+
             self.alumnos_celdas[id_str] = {
                 "P0": slots_map["P0"],
                 "P1": slots_map["P1"],
                 "P2": slots_map["P2"],
                 "E0": slots_map["E0"],
                 "R0": slots_map["R0"],
-                "prom_container": prom_container,
-                "prom_text": prom_text,
-                "fin_container": fin_container,
-                "fin_text": fin_text,
+                "prom_container": prom_cell,
+                "prom_text": prom_cell.text_control,
+                "fin_container": fin_cell,
+                "fin_text": fin_cell.text_control,
+                "row_fin_cell": row_fin_cell,
                 "nombre": nombre_al,
-                "pills": [pill1, pill2, pill3],
                 "prom_anual_text": prom_anual_txt,
                 "panel_anual": panel_anual,
                 "anual_t1": ref_anual["t1_text"],
@@ -956,127 +1081,19 @@ class NotasView(ft.Container):
                 "anual_promedio": ref_anual["promedio_anual_text"],
                 "anual_estado": ref_anual["estado_text"],
                 "anual_badge": ref_anual["estado_badge"],
+                "lbl_resumen_comp": lbl_resumen_comp,
             }
-            self.slots_controls_by_student[id_str] = slots_map
-
-            # Contenido expandido de la tarjeta (siempre construido, controlado por visibilidad para no destruir el ListView)
-            # 1. Selector local de trimestre para el alumno
-            trim_buttons = []
-            for t in [1, 2, 3]:
-                t_idx_btn = t - 1
-                is_sel_t = (trim_idx == t_idx_btn)
-                trim_buttons.append(
-                    ft.Container(
-                        expand=True,
-                        height=32,
-                        border_radius=8,
-                        bgcolor=tok.surface if is_sel_t else ft.Colors.TRANSPARENT,
-                        alignment=ft.Alignment.CENTER,
-                        ink=True,
-                        on_click=lambda _, val=t_idx_btn: self._seleccionar_trimestre(val),
-                        content=ft.Text(
-                            f"Trimestre {t}",
-                            size=11,
-                            weight=ft.FontWeight.BOLD,
-                            color=tok.primary if is_sel_t else tok.text_muted,
-                        ),
-                    )
-                )
-            self.local_trim_buttons[id_str] = trim_buttons
-
-            selector_trim_local = ft.Container(
-                bgcolor=tok.surface_variant,
-                border_radius=10,
-                padding=2,
-                content=ft.Row(spacing=2, controls=trim_buttons),
-            )
-
-            # Fila superior de la tarjeta desplegada: selector local de trimestre + botón de Lápiz para editar/eliminar alumno
-            btn_editar_alumno = ft.IconButton(
-                icon=ft.Icons.EDIT_OUTLINED,
-                icon_color=tok.primary,
-                icon_size=20,
-                tooltip="Editar o eliminar alumno",
-                on_click=lambda _, i=id_str, n=nombre_al: self._abrir_modal_renombrar_alumno(i, n),
-            )
-
-            cabecera_desplegada_row = ft.Row(
-                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                controls=[
-                    ft.Container(expand=True, content=selector_trim_local),
-                    btn_editar_alumno,
-                ],
-            )
-
-            # 3. Fila de cálculos del trimestre actual
-            resumen_trimestre_row = ft.Row(
-                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                controls=[
-                    ft.Row(
-                        spacing=6,
-                        tight=True,
-                        controls=[
-                            ft.Text("Promedio Trimestre:", size=11, color=tok.text_muted),
-                            prom_container,
-                        ],
-                    ),
-                    ft.Row(
-                        spacing=6,
-                        tight=True,
-                        controls=[
-                            ft.Text("Nota Final:", size=11, color=tok.text_muted),
-                            fin_container,
-                        ],
-                    ),
-                ],
-            )
-
-            # 4. Acceso y resumen del sistema de calificación de comportamiento
-            colegio_activo = self.state.selected_colegio or ""
-            curso_activo = self.state.selected_curso or ""
-            comps_alumno = self.state.get_comportamientos_alumno(id_str, colegio_activo, curso_activo)
-            cant_comps = len(comps_alumno)
-            texto_resumen_comp = f"{cant_comps} observación{'es' if cant_comps != 1 else ''}" if cant_comps > 0 else "Sin observaciones"
-            lbl_resumen_comp = ft.Text(texto_resumen_comp, size=11, color=tok.text_muted)
-
-            btn_comportamiento = ft.OutlinedButton(
-                icon=ft.Icons.RULE,
-                content=ft.Text("Comportamiento", size=12, weight=ft.FontWeight.BOLD),
-                style=ft.ButtonStyle(
-                    color=tok.primary,
-                    shape=ft.RoundedRectangleBorder(radius=8),
-                    padding=ft.Padding(left=12, right=12, top=6, bottom=6),
-                ),
-                on_click=lambda _, sid=id_str, nom=nombre_al: self._abrir_modal_comportamiento(sid, nom),
-            )
-
-            fila_comportamiento = ft.Container(
-                bgcolor=tok.surface_variant,
-                border=ft.Border.all(1, tok.border_color),
-                border_radius=8,
-                padding=ft.Padding(left=10, right=10, top=6, bottom=6),
-                content=ft.Row(
-                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                    controls=[
-                        btn_comportamiento,
-                        lbl_resumen_comp,
-                    ],
-                ),
-            )
-
-            self.alumnos_celdas[id_str]["lbl_resumen_comp"] = lbl_resumen_comp
 
             expanded_content = ft.Container(
                 visible=(is_open and not es_modo_anual),
-                padding=ft.Padding(left=12, right=12, top=10, bottom=12),
-                border=ft.Border.only(top=ft.BorderSide(1, tok.border_color)),
+                bgcolor=tok.surface_subtle,
+                padding=ft.Padding(left=gutter, right=gutter, top=SPACE_SM, bottom=SPACE_MD),
+                border=ft.Border.only(top=ft.BorderSide(1, tok.border_hairline)),
                 content=ft.Column(
-                    spacing=12,
+                    spacing=SPACE_MD,
                     controls=[
                         cabecera_desplegada_row,
-                        ft.Row(spacing=6, controls=slots_widgets),
+                        ft.Row(spacing=SPACE_XS, controls=slots_widgets),
                         resumen_trimestre_row,
                         fila_comportamiento,
                     ],
@@ -1085,48 +1102,65 @@ class NotasView(ft.Container):
             self.expanded_containers[id_str] = expanded_content
 
             chevron_icon = ft.Icon(
-                ft.Icons.EXPAND_LESS if is_open else ft.Icons.EXPAND_MORE,
+                icon=ft.Icons.EXPAND_LESS if is_open else ft.Icons.EXPAND_MORE,
                 size=20,
-                color=tok.primary if is_open else tok.text_muted,
+                color=tok.accent_primary if is_open else tok.text_secondary,
                 visible=(not es_modo_anual),
             )
             self.chevron_icons[id_str] = chevron_icon
 
-            # Tarjeta completa
+            stripe = self._stripe_color_for_alumno(
+                nota_final_red, total, is_open and not es_modo_anual, es_modo_anual, tok
+            )
+
             card_container = ft.Container(
-                bgcolor=tok.surface,
-                border_radius=16,
-                border=ft.Border.all(1.5, tok.primary if (is_open and not es_modo_anual) else tok.border_color),
-                shadow=ft.BoxShadow(spread_radius=0, blur_radius=8, color="#0F172A0D" if (is_open and not es_modo_anual) else ft.Colors.TRANSPARENT),
+                bgcolor=tok.surface_primary,
+                border_radius=RADIUS_NONE,
+                border=ft.Border.only(
+                    left=ft.BorderSide(3, stripe),
+                    bottom=ft.BorderSide(1, tok.border_hairline),
+                ),
                 content=ft.Column(
                     spacing=0,
                     controls=[
-                        # Cabecera colapsable / expandible con máximo ancho para el nombre
                         ft.Container(
-                            padding=12,
+                            padding=ft.Padding.symmetric(horizontal=gutter, vertical=SPACE_MD),
                             ink=(not es_modo_anual),
                             on_click=lambda _, sid=id_str: self._toggle_expand_alumno(sid),
                             content=ft.Row(
-                                spacing=12,
+                                spacing=SPACE_MD,
                                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
                                 controls=[
                                     ft.Container(
                                         width=40,
                                         height=40,
                                         bgcolor=avatar_bg,
-                                        border_radius=20,
+                                        border_radius=RADIUS_SM,
                                         alignment=ft.Alignment.CENTER,
-                                        content=ft.Text(iniciales, size=12, weight=ft.FontWeight.BOLD, color=avatar_fg),
+                                        content=ft.Text(
+                                            iniciales,
+                                            size=13,
+                                            weight=ft.FontWeight.BOLD,
+                                            color=avatar_fg,
+                                        ),
                                     ),
-                                    ft.Text(
-                                        f"#{id_str} {nombre_al}",
-                                        size=14,
-                                        weight=ft.FontWeight.BOLD,
-                                        color=tok.text_main,
+                                    ft.Column(
                                         expand=True,
-                                        max_lines=1,
-                                        overflow=ft.TextOverflow.ELLIPSIS,
+                                        spacing=2,
+                                        tight=True,
+                                        controls=[
+                                            ft.Text(
+                                                f"#{id_str} {nombre_al}",
+                                                size=15,
+                                                weight=ft.FontWeight.W_600,
+                                                color=tok.text_primary,
+                                                max_lines=1,
+                                                overflow=ft.TextOverflow.ELLIPSIS,
+                                            ),
+                                            resumen_trim_lbl,
+                                        ],
                                     ),
+                                    row_fin_cell,
                                     chevron_icon,
                                 ],
                             ),
@@ -1138,19 +1172,23 @@ class NotasView(ft.Container):
             )
 
             self.tarjetas_alumnos[id_str] = card_container
-            student_cards.append(card_container)
+            student_rows.append(card_container)
 
-        ctrls = [self.sub_header_container, *student_cards] if getattr(self, "sub_header_container", None) else student_cards
+        ctrls = (
+            [self.sub_header_container, *student_rows]
+            if self.sub_header_container
+            else student_rows
+        )
         self.lista_tarjetas_listview = ft.ListView(
-            spacing=10,
-            padding=ft.Padding(left=0, top=0, right=0, bottom=56),
+            spacing=0,
+            padding=ft.Padding(left=0, top=0, right=0, bottom=88),
             controls=ctrls,
             expand=True,
         )
         return self.lista_tarjetas_listview
 
     def _al_hacer_scroll(self, e=None):
-        """Deprecado: el desplazamiento fluye de forma 100% nativa con el sub-header integrado en el ListView."""
+        """Deprecado: desplazamiento nativo integrado con sub_header_container."""
         pass
 
     def _crear_slot_control(
@@ -1166,39 +1204,30 @@ class NotasView(ft.Container):
         is_active: bool,
         deshabilitado: bool = False,
     ) -> tuple[ft.Control, dict]:
-        """Crea el slot visual de nota interactivo para un alumno."""
-        tok = self.state.tokens
-        if val_actual is None or deshabilitado:
-            val_str = "-"
-        else:
-            try:
-                val_str = str(int(math.floor(float(str(val_actual).replace(",", ".")) + 0.5)))
-            except (ValueError, TypeError):
-                val_str = str(val_actual)
-        bg_color, text_color = self._color_por_nota(val_actual) if not deshabilitado else (ft.Colors.TRANSPARENT, tok.text_subtle)
-
-        txt_widget = ft.Text(
-            val_str,
-            size=14 if not deshabilitado else 12,
-            weight=ft.FontWeight.BOLD if not deshabilitado else ft.FontWeight.NORMAL,
-            color=tok.primary if (is_active and not deshabilitado) else text_color,
-        )
-
-        container = ft.Container(
+        """Crea el casillero `GradeCell` editorial interactivo del trimestre."""
+        tok = self.tokens
+        val_fmt = _round_grade_str(val_actual) if not deshabilitado else "--"
+        cell = GradeCell(
+            value=val_fmt,
+            tokens=tok,
+            is_active=is_active,
+            disabled=deshabilitado,
+            dominant=False,
             height=44,
-            border_radius=10,
-            border=ft.Border.all(2 if is_active else 1, tok.primary if is_active else tok.border_color),
-            bgcolor=tok.primary_light if is_active else bg_color,
-            alignment=ft.Alignment.CENTER,
-            ink=not deshabilitado,
-            content=txt_widget,
+            expand=True,
         )
-
-        label_text_widget = ft.Text(col_name, size=9, weight=ft.FontWeight.W_500, color=tok.primary if is_active else tok.text_muted)
+        label_text_widget = ft.Text(
+            col_name,
+            size=10,
+            weight=ft.FontWeight.W_600 if is_active else ft.FontWeight.W_500,
+            color=tok.accent_primary if is_active else tok.text_secondary,
+            max_lines=1,
+            overflow=ft.TextOverflow.ELLIPSIS,
+        )
 
         ref_dict = {
-            "container": container,
-            "text_widget": txt_widget,
+            "container": cell,
+            "text_widget": cell.text_control,
             "label_widget": label_text_widget,
             "valor": val_actual,
             "deshabilitado": deshabilitado,
@@ -1214,39 +1243,41 @@ class NotasView(ft.Container):
             self.expanded_student_id = id_al
             self.active_grade_index = slot_index
 
-            # Abrir el dock numérico retráctil si estaba cerrado
-            if hasattr(self, "dock_container") and self.dock_container:
+            if self.dock_container:
                 self.dock_container.visible = True
+                self._sync_list_bottom_padding()
                 try:
-                    self.dock_container.update()
+                    if self.dock_container.page is not None:
+                        self.dock_container.update()
                 except Exception:
                     pass
 
             self._actualizar_dock_labels()
             self._actualizar_slots_ui(id_al)
-            if hasattr(self, "app_page") and self.app_page:
-                try:
-                    self.app_page.update()
-                except Exception:
-                    pass
+            self._safe_update()
 
-        container.on_click = on_slot_click
+        cell.on_click = on_slot_click if not deshabilitado else None
+        cell.ink = not deshabilitado
 
         column_widget = ft.Column(
             expand=True,
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
             spacing=3,
-            controls=[
-                container,
-                label_text_widget,
-            ],
+            controls=[cell, label_text_widget],
         )
-
         return column_widget, ref_dict
 
-    def _construir_dock_teclado(self, alumnos: dict, trim_idx: int, nombres_cols: list[str]) -> ft.Control:
-        """Construye el dock flotante inferior con el teclado numérico anclado al pie (.key-button)."""
-        tok = self.state.tokens
+    def _construir_dock_teclado(
+        self,
+        alumnos: dict,
+        trim_idx: int,
+        nombres_cols: list[str],
+    ) -> ft.Container:
+        """Construye el teclado numérico retráctil editorial anclado dentro de ft.SafeArea."""
+        tok = self.tokens
+        pw = getattr(self.app_page, "width", None) if self.app_page else None
+        gutter = responsive_gutter(pw if isinstance(pw, (int, float)) else None)
+
         active_nombre = ""
         active_id = self.expanded_student_id
         if active_id and active_id in alumnos:
@@ -1256,111 +1287,111 @@ class NotasView(ft.Container):
         nombre_corto = active_nombre.split(",")[0].strip() if active_nombre else ""
 
         self.dock_label_active = ft.Text(
-            f"Ingresar {slot_col_name} · #{active_id} {nombre_corto}" if active_id else "Selecciona un alumno para calificar",
+            f"Ingresar {slot_col_name} · #{active_id} {nombre_corto}"
+            if active_id
+            else "Selecciona un alumno para calificar",
             size=12,
-            weight=ft.FontWeight.BOLD,
-            color=tok.text_main,
+            weight=ft.FontWeight.W_600,
+            color=tok.text_primary,
             no_wrap=True,
             max_lines=1,
             overflow=ft.TextOverflow.ELLIPSIS,
         )
 
-        self.dock_badge_trimestre = ft.Text(
+        self.dock_badge_trimestre = tabular_text(
             f"T{trim_idx + 1}" if trim_idx < 3 else "Anual",
             size=11,
             weight=ft.FontWeight.BOLD,
-            color=tok.primary,
+            color=tok.accent_primary,
         )
 
-        # Fila 1 de números: [1] a [5]
-        numpad_row1_controls = []
-        for n in range(1, 6):
-            btn = build_key_button(
+        numpad_row1_controls = [
+            build_key_button(
                 text=str(n),
                 on_click=lambda e, val=n: self._aplicar_nota_dock(val),
                 tokens=tok,
             )
-            numpad_row1_controls.append(btn)
-
-        # Fila 2 de números: [6] a [10] + [⌫] + [Sig.]
-        numpad_row2_controls = []
-        for n in range(6, 11):
-            btn = build_key_button(
+            for n in range(1, 6)
+        ]
+        numpad_row2_controls: list[ft.Control] = [
+            build_key_button(
                 text=str(n),
                 on_click=lambda e, val=n: self._aplicar_nota_dock(val),
                 tokens=tok,
             )
-            numpad_row2_controls.append(btn)
-
-        btn_clear = build_key_button(
-            icon=ft.Icons.BACKSPACE_OUTLINED,
-            on_click=lambda e: self._limpiar_nota_dock(),
-            tokens=tok,
+            for n in range(6, 11)
+        ]
+        numpad_row2_controls.append(
+            build_key_button(
+                icon=ft.Icons.BACKSPACE_OUTLINED,
+                tooltip="Borrar nota",
+                on_click=lambda e: self._limpiar_nota_dock(),
+                tokens=tok,
+            )
         )
-        numpad_row2_controls.append(btn_clear)
-
-        btn_sig = build_key_button(
-            text="Sig.",
-            is_primary=True,
-            on_click=lambda e: self._avanzar_slot_dock(),
-            tokens=tok,
+        numpad_row2_controls.append(
+            build_key_button(
+                text="Sig.",
+                is_primary=True,
+                on_click=lambda e: self._avanzar_slot_dock(),
+                tokens=tok,
+            )
         )
-        numpad_row2_controls.append(btn_sig)
+
+        dock_column = ft.Column(
+            tight=True,
+            spacing=SPACE_SM,
+            controls=[
+                ft.Row(
+                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                    controls=[
+                        ft.Container(expand=True, content=self.dock_label_active),
+                        ft.Row(
+                            spacing=SPACE_XS,
+                            tight=True,
+                            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                            controls=[
+                                ft.Container(
+                                    bgcolor=tok.accent_subtle,
+                                    border_radius=RADIUS_SM,
+                                    padding=ft.Padding.symmetric(horizontal=SPACE_SM, vertical=3),
+                                    content=self.dock_badge_trimestre,
+                                ),
+                                ft.IconButton(
+                                    icon=ft.Icons.KEYBOARD_ARROW_DOWN,
+                                    icon_size=20,
+                                    width=44,
+                                    height=44,
+                                    icon_color=tok.text_secondary,
+                                    tooltip="Ocultar teclado",
+                                    on_click=lambda _: self._ocultar_dock_y_deseleccionar(),
+                                ),
+                            ],
+                        ),
+                    ],
+                ),
+                ft.Row(spacing=SPACE_XS, controls=numpad_row1_controls),
+                ft.Row(spacing=SPACE_XS, controls=numpad_row2_controls),
+            ],
+        )
 
         return ft.Container(
-            bgcolor=tok.surface,
-            border=ft.Border.only(top=ft.BorderSide(1, tok.border_color)),
-            padding=ft.Padding(left=16, right=16, top=10, bottom=0),
-            shadow=ft.BoxShadow(blur_radius=16, color="#0F172A14", offset=ft.Offset(0, -4)),
+            bgcolor=tok.surface_primary,
+            border=ft.Border.only(top=ft.BorderSide(1, tok.border_hairline)),
+            padding=ft.Padding(left=gutter, right=gutter, top=10, bottom=0),
             content=ft.SafeArea(
                 avoid_intrusions_top=False,
                 avoid_intrusions_bottom=True,
                 avoid_intrusions_left=False,
                 avoid_intrusions_right=False,
-                minimum_padding=ft.Padding(0, 0, 0, 10),
-                content=ft.Column(
-                    tight=True,
-                    spacing=8,
-                    controls=[
-                        ft.Row(
-                            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                            vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                            controls=[
-                                ft.Container(
-                                    expand=True,
-                                    content=self.dock_label_active,
-                                ),
-                                ft.Row(
-                                    spacing=6,
-                                    tight=True,
-                                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                                    controls=[
-                                        ft.Container(
-                                            bgcolor=tok.primary_light,
-                                            border_radius=6,
-                                            padding=ft.Padding(left=8, right=8, top=2, bottom=2),
-                                            content=self.dock_badge_trimestre,
-                                        ),
-                                        ft.IconButton(
-                                            icon=ft.Icons.KEYBOARD_ARROW_DOWN,
-                                            icon_size=20,
-                                            icon_color=tok.text_muted,
-                                            tooltip="Ocultar teclado",
-                                            on_click=lambda _: self._ocultar_dock_y_deseleccionar(),
-                                        ),
-                                    ],
-                                ),
-                            ],
-                        ),
-                        ft.Row(spacing=6, controls=numpad_row1_controls),
-                        ft.Row(spacing=6, controls=numpad_row2_controls),
-                    ],
-                ),
+                minimum_padding=ft.Padding(0, 0, 0, 12),
+                content=dock_column,
             ),
         )
 
-    def _aplicar_nota_dock(self, valor: float | int):
-        """Aplica la nota seleccionada en el dock inferior al slot activo del alumno expandido."""
+    def _aplicar_nota_dock(self, valor: float | int) -> None:
+        """Aplica la nota al slot activo in-place y avanza automáticamente."""
         if self.state.active_trimestre >= 3 or not self.expanded_student_id:
             return
 
@@ -1377,13 +1408,10 @@ class NotasView(ft.Container):
         self.state.set_nota(id_al, trim_idx, tipo, sub_idx, val_int)
 
         self._actualizar_fila_alumno_ui(id_al)
-        self._actualizar_boton_guardar()
 
-        # Avanzar automáticamente al siguiente slot
         if self.active_grade_index < 4:
             self.active_grade_index += 1
         else:
-            # Si completó los 5 slots, pasar al siguiente alumno
             alumnos_keys = list(self.state.get_alumnos(colegio, curso).keys())
             if id_al in alumnos_keys:
                 idx = alumnos_keys.index(id_al)
@@ -1393,36 +1421,33 @@ class NotasView(ft.Container):
 
         self._actualizar_dock_labels()
         self._actualizar_slots_ui(id_al)
-        self.app_page.update()
+        self._safe_update()
 
     def cerrar_dock_si_abierto(self) -> bool:
-        """Cierra el dock numérico si está visible y deselecciona la nota activa. Retorna True si consumió el evento."""
-        if hasattr(self, "dock_container") and self.dock_container and self.dock_container.visible:
+        """Cierra el dock numérico si está visible y deselecciona la nota activa."""
+        if self.dock_container and self.dock_container.visible:
             self._ocultar_dock_y_deseleccionar()
             return True
         return False
 
-    def _ocultar_dock_y_deseleccionar(self):
-        """Oculta el dock inferior y deselecciona el casillero de nota activo."""
+    def _ocultar_dock_y_deseleccionar(self) -> None:
         self.active_grade_index = -1
-        if hasattr(self, "dock_container") and self.dock_container:
+        if self.dock_container:
             self.dock_container.visible = False
+            self._sync_list_bottom_padding()
             try:
-                self.dock_container.update()
+                if self.dock_container.page is not None:
+                    self.dock_container.update()
             except Exception:
                 pass
 
         if self.expanded_student_id:
             self._actualizar_slots_ui(self.expanded_student_id)
 
-        if hasattr(self, "app_page") and self.app_page:
-            try:
-                self.app_page.update()
-            except Exception:
-                pass
+        self._safe_update()
 
-    def _limpiar_nota_dock(self):
-        """Borra la nota del slot activo del alumno expandido."""
+    def _limpiar_nota_dock(self) -> None:
+        """Borra la nota del slot activo del alumno expandido in-place."""
         if self.state.active_trimestre >= 3 or not self.expanded_student_id:
             return
 
@@ -1438,12 +1463,12 @@ class NotasView(ft.Container):
         self.state.set_nota(id_al, trim_idx, tipo, sub_idx, None)
 
         self._actualizar_fila_alumno_ui(id_al)
-        self._actualizar_boton_guardar()
+        self._actualizar_slots_ui(id_al)
         self._actualizar_dock_labels()
-        self.app_page.update()
+        self._safe_update()
 
-    def _avanzar_slot_dock(self):
-        """Avanza al siguiente slot o al siguiente alumno."""
+    def _avanzar_slot_dock(self) -> None:
+        """Avanza al siguiente casillero o al siguiente alumno."""
         if self.state.active_trimestre >= 3:
             return
 
@@ -1456,20 +1481,19 @@ class NotasView(ft.Container):
             if self.expanded_student_id:
                 self._actualizar_slots_ui(self.expanded_student_id)
             self._actualizar_dock_labels()
-            self.app_page.update()
+            self._safe_update()
         elif self.active_grade_index < 4:
             self.active_grade_index += 1
             if self.expanded_student_id:
                 self._actualizar_slots_ui(self.expanded_student_id)
             self._actualizar_dock_labels()
-            self.app_page.update()
+            self._safe_update()
         elif alumnos_keys and self.expanded_student_id in alumnos_keys:
             idx = alumnos_keys.index(self.expanded_student_id)
             next_idx = (idx + 1) % len(alumnos_keys)
             self._toggle_expand_alumno(alumnos_keys[next_idx])
 
-    def _actualizar_dock_labels(self):
-        """Actualiza el texto y badge del dock flotante inferior."""
+    def _actualizar_dock_labels(self) -> None:
         if not self.dock_label_active:
             return
 
@@ -1492,41 +1516,49 @@ class NotasView(ft.Container):
         if self.dock_badge_trimestre:
             self.dock_badge_trimestre.value = f"T{trim_idx + 1}" if trim_idx < 3 else "Anual"
 
-    def _actualizar_slots_ui(self, id_al: str):
-        """Actualiza los bordes y resaltados de los slots activos del alumno expandido."""
+    def _actualizar_slots_ui(self, id_al: str) -> None:
+        """Actualiza borde de foco `2px accent_primary` preservando color semántico de fondo."""
         if id_al not in self.slots_controls_by_student:
             return
 
-        tok = self.state.tokens
+        tok = resolve_tokens(page=self.app_page, state=self.state)
         slots_dict = self.slots_controls_by_student[id_al]
-        for key, ref in slots_dict.items():
+        for ref in slots_dict.values():
             s_idx = ref.get("slot_index", 0)
-            is_active = (s_idx == self.active_grade_index and str(self.expanded_student_id) == str(id_al))
-            val = ref.get("valor")
+            is_active = s_idx == self.active_grade_index and str(self.expanded_student_id) == str(
+                id_al
+            )
             desh = ref.get("deshabilitado", False)
+            val = ref.get("valor")
+            val_fmt = _round_grade_str(val) if not desh else "--"
 
-            bg, fg = self._color_por_nota(val) if not desh else (ft.Colors.TRANSPARENT, tok.text_subtle)
-            ref["container"].border = ft.Border.all(2 if is_active else 1, tok.primary if is_active else tok.border_color)
-            ref["container"].bgcolor = tok.primary_light if is_active else bg
-            ref["text_widget"].color = tok.primary if (is_active and not desh) else fg
-            if "label_widget" in ref and ref["label_widget"] is not None:
-                ref["label_widget"].color = tok.primary if is_active else tok.text_muted
+            cell: GradeCell = ref["container"]
+            cell.set_state(
+                value=val_fmt,
+                is_active=is_active and not desh,
+                disabled=desh,
+                tokens=tok,
+            )
+            if ref.get("label_widget") is not None:
+                ref["label_widget"].color = tok.accent_primary if is_active else tok.text_secondary
+                ref["label_widget"].weight = (
+                    ft.FontWeight.W_600 if is_active else ft.FontWeight.W_500
+                )
 
-    def _actualizar_fila_alumno_ui(self, id_al: str):
-        """Actualiza in-place las celdas, cálculos, píldoras y promedios del alumno sin recargar la lista."""
+    def _actualizar_fila_alumno_ui(self, id_al: str) -> None:
+        """Actualiza in-place las celdas, resúmenes tabulares y filete del alumno."""
         id_str = str(id_al)
-        if not hasattr(self, "alumnos_celdas") or id_str not in self.alumnos_celdas:
+        if id_str not in self.alumnos_celdas:
             return
 
         celdas = self.alumnos_celdas[id_str]
         colegio = self.state.selected_colegio or ""
         curso = self.state.selected_curso or ""
-        alumnos = self.state.get_alumnos(colegio, curso)
-        al_data = alumnos.get(id_str)
+        al_data = self.state.get_alumnos(colegio, curso).get(id_str)
         if not al_data:
             return
 
-        tok = self.state.tokens
+        tok = resolve_tokens(page=self.app_page, state=self.state)
         trim_idx = self.state.active_trimestre if 0 <= self.state.active_trimestre < 3 else 0
         nombre_trim = NOMBRES_TRIMESTRES[trim_idx]
         trim_data = al_data.get("trimestres", {}).get(nombre_trim, {})
@@ -1540,7 +1572,6 @@ class NotasView(ft.Container):
         prom_crudo_sin_red = calcs["promedios_crudos_sin_redondear"][trim_idx]
         habilita_recup = prom_crudo_sin_red is not None and prom_crudo_sin_red < 5.50
 
-        # Actualizar celdas de notas individuales
         notas_map = {
             "P0": principales[0] if len(principales) > 0 else None,
             "P1": principales[1] if len(principales) > 1 else None,
@@ -1551,102 +1582,90 @@ class NotasView(ft.Container):
             if key in celdas:
                 ref = celdas[key]
                 ref["valor"] = val
-                if val is None:
-                    val_str = "-"
-                else:
-                    try:
-                        val_str = str(int(math.floor(float(str(val).replace(",", ".")) + 0.5)))
-                    except (ValueError, TypeError):
-                        val_str = str(val)
-                bg, fg = self._color_por_nota(val)
-                ref["text_widget"].value = val_str
-                ref["text_widget"].color = fg
-                ref["container"].bgcolor = bg
+                is_act = (
+                    ref.get("slot_index", 0) == self.active_grade_index
+                    and str(self.expanded_student_id) == id_str
+                )
+                ref["container"].set_state(
+                    value=_round_grade_str(val),
+                    is_active=is_act,
+                    disabled=False,
+                    tokens=tok,
+                )
 
         if "R0" in celdas:
             ref_r = celdas["R0"]
             ref_r["valor"] = recuperatorio
             deshabilitado = not habilita_recup
             ref_r["deshabilitado"] = deshabilitado
-            ref_r["container"].ink = not deshabilitado
-            if deshabilitado:
-                ref_r["text_widget"].value = "-"
-                ref_r["text_widget"].color = tok.text_subtle
-                ref_r["container"].bgcolor = ft.Colors.TRANSPARENT
-                ref_r["container"].border = ft.Border.all(1, tok.border_color)
-            else:
-                if recuperatorio is None:
-                    val_str = "-"
-                else:
-                    try:
-                        val_str = str(int(math.floor(float(str(recuperatorio).replace(",", ".")) + 0.5)))
-                    except (ValueError, TypeError):
-                        val_str = str(recuperatorio)
-                bg, fg = self._color_por_nota(recuperatorio)
-                ref_r["text_widget"].value = val_str
-                ref_r["text_widget"].color = fg
-                ref_r["container"].bgcolor = bg
-                ref_r["container"].border = ft.Border.all(1, tok.border_color)
+            is_act_r = (
+                not deshabilitado
+                and ref_r.get("slot_index", 4) == self.active_grade_index
+                and str(self.expanded_student_id) == id_str
+            )
+            ref_r["container"].set_state(
+                value=_round_grade_str(recuperatorio) if not deshabilitado else "--",
+                is_active=is_act_r,
+                disabled=deshabilitado,
+                tokens=tok,
+            )
 
-        # Actualizar promedios y final del trimestre
-        bg_prom, fg_prom = self._color_por_nota(prom_crudo_red)
-        celdas["prom_text"].value = str(prom_crudo_red) if prom_crudo_red is not None else "-"
-        celdas["prom_text"].color = fg_prom
-        celdas["prom_container"].bgcolor = bg_prom
-
-        if "fin_text" in celdas and "fin_container" in celdas:
-            bg_fin, fg_fin = self._color_por_nota(nota_final_red)
-            celdas["fin_text"].value = str(nota_final_red) if nota_final_red is not None else "-"
-            celdas["fin_text"].color = fg_fin
-            celdas["fin_container"].bgcolor = bg_fin
-
-        # Actualizar píldoras de trimestres (.grade-pill)
-        if id_str in self.pills_alumnos:
-            pills = self.pills_alumnos[id_str]
-            for i, p_ctrl in enumerate(pills):
-                t_val = calcs["notas_finales_redondeadas"][i]
-                if t_val is None:
-                    t_str = "--"
-                else:
-                    try:
-                        t_str = str(int(math.floor(float(str(t_val).replace(",", ".")) + 0.5)))
-                    except (ValueError, TypeError):
-                        t_str = str(t_val)
-                bg_p, fg_p = self._color_por_nota(t_val)
-                p_ctrl.bgcolor = bg_p
-                # Actualizar el texto del contenido
-                if hasattr(p_ctrl, "content") and hasattr(p_ctrl.content, "controls") and len(p_ctrl.content.controls) > 1:
-                    p_ctrl.content.controls[0].color = tok.text_muted
-                    p_ctrl.content.controls[1].value = t_str
-                    p_ctrl.content.controls[1].color = fg_p
-
-        # Actualizar promedio anual
+        celdas["prom_container"].set_state(
+            value=str(prom_crudo_red) if prom_crudo_red is not None else "--",
+            tokens=tok,
+        )
+        celdas["fin_container"].set_state(
+            value=str(nota_final_red) if nota_final_red is not None else "--",
+            tokens=tok,
+        )
+        es_anual = self.state.active_trimestre >= 3
         total = calcs["nota_final_total_redondeada"]
-        if id_str in self.promedio_anual_labels:
-            self.promedio_anual_labels[id_str].value = f"Promedio anual: {total if total is not None else '--'}"
+        row_val = total if es_anual else nota_final_red
+        if celdas.get("row_fin_cell") is not None:
+            celdas["row_fin_cell"].set_state(
+                value=str(row_val) if row_val is not None else "--",
+                elevated_empty=es_anual,
+                tokens=tok,
+            )
 
-        # Actualizar panel anual informativo de solo lectura
+        if id_str in self.resumen_trimestres_labels:
+            t1, t2, t3 = calcs["notas_finales_redondeadas"][:3]
+            self.resumen_trimestres_labels[id_str].value = format_tabular_trimester_summary(
+                [t1, t2, t3]
+            )
+
+        if id_str in self.promedio_anual_labels:
+            self.promedio_anual_labels[id_str].value = (
+                f"Promedio anual: {total if total is not None else '--'}"
+            )
+
+        if id_str in self.tarjetas_alumnos:
+            is_exp = str(self.expanded_student_id) == id_str and not es_anual
+            stripe = self._stripe_color_for_alumno(nota_final_red, total, is_exp, es_anual, tok)
+            self.tarjetas_alumnos[id_str].border = ft.Border.only(
+                left=ft.BorderSide(3, stripe),
+                bottom=ft.BorderSide(1, tok.border_hairline),
+            )
+
         self._actualizar_panel_anual_ui(id_str)
 
-        # In-place update estricto: actualiza únicamente la tarjeta del alumno sin re-renderizados generales
-        if hasattr(self, "tarjetas_alumnos") and id_str in self.tarjetas_alumnos:
+        if id_str in self.tarjetas_alumnos:
             card = self.tarjetas_alumnos[id_str]
             try:
-                card.update()
+                if card.page is not None:
+                    card.update()
             except Exception:
                 pass
 
-    def _toggle_expand_alumno(self, sid: str):
-        """Expande o colapsa la tarjeta de un alumno in-place conservando la posición de scroll."""
+    def _toggle_expand_alumno(self, sid: str) -> None:
+        """Expande o colapsa la fila del alumno in-place sin destruir el ListView."""
         if self.state.active_trimestre >= 3:
-            # En modo Anual la vista es puramente informativa de solo lectura sin edición
             return
 
-        tok = self.state.tokens
+        tok = resolve_tokens(page=self.app_page, state=self.state)
         prev_id = self.expanded_student_id
         sid_str = str(sid)
 
-        # Si el control no está en los diccionarios, recurrir a _build_ui
         if sid_str not in self.expanded_containers or sid_str not in self.tarjetas_alumnos:
             if self.expanded_student_id == sid_str:
                 self.expanded_student_id = None
@@ -1654,61 +1673,51 @@ class NotasView(ft.Container):
                 self.expanded_student_id = sid_str
                 self.active_grade_index = 0
             self._build_ui()
-            self.app_page.update()
+            self._safe_update()
             return
 
         if prev_id == sid_str:
-            # Colapsar el alumno actual
             self.expanded_student_id = None
             self.active_grade_index = -1
-            if hasattr(self, "dock_container") and self.dock_container:
+            if self.dock_container:
                 self.dock_container.visible = False
+                self._sync_list_bottom_padding()
             self.expanded_containers[sid_str].visible = False
-            self.tarjetas_alumnos[sid_str].border = ft.Border.all(1.5, tok.border_color)
-            self.tarjetas_alumnos[sid_str].shadow = ft.BoxShadow(spread_radius=0, blur_radius=8, color=ft.Colors.TRANSPARENT)
             if sid_str in self.chevron_icons:
-                self.chevron_icons[sid_str].name = ft.Icons.EXPAND_MORE
-                self.chevron_icons[sid_str].color = tok.text_muted
+                self.chevron_icons[sid_str].icon = ft.Icons.EXPAND_MORE
+                self.chevron_icons[sid_str].color = tok.text_secondary
+            self._actualizar_fila_alumno_ui(sid_str)
         else:
-            # Colapsar el alumno previo si existe
             if prev_id and str(prev_id) in self.expanded_containers:
                 prev_str = str(prev_id)
                 self.expanded_containers[prev_str].visible = False
-                if prev_str in self.tarjetas_alumnos:
-                    self.tarjetas_alumnos[prev_str].border = ft.Border.all(1.5, tok.border_color)
-                    self.tarjetas_alumnos[prev_str].shadow = ft.BoxShadow(spread_radius=0, blur_radius=8, color=ft.Colors.TRANSPARENT)
                 if prev_str in self.chevron_icons:
-                    self.chevron_icons[prev_str].name = ft.Icons.EXPAND_MORE
-                    self.chevron_icons[prev_str].color = tok.text_muted
+                    self.chevron_icons[prev_str].icon = ft.Icons.EXPAND_MORE
+                    self.chevron_icons[prev_str].color = tok.text_secondary
+                self._actualizar_fila_alumno_ui(prev_str)
 
-            # Expandir el nuevo alumno (el dock permanece cerrado a menos que el docente toque un casillero)
             self.expanded_student_id = sid_str
             self.active_grade_index = 0
-
             self.expanded_containers[sid_str].visible = True
-            self.tarjetas_alumnos[sid_str].border = ft.Border.all(1.5, tok.primary)
-            self.tarjetas_alumnos[sid_str].shadow = ft.BoxShadow(spread_radius=0, blur_radius=8, color="#0F172A0D")
             if sid_str in self.chevron_icons:
-                self.chevron_icons[sid_str].name = ft.Icons.EXPAND_LESS
-                self.chevron_icons[sid_str].color = tok.primary
+                self.chevron_icons[sid_str].icon = ft.Icons.EXPAND_LESS
+                self.chevron_icons[sid_str].color = tok.accent_primary
             self._actualizar_slots_ui(sid_str)
             self._actualizar_fila_alumno_ui(sid_str)
 
         self._actualizar_dock_labels()
-        self.app_page.update()
+        self._safe_update()
 
-    def _actualizar_draft_nombre(self, sid: str, campo: str, valor: str):
+    def _actualizar_draft_nombre(self, sid: str, campo: str, valor: str) -> None:
         if sid not in self.name_drafts:
             self.name_drafts[sid] = {"apellido": "", "nombre": ""}
         self.name_drafts[sid][campo] = valor
-
-        # Auto-guardado reactivo con debounce de 600 ms para inputs de texto
         ap = self.name_drafts[sid].get("apellido", "").strip()
         nom = self.name_drafts[sid].get("nombre", "").strip()
         if ap or nom:
             self.state.rename_alumno(sid, ap, nom, auto_save=True)
 
-    def _cambiar_pestana(self, selected_set):
+    def _cambiar_pestana(self, selected_set) -> None:
         if "asistencias" in selected_set:
             self.state.flush_auto_save()
             self.on_navigate("asistencias")
@@ -1716,64 +1725,57 @@ class NotasView(ft.Container):
             self.state.flush_auto_save()
             self.on_navigate("grupos")
 
-    def _accion_volver(self, e=None):
+    def _accion_volver(self, e=None) -> None:
         self.state.flush_auto_save()
         self.on_navigate("cursos")
 
-    def _abrir_estadisticas_curso(self):
+    def _abrir_estadisticas_curso(self) -> None:
         self.state.flush_auto_save()
         self.state.origen_pantalla = "notas"
         self.state.estadisticas_nivel = "curso"
         self.on_navigate("estadisticas")
 
-    def _mostrar_dialogo_con_dock_oculto(self, dlg):
-        """Muestra un diálogo modal ocultando temporalmente el teclado dock numérico para evitar saturación visual."""
-        estaba_visible = bool(
-            hasattr(self, "dock_container")
-            and self.dock_container
-            and self.dock_container.visible
-        )
-        if estaba_visible:
+    def _mostrar_dialogo_con_dock_oculto(self, dlg) -> None:
+        """Oculta temporalmente el teclado numérico mientras un diálogo está abierto."""
+        estaba_visible = bool(self.dock_container and self.dock_container.visible)
+        if estaba_visible and self.dock_container is not None:
             self.dock_container.visible = False
+            self._sync_list_bottom_padding()
             try:
-                self.dock_container.update()
+                if self.dock_container.page is not None:
+                    self.dock_container.update()
             except Exception:
                 pass
 
         original_dismiss = getattr(dlg, "on_dismiss", None)
 
         def on_dismiss_wrapper(e=None):
-            if estaba_visible and hasattr(self, "dock_container") and self.dock_container and self.state.active_trimestre < 3:
+            if estaba_visible and self.dock_container is not None and self.state.active_trimestre < 3:
                 self.dock_container.visible = True
+                self._sync_list_bottom_padding()
                 try:
-                    self.dock_container.update()
+                    if self.dock_container.page is not None:
+                        self.dock_container.update()
                 except Exception:
                     pass
             if callable(original_dismiss):
                 original_dismiss(e)
 
         dlg.on_dismiss = on_dismiss_wrapper
-        self.app_page.show_dialog(dlg)
-        self.app_page.update()
+        open_dialog_safe(self.app_page, dlg)
 
-    def _abrir_planificacion_curso(self):
-        colegio = self.state.selected_colegio or ""
-        curso = self.state.selected_curso or ""
+    def _abrir_planificacion_curso(self) -> None:
         dlg = PlanificacionCursoDialog(
             state=self.state,
-            colegio=colegio,
-            curso=curso,
-            tokens=self.state.tokens,
+            colegio=self.state.selected_colegio or "",
+            curso=self.state.selected_curso or "",
+            tokens=self.tokens,
             on_close=lambda: None,
             page=self.app_page,
         )
         self._mostrar_dialogo_con_dock_oculto(dlg)
 
-    def _abrir_modal_comportamiento(self, id_al: str, nombre_al: str):
-        """Abre el diálogo modal de calificación de comportamiento sin reiniciar scroll."""
-        colegio = self.state.selected_colegio or ""
-        curso = self.state.selected_curso or ""
-
+    def _abrir_modal_comportamiento(self, id_al: str, nombre_al: str) -> None:
         def on_close():
             self._actualizar_resumen_comportamiento_ui(id_al)
 
@@ -1781,38 +1783,45 @@ class NotasView(ft.Container):
             state=self.state,
             id_alumno=id_al,
             nombre_alumno=nombre_al,
-            colegio=colegio,
-            curso=curso,
+            colegio=self.state.selected_colegio or "",
+            curso=self.state.selected_curso or "",
             on_close=on_close,
             page=self.app_page,
         )
         self._mostrar_dialogo_con_dock_oculto(dlg)
 
-    def _actualizar_resumen_comportamiento_ui(self, id_al: str):
-        """Actualiza in-place el texto descriptivo de comportamiento del alumno preservando el scroll."""
+    def _actualizar_resumen_comportamiento_ui(self, id_al: str) -> None:
         id_str = str(id_al)
-        if hasattr(self, "alumnos_celdas") and id_str in self.alumnos_celdas:
-            if "lbl_resumen_comp" in self.alumnos_celdas[id_str]:
-                colegio = self.state.selected_colegio or ""
-                curso = self.state.selected_curso or ""
-                comps = self.state.get_comportamientos_alumno(id_str, colegio, curso)
-                cant = len(comps)
-                txt = f"{cant} observación{'es' if cant != 1 else ''}" if cant > 0 else "Sin observaciones"
-                lbl = self.alumnos_celdas[id_str]["lbl_resumen_comp"]
-                lbl.value = txt
-                try:
+        if id_str in self.alumnos_celdas and "lbl_resumen_comp" in self.alumnos_celdas[id_str]:
+            comps = self.state.get_comportamientos_alumno(
+                id_str,
+                self.state.selected_colegio or "",
+                self.state.selected_curso or "",
+            )
+            cant = len(comps)
+            txt = (
+                pluralizar(cant, "observación", "observaciones")
+                if cant > 0
+                else "Sin observaciones"
+            )
+            lbl = self.alumnos_celdas[id_str]["lbl_resumen_comp"]
+            lbl.value = txt
+            try:
+                if lbl.page is not None:
                     lbl.update()
-                except Exception:
-                    if hasattr(self, "app_page") and self.app_page:
-                        try:
-                            self.app_page.update()
-                        except Exception:
-                            pass
+            except Exception:
+                self._safe_update()
 
-    def _preguntar_guardar_antes_de_salir(self, destino: str):
+    def _preguntar_guardar_antes_de_salir(self, destino: str) -> None:
+        tok = resolve_tokens(page=self.app_page, state=self.state)
+
         def cerrar_dialogo():
-            self.app_page.pop_dialog()
-            self.app_page.update()
+            if self.app_page is not None:
+                try:
+                    self.app_page.pop_dialog()
+                except Exception:
+                    pass
+                self._safe_update()
 
         def guardar_y_salir():
             cerrar_dialogo()
@@ -1824,76 +1833,75 @@ class NotasView(ft.Container):
             self.state.load_data()
             self.on_navigate(destino)
 
-        tok = self.state.tokens
-        dlg = ft.AlertDialog(
-            bgcolor=tok.surface,
-            title=ft.Text("Cambios sin guardar", weight=ft.FontWeight.BOLD, color=tok.text_main),
-            content=ft.Text("Tienes calificaciones modificadas sin guardar.\n¿Deseas guardarlas antes de continuar?", color=tok.text_muted),
+        dlg = NotalyCompactDialog(
+            page=self.app_page,
+            title="Cambios sin guardar",
+            body=ft.Text(
+                "Tienes calificaciones modificadas sin guardar.\n¿Deseas guardarlas antes de continuar?",
+                size=14,
+                color=tok.text_secondary,
+            ),
             actions=[
-                ft.TextButton(
-                    "Cancelar",
-                    style=ft.ButtonStyle(color=tok.text_muted, shape=ft.RoundedRectangleBorder(radius=8)),
-                    on_click=lambda e: cerrar_dialogo(),
-                ),
-                ft.TextButton(
+                sheet_action_button(
                     "Descartar",
-                    style=ft.ButtonStyle(color=ft.Colors.RED_600, shape=ft.RoundedRectangleBorder(radius=8)),
-                    on_click=lambda e: salir_sin_guardar(),
+                    lambda _: salir_sin_guardar(),
+                    tokens=tok,
+                    primary=False,
+                    destructive=True,
                 ),
-                ft.FilledButton(
-                    "Guardar y Salir",
-                    style=ft.ButtonStyle(bgcolor=tok.primary, color=ft.Colors.WHITE, shape=ft.RoundedRectangleBorder(radius=8)),
-                    on_click=lambda e: guardar_y_salir(),
+                sheet_action_button(
+                    "Guardar",
+                    lambda _: guardar_y_salir(),
+                    tokens=tok,
+                    primary=True,
                 ),
             ],
-            actions_alignment=ft.MainAxisAlignment.END,
+            tokens=tok,
+            state=self.state,
             modal=True,
         )
-        self.app_page.show_dialog(dlg)
-        self.app_page.update()
+        open_dialog_safe(self.app_page, dlg)
 
-    def _guardar_notas(self):
+    def _guardar_notas(self) -> None:
         if self.state.save_data():
             self._build_ui()
-            self.app_page.update()
+            self._safe_update()
             self._mostrar_snackbar("Calificaciones guardadas exitosamente.")
         else:
             self._mostrar_snackbar("Error al guardar calificaciones.", error=True)
 
-    def _abrir_modal_agregar_alumno(self):
+    def _abrir_modal_agregar_alumno(self) -> None:
         def confirmar(apellido: str, nombre: str):
             exito, msg = self.state.add_alumno(apellido, nombre)
             if exito:
                 self._build_ui()
-                self.app_page.update()
+                self._safe_update()
                 self._mostrar_snackbar(msg)
                 return True
-            else:
-                self._mostrar_snackbar(msg, error=True)
-                return False
+            self._mostrar_snackbar(msg, error=True)
+            return False
 
         dlg = StudentFormDialog(
             titulo="Agregar Alumno",
             on_confirm=confirmar,
             modo_continuo=True,
             page=self.app_page,
-            tokens=self.state.tokens,
+            tokens=self.tokens,
         )
         self._mostrar_dialogo_con_dock_oculto(dlg)
 
-    def _abrir_modal_renombrar_alumno(self, id_al: str, nombre_actual: str):
+    def _abrir_modal_renombrar_alumno(self, id_al: str, nombre_actual: str) -> None:
         ap_act, nom_act = separar_nombre_completo(nombre_actual)
 
         def confirmar(nuevo_apellido: str, nuevo_nombre: str):
             exito, msg = self.state.rename_alumno(id_al, nuevo_apellido, nuevo_nombre)
             if exito:
                 self._build_ui()
-                self.app_page.update()
+                self._safe_update()
                 self._mostrar_snackbar(msg)
                 return True
-            else:
-                self._mostrar_snackbar(msg, error=True)
-                return False
+            self._mostrar_snackbar(msg, error=True)
+            return False
 
         dlg = StudentFormDialog(
             titulo=f"Editar Alumno #{id_al}",
@@ -1903,54 +1911,57 @@ class NotasView(ft.Container):
             on_confirm=confirmar,
             on_delete=lambda: self._abrir_modal_eliminar_alumno(id_al, nombre_actual),
             page=self.app_page,
-            tokens=self.state.tokens,
+            tokens=self.tokens,
         )
         self._mostrar_dialogo_con_dock_oculto(dlg)
 
-    def _abrir_modal_eliminar_alumno(self, id_al: str, nombre: str):
+    def _abrir_modal_eliminar_alumno(self, id_al: str, nombre: str) -> None:
         def confirmar():
             exito, msg = self.state.delete_alumno(id_al)
             if exito:
                 self._build_ui()
-                self.app_page.update()
+                self._safe_update()
                 self._mostrar_snackbar(msg)
             else:
                 self._mostrar_snackbar(msg, error=True)
 
         dlg = ConfirmDeleteDialog(
             titulo="Eliminar Alumno",
-            mensaje=f"¿Estás seguro de que deseas eliminar al alumno '{nombre}' (N° {id_al}) y todas sus notas y asistencias?",
+            mensaje=(
+                f"¿Estás seguro de que deseas eliminar al alumno '{nombre}' "
+                f"(N° {id_al}) y todas sus notas y asistencias?"
+            ),
             on_confirm=confirmar,
             page=self.app_page,
-            tokens=self.state.tokens,
+            tokens=self.tokens,
         )
         self._mostrar_dialogo_con_dock_oculto(dlg)
 
-    def _abrir_modal_columnas(self):
+    def _abrir_modal_columnas(self) -> None:
         trim_idx = self.state.active_trimestre if 0 <= self.state.active_trimestre < 3 else 0
         nombres_actuales = self.state.get_nombres_columnas(trimestre=trim_idx)
 
         def guardar_cols(nuevos):
             self.state.set_nombres_columnas(nuevos, trimestre=trim_idx)
             self._build_ui()
-            self.app_page.update()
+            self._safe_update()
             self._mostrar_snackbar("Nombres de columnas actualizados.")
 
         dlg = CustomizeColumnsDialog(
             nombres_actuales=nombres_actuales,
             on_save=guardar_cols,
             page=self.app_page,
-            tokens=self.state.tokens,
+            tokens=self.tokens,
         )
         self._mostrar_dialogo_con_dock_oculto(dlg)
 
-    def _ordenar_alumnos_az(self):
+    def _ordenar_alumnos_az(self) -> None:
         self.state.order_alumnos_alphabetically()
         self._build_ui()
-        self.app_page.update()
+        self._safe_update()
         self._mostrar_snackbar("Alumnos ordenados alfabéticamente (A-Z).")
 
-    def _abrir_modal_exportar(self):
+    def _abrir_modal_exportar(self) -> None:
         colegio = self.state.selected_colegio or ""
         curso = self.state.selected_curso or ""
         curso_data = self.state.get_curso_data(colegio, curso)
@@ -1960,7 +1971,8 @@ class NotasView(ft.Container):
                 if detalle == "portapapeles":
                     periodo_lbl = periodo_str or "el período seleccionado"
                     self._mostrar_snackbar(
-                        f"📋 Calificaciones de {periodo_lbl} copiadas al portapapeles. ¡Listas para pegar en WhatsApp!"
+                        f"Calificaciones de {periodo_lbl} copiadas al portapapeles. "
+                        "¡Listas para pegar en WhatsApp!"
                     )
                 else:
                     self._mostrar_snackbar(f"Exportado correctamente en: {detalle}")
@@ -1975,31 +1987,32 @@ class NotasView(ft.Container):
             on_success=resultado_exportacion,
             page=self.app_page,
             periodo_activo=self.state.active_trimestre,
-            tokens=self.state.tokens,
+            tokens=self.tokens,
         )
         self._mostrar_dialogo_con_dock_oculto(dlg)
 
-    def _abrir_modal_planillas_curso(self):
-        colegio = self.state.selected_colegio or ""
-        curso = self.state.selected_curso or ""
+    def _abrir_modal_planillas_curso(self) -> None:
         dlg = PlanillasCursoDialog(
-            colegio_nombre=colegio,
-            curso_nombre=curso,
+            colegio_nombre=self.state.selected_colegio or "",
+            curso_nombre=self.state.selected_curso or "",
             state=self.state,
             page=self.app_page,
-            tokens=self.state.tokens,
+            tokens=self.tokens,
         )
         self._mostrar_dialogo_con_dock_oculto(dlg)
 
-    def _mostrar_snackbar(self, mensaje: str, error: bool = False):
+    def _mostrar_snackbar(self, mensaje: str, error: bool = False) -> None:
+        tok = resolve_tokens(page=self.app_page, state=self.state)
+        bg = tok.fail_bg if error else tok.pass_bg
+        fg = tok.fail_fg if error else tok.pass_fg
         sb = ft.SnackBar(
-            content=ft.Text(mensaje, color=ft.Colors.WHITE),
-            bgcolor=ft.Colors.ERROR if error else ft.Colors.GREEN_700,
+            content=ft.Text(mensaje, color=fg, weight=ft.FontWeight.W_500),
+            bgcolor=bg,
         )
-        self.app_page.overlay.append(sb)
-        sb.open = True
-        self.app_page.update()
+        if self.app_page is not None:
+            self.app_page.overlay.append(sb)
+            sb.open = True
+            self._safe_update()
 
 
-# Alias para compatibilidad de nomenclatura
 PlanillaView = NotasView

@@ -641,7 +641,7 @@ class TestExportModalIsolation:
         """Verifica RF-03: visibilidad reactiva de periodo_container y adaptación de texto/icono de botón."""
         dlg = ExportDialog("notas", "Col", "1A", {}, MagicMock(), page=mock_page_mobile, periodo_activo=2)
         assert dlg.periodo_container.visible is False
-        assert dlg.btn_exportar.content == "Generar y Exportar"
+        assert dlg.btn_exportar.content.value == "Generar y Exportar"
         assert dlg.btn_exportar.icon == ft.Icons.DOWNLOAD
 
         # Seleccionar whatsapp
@@ -649,7 +649,7 @@ class TestExportModalIsolation:
         dlg._al_cambiar_formato(None)
 
         assert dlg.periodo_container.visible is True
-        assert dlg.btn_exportar.content == "Copiar al Portapapeles"
+        assert dlg.btn_exportar.content.value == "Copiar al Portapapeles"
         assert dlg.btn_exportar.icon == ft.Icons.COPY_ALL
 
         # Volver a pdf
@@ -657,7 +657,7 @@ class TestExportModalIsolation:
         dlg._al_cambiar_formato(None)
 
         assert dlg.periodo_container.visible is False
-        assert dlg.btn_exportar.content == "Generar y Exportar"
+        assert dlg.btn_exportar.content.value == "Generar y Exportar"
         assert dlg.btn_exportar.icon == ft.Icons.DOWNLOAD
 
     def test_export_dialog_copiado_whatsapp_exito(self, mock_page_mobile):
@@ -693,10 +693,19 @@ class TestExportModalIsolation:
 
 class TestScrollPreservationAndInPlaceUpdates:
     def test_attendance_preserves_listview_and_scroll_instance(self, isolated_app_state, mock_page_mobile):
-        """Verifica que el cambio de asistencia actualice los controles in-place y los KPIs en tiempo real."""
+        """Verifica que AttendanceCellGroup actualice estados in-place (>= 6.37:1), filete 3px y KPIs sin reconstruir."""
         isolated_app_state.selected_colegio = 'Colegio Nacional'
         isolated_app_state.selected_curso = '5to A'
         view = AsistenciasView(isolated_app_state, mock_page_mobile, on_navigate=lambda x: None)
+        tok = isolated_app_state.tokens
+
+        # Fecha tabular + sin disparador EVENT duplicado + Todos Presentes 48dp + padding.bottom >= 88
+        assert view.list_view.padding.bottom >= 88
+        assert view.btn_todos_presentes.height == 48
+        assert not any(
+            getattr(c, "icon", None) == ft.Icons.EVENT
+            for c in view.date_bar_row.controls
+        )
 
         with patch.object(view, '_build_ui', wraps=view._build_ui) as mock_rebuild:
             view._cambiar_estado_alumno('1', ESTADO_PRESENTE)
@@ -704,8 +713,22 @@ class TestScrollPreservationAndInPlaceUpdates:
 
         botones_alumno1 = view.alumnos_botones['1']
         btn_p, txt_p, col_p = botones_alumno1[ESTADO_PRESENTE]
-        assert btn_p.bgcolor == col_p
-        assert txt_p.color == ft.Colors.WHITE
+        assert col_p == tok.pass_bg
+        assert btn_p.bgcolor == tok.pass_bg
+        assert txt_p.color == tok.pass_fg
+        assert btn_p.height >= 44
+        # Los otros 3 estados permanecen neutros
+        for other in (ESTADO_AUSENTE, ESTADO_TARDE, ESTADO_JUSTIFICADO):
+            b_other, t_other, _ = botones_alumno1[other]
+            assert b_other.bgcolor == tok.surface_primary
+            assert t_other.color == tok.text_secondary
+
+        # Cero borde fantasma de card activa; solo filete izquierdo 3px semántico
+        card1 = view.tarjetas_alumnos['1']
+        assert card1.border_radius == 0
+        assert card1.border.top.width == 0
+        assert card1.border.left.width == 3
+        assert card1.border.left.color == tok.pass_fg
         assert view.kpi_presentes_text.value == "1"
 
     def test_grade_edition_preserves_table_and_scroll_instance(self, isolated_app_state, mock_page_mobile):
@@ -733,9 +756,10 @@ class TestScrollPreservationAndInPlaceUpdates:
         assert celdas_alumno1['prom_text'].value != "-"
         assert isolated_app_state.has_unsaved_changes is True
 
-    def test_numpad_dock_and_grade_pills_interaction(self, isolated_app_state, mock_page_mobile):
-        """Verifica que el teclado dock inferior (.key-button) aplique notas y actualice píldoras (.grade-pill)."""
-        from mobile.views.notas_view import PlanillaView, NotasView, build_grade_pill, build_key_button
+    def test_numpad_dock_and_tabular_summary_interaction(self, isolated_app_state, mock_page_mobile):
+        """Verifica que el teclado dock inferior (.key-button) aplique notas y actualice el resumen tabular sin cápsulas."""
+        from mobile.views.notas_view import PlanillaView, NotasView, build_key_button
+        from mobile.components.ledger_primitives import GradeCell
         isolated_app_state.selected_colegio = 'Colegio Nacional'
         isolated_app_state.selected_curso = '5to A'
         isolated_app_state.active_trimestre = 0
@@ -744,12 +768,21 @@ class TestScrollPreservationAndInPlaceUpdates:
         assert view.expanded_student_id == '1'
         assert view.active_grade_index == 0
 
-        pills_alumno1 = view.pills_alumnos['1']
-        assert len(pills_alumno1) == 3
-        assert pills_alumno1[0].data == "grade-pill"
+        resumen_lbl = view.resumen_trimestres_labels['1']
+        assert "1°T" in resumen_lbl.value
+        assert "2°T" in resumen_lbl.value
+        assert "3°T" in resumen_lbl.value
+        assert not hasattr(view, "pills_alumnos") or len(view.pills_alumnos) == 0
 
         view._aplicar_nota_dock(9.0)
+        p0_cell = view.alumnos_celdas['1']['P0']['container']
+        assert isinstance(p0_cell, GradeCell)
         assert view.alumnos_celdas['1']['P0']['text_widget'].value == "9"
+        # El foco preserva el fondo semántico y cambia solo el borde a 2px accent_primary
+        view._actualizar_slots_ui('1')
+        p1_cell = view.alumnos_celdas['1']['P1']['container']
+        assert p1_cell.border.top.color == isolated_app_state.tokens.accent_primary
+        assert p1_cell.border.top.width == 2
         assert view.active_grade_index == 1
         assert isolated_app_state.has_unsaved_changes is True
 
@@ -757,7 +790,7 @@ class TestScrollPreservationAndInPlaceUpdates:
         assert view.active_grade_index == 2
 
         view._limpiar_nota_dock()
-        assert view.alumnos_celdas['1']['P2']['text_widget'].value == "-"
+        assert view.alumnos_celdas['1']['P2']['text_widget'].value == "--"
 
         view._toggle_expand_alumno('2')
         assert view.expanded_student_id == '2'
@@ -817,7 +850,6 @@ class TestScrollPreservationAndInPlaceUpdates:
 
     def test_deep_linking_directo_hacia_alumno_en_planilla(self, isolated_app_state, mock_page_mobile):
         """Verifica que al abrir NotasView con un selected_alumno_id fijado, se abra y expanda ese alumno."""
-        from mobile.theme import PRIMARY
         isolated_app_state.selected_colegio = 'Colegio Nacional'
         isolated_app_state.selected_curso = '5to A'
         isolated_app_state.selected_alumno_id = '2'
@@ -829,7 +861,8 @@ class TestScrollPreservationAndInPlaceUpdates:
         assert "#2" in view.dock_label_active.value
 
         tarjeta_al2 = view.tarjetas_alumnos['2']
-        assert tarjeta_al2.border.top.color == PRIMARY
+        assert tarjeta_al2.border.left.color == isolated_app_state.tokens.accent_primary
+        assert tarjeta_al2.border.left.width == 3
 
 
 def test_colegios_y_cursos_sin_botones_duplicados_ni_fab(isolated_app_state, mock_page_mobile):
@@ -886,8 +919,7 @@ def test_create_curso_dialog_input_filter_y_validacion_enteros(mock_page_mobile)
 
 
 def test_conmutacion_trimestres_in_place_preserva_listview(isolated_app_state, mock_page_mobile):
-    """Verifica que cambiar de trimestre (T1 -> T2 -> T3) actualiza los controles in-place y NO destruye el ft.ListView."""
-    from mobile.theme import PRIMARY, SURFACE_WHITE
+    """Verifica que cambiar de trimestre (T1 -> T2 -> T3 -> Anual) actualiza controles in-place sin destruir el ft.ListView."""
     isolated_app_state.selected_colegio = 'Colegio Nacional'
     isolated_app_state.selected_curso = '5to A'
     view = NotasView(isolated_app_state, mock_page_mobile, on_navigate=lambda x: None)
@@ -896,30 +928,33 @@ def test_conmutacion_trimestres_in_place_preserva_listview(isolated_app_state, m
     assert initial_listview is not None
     assert view.state.active_trimestre == 0
     assert view.dock_badge_trimestre.value == "T1"
+    tok = view.state.tokens
 
     view._seleccionar_trimestre(1)
     assert view.state.active_trimestre == 1
     assert view.lista_tarjetas_listview is initial_listview
     assert view.dock_badge_trimestre.value == "T2"
-
-    assert view.top_trimester_tabs[1].bgcolor == SURFACE_WHITE
-    assert view.top_trimester_tabs[0].bgcolor == ft.Colors.TRANSPARENT
+    assert view.top_trimester_tabs[1].border.bottom.color == tok.accent_primary
+    assert view.top_trimester_tabs[0].border is None
 
     view._seleccionar_trimestre(2)
     assert view.state.active_trimestre == 2
     assert view.lista_tarjetas_listview is initial_listview
     assert view.dock_badge_trimestre.value == "T3"
-    assert view.top_trimester_tabs[2].bgcolor == SURFACE_WHITE
-    assert view.top_trimester_tabs[1].bgcolor == ft.Colors.TRANSPARENT
+    assert view.top_trimester_tabs[2].border.bottom.color == tok.accent_primary
+    assert view.top_trimester_tabs[1].border is None
+    # Sin selectores locales duplicados de trimestre dentro de cada alumno
+    assert not hasattr(view, "local_trim_buttons") or len(view.local_trim_buttons) == 0
 
-    sid = list(view.tarjetas_alumnos.keys())[0]
-    local_btns = view.local_trim_buttons[sid]
-    assert len(local_btns) == 3
-    local_btns[0].on_click(None)
-    assert view.state.active_trimestre == 0
-    assert view.lista_tarjetas_listview is initial_listview
-    assert view.dock_badge_trimestre.value == "T1"
-    assert view.top_trimester_tabs[0].bgcolor == SURFACE_WHITE
+    # Al cambiar a Anual, ocultar herramientas de edición manteniendo exportación
+    view._seleccionar_trimestre(3)
+    assert view.edit_tools_row.visible is False
+    assert view.export_tools_row.visible is True
+    assert view.paneles_anuales['1']['t2_container'].bgcolor == tok.surface_elevated
+
+    view._seleccionar_trimestre(0)
+    assert view.edit_tools_row.visible is True
+    assert view.top_trimester_tabs[0].border.bottom.color == tok.accent_primary
 
 
 def test_reactividad_recuperacion_notas_view(isolated_app_state, mock_page_mobile):
@@ -1228,9 +1263,11 @@ def test_colegio_form_dialog_validacion_nombre_vacio(mock_page_mobile):
 
 def test_colegios_view_muestra_direccion_y_horarios_condicionalmente(isolated_app_state, mock_page_mobile):
     """
-    Verifica que la tarjeta de colegio muestre filas de dirección y horarios solo cuando están presentes,
-    manteniendo exactamente 2 controles (cero regresión visual) si ambos están vacíos.
+    RF-07, RF-13: Verifica que ColegiosView use NotalyListRow (`0px` radio, monograma `4px`),
+    compacte dirección y horarios reales con `·` solo cuando existen, y no incluya INSIGHTS ni PopupMenuButton.
     """
+    from mobile.components.ledger_primitives import NotalyListRow
+
     # Limpiar datos previos de la fixture
     isolated_app_state.data = {K_COLEGIOS: {}}
     # 1. Colegio vacío de metadatos
@@ -1242,31 +1279,26 @@ def test_colegios_view_muestra_direccion_y_horarios_condicionalmente(isolated_ap
 
     view = ColegiosView(isolated_app_state, mock_page_mobile, on_navigate=lambda x: None)
 
-    # Obtenemos los cards de la lista (después de header_section)
-    cards = view.list_view.controls[1:]
-    assert len(cards) == 3
+    rows = [c for c in view.list_view.controls if isinstance(c, NotalyListRow)]
+    assert len(rows) == 3
 
-    # Buscamos la columna de info dentro de cada card
-    # card.content es ft.Row([avatar, info_column, stats_btn, popup_btn])
-    info_cols = {
-        card.content.controls[1].controls[0].value: card.content.controls[1].controls
-        for card in cards
-    }
+    by_name = {r.title_control.value: r for r in rows}
 
-    # Colegio Basico: exactamente 2 controles (nombre y subtitulo) -> Cero regresión visual
-    assert len(info_cols["Colegio Basico"]) == 2
-    assert info_cols["Colegio Basico"][0].value == "Colegio Basico"
+    assert by_name["Colegio Basico"].border_radius == 0
+    assert by_name["Colegio Basico"].monogram_box.border_radius == 4
+    assert by_name["Colegio Basico"].subtitle_text is None
 
-    # Colegio Full: 4 controles (nombre, subtitulo, fila dirección, fila horarios)
-    assert len(info_cols["Colegio Full"]) == 4
-    fila_dir = info_cols["Colegio Full"][2]
-    assert fila_dir.controls[1].value == "Av. San Martín 100"
-    fila_hor = info_cols["Colegio Full"][3]
-    assert fila_hor.controls[1].value == "Lun 8-12"
+    assert by_name["Colegio Full"].subtitle_text is not None
+    assert by_name["Colegio Full"].subtitle_text.value == "Av. San Martín 100 · Lun 8-12"
 
-    # Colegio Solo Dir: 3 controles (nombre, subtitulo, fila dirección)
-    assert len(info_cols["Colegio Solo Dir"]) == 3
-    assert info_cols["Colegio Solo Dir"][2].controls[1].value == "Calle Belgrano 200"
+    assert by_name["Colegio Solo Dir"].subtitle_text is not None
+    assert by_name["Colegio Solo Dir"].subtitle_text.value == "Calle Belgrano 200"
+
+    # Cero botón INSIGHTS suelto y cero PopupMenuButton dentro de filas
+    for r in rows:
+        trailing = r.row_widget.controls[2:]
+        assert not any(isinstance(c, ft.PopupMenuButton) for c in trailing)
+        assert not any(getattr(c, "icon", None) == ft.Icons.INSIGHTS for c in trailing)
 
 
 def test_colegios_view_modales_crear_y_editar(isolated_app_state, mock_page_mobile):
@@ -1318,30 +1350,25 @@ def test_create_curso_dialog_con_horario(mock_page_mobile):
 
 
 def test_cursos_view_planificacion_popup_menu_and_cards(isolated_app_state, mock_page_mobile):
-    """Verifica integración de horarios, clases planificadas y popup de planificación en CursosView."""
+    """RF-14, B7: Verifica filas NotalyListRow, datos reales de horario/clases y menú en NotalySheet."""
+    from mobile.components.ledger_primitives import NotalyListRow
+    from mobile.components.notaly_sheet import NotalySheet
     from mobile.components.planificacion_dialog import PlanificacionCursoDialog
-    isolated_app_state.selected_colegio = "Colegio Nacional"
 
+    isolated_app_state.selected_colegio = "Colegio Nacional"
     view = CursosView(isolated_app_state, mock_page_mobile, on_navigate=lambda x: None)
     assert view.content is not None
 
-    # Caso 1: Curso 5to A no tiene horario ni clases -> pie = 'Ciclo Lectivo Activo'
-    # Buscar card de 5to A
-    body_container = view.content.controls[1]
-    list_view = body_container.content
-    # list_view.controls[0] is header, controls[1] is card for 5to A
-    card_5to_a = list_view.controls[1]
-    card_col = card_5to_a.content
+    rows = [c for c in view.list_view.controls if isinstance(c, NotalyListRow)]
+    assert len(rows) >= 1
+    row_5to = rows[0]
+    assert row_5to.border_radius == 0
+    assert row_5to.subtitle_text is None  # Sin 'Ciclo Lectivo Activo' estático
 
-    # Verificar que el popup menu tiene Planificación de Clases
-    top_row = card_col.controls[0]
-    popup = top_row.controls[-1]
-    items_text = [item.content.value for item in popup.items if hasattr(item, "content") and hasattr(item.content, "value")]
-    assert "Planificación de Clases" in items_text
-
-    # Pie sin clases
-    footer_row = card_col.controls[-1]
-    assert footer_row.controls[1].value == "Ciclo Lectivo Activo"
+    # Menú contextual se abre en NotalySheet con Planificación de Clases
+    view._abrir_menu_curso("5to A")
+    assert isinstance(mock_page_mobile.active_dialog, NotalySheet)
+    mock_page_mobile.pop_dialog()
 
     # Caso 2: Asignar horario y clases a 5to A
     isolated_app_state.set_horario_curso("Lun y Mie 08:00 a 09:20", "Colegio Nacional", "5to A", auto_save=False)
@@ -1349,16 +1376,10 @@ def test_cursos_view_planificacion_popup_menu_and_cards(isolated_app_state, mock
     isolated_app_state.set_clase_tema("2026-03-18", "Decimales", "Colegio Nacional", "5to A", auto_save=False)
 
     view._build_ui()
-    card_5to_a = view.content.controls[1].content.controls[1]
-    card_col = card_5to_a.content
-
-    # Debe haber un renglón con el horario
-    schedule_row = card_col.controls[1]
-    assert schedule_row.controls[1].value == "Lun y Mie 08:00 a 09:20"
-
-    # Pie debe reflejar 2 clases planificadas
-    footer_row = card_col.controls[-1]
-    assert footer_row.controls[1].value == "2 clases planificadas"
+    row_5to = [c for c in view.list_view.controls if isinstance(c, NotalyListRow)][0]
+    assert row_5to.subtitle_text is not None
+    assert "Lun y Mie 08:00 a 09:20" in row_5to.subtitle_text.value
+    assert "2 clases planificadas" in row_5to.subtitle_text.value
 
     # Abrir diálogo de planificación desde CursosView
     view._abrir_planificacion_curso("5to A")
@@ -1378,35 +1399,31 @@ def test_cursos_view_planificacion_popup_menu_and_cards(isolated_app_state, mock
 
 
 def test_cursos_view_planificacion_actualizacion_en_tiempo_real(isolated_app_state, mock_page_mobile):
-    """Verifica que al añadir/eliminar una planificación el pie de la tarjeta en CursosView se actualice al instante."""
+    """Verifica que al añadir una planificación, la fila NotalyListRow de CursosView se actualice al instante."""
+    from mobile.components.ledger_primitives import NotalyListRow
+
     isolated_app_state.selected_colegio = "Colegio Nacional"
-
     view = CursosView(isolated_app_state, mock_page_mobile, on_navigate=lambda x: None)
-    card_5to_a = view.content.controls[1].content.controls[1]
-    assert card_5to_a.content.controls[-1].controls[1].value == "Ciclo Lectivo Activo"
+    row_5to = [c for c in view.list_view.controls if isinstance(c, NotalyListRow)][0]
+    assert row_5to.subtitle_text is None
 
-    # 1. Abrir diálogo de institución consolidado y desde allí añadir una clase
     view._abrir_planificaciones_institucion("5to A")
     inst_dlg = mock_page_mobile.active_dialog
     inst_dlg._abrir_adicion_planificacion("5to A")
     plan_dlg = mock_page_mobile.active_dialog
 
-    # Añadir clase
     plan_dlg._on_dia_click("2026-03-20")
+    row_actualizada = [c for c in view.list_view.controls if isinstance(c, NotalyListRow)][0]
+    assert "1 clase planificada" in row_actualizada.subtitle_text.value
 
-    # Verificar que tanto la tarjeta del diálogo como la tarjeta en CursosView reflejen '1 clase planificada' al instante
-    card_5to_a_actualizada = view.content.controls[1].content.controls[1]
-    assert card_5to_a_actualizada.content.controls[-1].controls[1].value == "1 clase planificada"
-
-    # Añadir otra clase
     plan_dlg._on_dia_click("2026-03-22")
-    card_5to_a_actualizada = view.content.controls[1].content.controls[1]
-    assert card_5to_a_actualizada.content.controls[-1].controls[1].value == "2 clases planificadas"
+    row_actualizada = [c for c in view.list_view.controls if isinstance(c, NotalyListRow)][0]
+    assert "2 clases planificadas" in row_actualizada.subtitle_text.value
 
     # Eliminar clase
     plan_dlg._on_delete_clase("2026-03-20")
-    card_5to_a_actualizada = view.content.controls[1].content.controls[1]
-    assert card_5to_a_actualizada.content.controls[-1].controls[1].value == "1 clase planificada"
+    row_actualizada = [c for c in view.list_view.controls if isinstance(c, NotalyListRow)][0]
+    assert "1 clase planificada" in row_actualizada.subtitle_text.value
 
 
 def test_notas_and_asistencias_view_headers_planificacion(isolated_app_state, mock_page_mobile):
@@ -1418,7 +1435,7 @@ def test_notas_and_asistencias_view_headers_planificacion(isolated_app_state, mo
     # 1. NotasView
     notas_view = NotasView(isolated_app_state, mock_page_mobile, on_navigate=lambda x: None)
     header_notas = notas_view.content.controls[0]
-    trailing_notas = header_notas.content.controls[-1]
+    trailing_notas = header_notas.header_row.controls[-1]
     assert isinstance(trailing_notas, ft.Row)
     # Contiene botón con EDIT_CALENDAR
     icons_notas = [btn.icon for btn in trailing_notas.controls if hasattr(btn, "icon")]
@@ -1431,7 +1448,7 @@ def test_notas_and_asistencias_view_headers_planificacion(isolated_app_state, mo
     # 2. AsistenciasView
     asistencias_view = AsistenciasView(isolated_app_state, mock_page_mobile, on_navigate=lambda x: None)
     header_asist = asistencias_view.content.controls[0]
-    trailing_asist = header_asist.content.controls[-1]
+    trailing_asist = header_asist.header_row.controls[-1]
     assert isinstance(trailing_asist, ft.Row)
     icons_asist = [btn.icon for btn in trailing_asist.controls if hasattr(btn, "icon")]
     assert ft.Icons.EDIT_CALENDAR in icons_asist
@@ -1442,39 +1459,25 @@ def test_notas_and_asistencias_view_headers_planificacion(isolated_app_state, mo
 
 
 def test_cursos_view_cabecera_dos_niveles_y_boton_planificaciones(isolated_app_state, mock_page_mobile):
-    """Verifica que la cabecera de CursosView esté dividida en dos filas con botón de Planificaciones."""
+    """RF-14: Verifica cabecera de contexto + acciones de 48dp (Planificaciones visible solo si >0 cursos)."""
     from mobile.components.planificaciones_institucion_dialog import PlanificacionesInstitucionDialog
     isolated_app_state.selected_colegio = "Colegio Nacional"
 
     view = CursosView(isolated_app_state, mock_page_mobile, on_navigate=lambda x: None)
-    header = view.content.controls[1].content.controls[0]
-
-    # Debe ser una columna con 2 filas (dos niveles)
+    header = view.summary_header
     assert isinstance(header, ft.Column)
     assert len(header.controls) == 2
 
-    fila_contexto = header.controls[0]
-    assert isinstance(fila_contexto, ft.Row)
-    assert fila_contexto.controls[0].controls[0].value == "Mis cursos"
-    # El botón redundante de estadísticas junto a 'Mis cursos' fue removido en SPEC-016 (REQ-EARS-23)
-    assert len(fila_contexto.controls) == 1
-
     fila_acciones = header.controls[1]
     assert isinstance(fila_acciones, ft.Row)
+    assert len(fila_acciones.controls) == 2
     btn_planif = fila_acciones.controls[0]
-    assert isinstance(btn_planif, ft.OutlinedButton)
-    btn_planif_text = getattr(btn_planif, "text", None) or (btn_planif.content if isinstance(btn_planif.content, str) else getattr(btn_planif.content, "value", str(btn_planif.content)))
-    assert btn_planif_text == "Planificaciones"
-    assert btn_planif.icon == ft.Icons.EVENT_NOTE
-    assert btn_planif.expand is True
-
     btn_crear = fila_acciones.controls[1]
-    assert isinstance(btn_crear, ft.FilledButton)
-    btn_crear_text = getattr(btn_crear, "text", None) or (btn_crear.content if isinstance(btn_crear.content, str) else getattr(btn_crear.content, "value", str(btn_crear.content)))
-    assert "+ Curso" in btn_crear_text
-    assert btn_crear.expand is True
+    assert btn_planif.height == 48
+    assert btn_crear.height == 48
+    assert btn_planif.content.value == "Planificaciones"
+    assert btn_crear.content.value == "Curso"
 
-    # Abrir planificaciones desde el botón general
     view._abrir_planificaciones_institucion()
     assert isinstance(mock_page_mobile.active_dialog, PlanificacionesInstitucionDialog)
     assert mock_page_mobile.active_dialog.filtro_curso is None
@@ -1482,30 +1485,32 @@ def test_cursos_view_cabecera_dos_niveles_y_boton_planificaciones(isolated_app_s
 
 
 def test_cursos_view_tarjeta_boton_directo_planificaciones(isolated_app_state, mock_page_mobile):
-    """Verifica el botón directo de planificación en la tarjeta del curso y el popup menu."""
+    """RF-14: Fila directa hacia Notas sin botón calendario duplicado, y menú en NotalySheet."""
+    from mobile.components.ledger_primitives import NotalyListRow
+    from mobile.components.notaly_sheet import NotalySheet
     from mobile.components.planificaciones_institucion_dialog import PlanificacionesInstitucionDialog
+
     isolated_app_state.selected_colegio = "Colegio Nacional"
+    nav_dests = []
+    view = CursosView(isolated_app_state, mock_page_mobile, on_navigate=lambda x: nav_dests.append(x))
+    row_5to = [c for c in view.list_view.controls if isinstance(c, NotalyListRow)][0]
 
-    view = CursosView(isolated_app_state, mock_page_mobile, on_navigate=lambda x: None)
-    card_5to_a = view.content.controls[1].content.controls[1]
-    top_row = card_5to_a.content.controls[0]
+    # Sin botón EVENT_NOTE duplicado en la fila ni PopupMenuButton
+    trailing = row_5to.row_widget.controls[2:]
+    assert not any(isinstance(c, ft.PopupMenuButton) for c in trailing)
+    assert not any(getattr(c, "icon", None) == ft.Icons.EVENT_NOTE for c in trailing)
 
-    # Verificar botón directo de planificaciones
-    btn_directo = top_row.controls[2]
-    assert isinstance(btn_directo, ft.IconButton)
-    assert btn_directo.icon == ft.Icons.EVENT_NOTE
-    assert btn_directo.tooltip == "Planificaciones del curso"
+    # Tocar toda la fila abre directo el curso
+    row_5to.on_click(None)
+    assert nav_dests == ["notas"]
 
-    # Al hacer click en el botón directo, debe abrir el diálogo enfocado en '5to A'
-    btn_directo.on_click(None)
-    assert isinstance(mock_page_mobile.active_dialog, PlanificacionesInstitucionDialog)
-    assert mock_page_mobile.active_dialog.filtro_curso == "5to A"
+    # Menú contextual en NotalySheet abre planificaciones contextualizadas
+    view._abrir_menu_curso("5to A")
+    sheet = mock_page_mobile.active_dialog
+    assert isinstance(sheet, NotalySheet)
     mock_page_mobile.pop_dialog()
 
-    # Verificar que el popup menu también abre el diálogo contextualizado
-    popup = top_row.controls[-1]
-    item_planif = next(it for it in popup.items if it.content.value == "Planificación de Clases")
-    item_planif.on_click(None)
+    view._abrir_planificaciones_institucion("5to A")
     assert isinstance(mock_page_mobile.active_dialog, PlanificacionesInstitucionDialog)
     assert mock_page_mobile.active_dialog.filtro_curso == "5to A"
     mock_page_mobile.pop_dialog()
@@ -1553,49 +1558,53 @@ def test_notas_view_exportar_dialog_integracion_whatsapp(isolated_app_state, moc
     callback = mock_page_mobile.active_dialog.on_success
     callback(True, "portapapeles", "3° Trimestre")
 
-    # Verificar SnackBar en overlay
+    # Verificar SnackBar en overlay sin emojis
     assert len(mock_page_mobile.overlay) > 0
     ultimo_snack = mock_page_mobile.overlay[-1]
-    assert "📋 Calificaciones de 3° Trimestre copiadas al portapapeles. ¡Listas para pegar en WhatsApp!" in ultimo_snack.content.value
+    assert "Calificaciones de 3° Trimestre copiadas al portapapeles. ¡Listas para pegar en WhatsApp!" in ultimo_snack.content.value
     mock_page_mobile.pop_dialog()
 
 
 def test_notas_view_dock_retractil_y_header_colapsable_y_lapiz_edicion(isolated_app_state, mock_page_mobile):
     """
-    Verifica los nuevos requerimientos UX de la planilla móvil:
-    1. El dock numérico inicia oculto y se activa al pulsar cualquier celda.
+    Verifica los requerimientos editoriales y UX de NotasView:
+    1. El dock numérico inicia oculto (padding.bottom >= 88) y al activarse ajusta padding.bottom >= 176.
     2. El dock se puede cerrar mediante cerrar_dock_si_abierto() deseleccionando la nota.
-    3. Al hacer scroll hacia abajo, el sub-header se oculta; al hacer scroll hacia arriba, reaparece.
-    4. La tarjeta plegada muestra el nombre completo sin píldoras ni menú de tres puntos.
-    5. La tarjeta desplegada incluye un botón de lápiz que abre el diálogo de edición/eliminación.
+    3. Sub-header integrado dentro del ListView para scroll nativo; máx 2 niveles fijos arriba.
+    4. La fila plegada muestra nombre completo + resumen tabular continuo + GradeCell dominante sin píldoras.
+    5. Chevrons e íconos mutan `.icon` (Flet 0.86+) y el lápiz abre edición/eliminación.
     """
     from mobile.views.notas_view import NotasView
+    from mobile.components.ledger_primitives import GradeCell
     isolated_app_state.selected_colegio = "Colegio Nacional"
     isolated_app_state.selected_curso = "5to A"
     isolated_app_state.active_trimestre = 0
 
     view = NotasView(isolated_app_state, mock_page_mobile, on_navigate=lambda x: None)
 
-    # 1. Dock oculto por defecto
+    # 1. Dock oculto por defecto y padding >= 88
     assert view.dock_container is not None
     assert view.dock_container.visible is False
+    assert view.lista_tarjetas_listview.padding.bottom >= 88
 
-    # 2. Al tocar una celda se abre el dock y activa el slot
+    # 2. Al tocar una celda se abre el dock y ajusta padding.bottom >= 176
     celda_p0 = view.alumnos_celdas['1']['P0']['container']
     celda_p0.on_click(None)
     assert view.dock_container.visible is True
     assert view.active_grade_index == 0
+    assert view.lista_tarjetas_listview.padding.bottom >= 176
 
-    # 3. Al cerrar el dock (flecha o back del celular), se oculta y deselecciona
+    # 3. Al cerrar el dock (flecha o back del celular), se oculta, deselecciona y restaura padding
     cerrado = view.cerrar_dock_si_abierto()
     assert cerrado is True
     assert view.dock_container.visible is False
     assert view.active_grade_index == -1
+    assert view.lista_tarjetas_listview.padding.bottom >= 88
 
     # Si se vuelve a invocar cuando ya está cerrado, retorna False
     assert view.cerrar_dock_si_abierto() is False
 
-    # 4. Sub-header integrado dentro del ListView para scroll 100% nativo y sin saltos (Opción 1)
+    # 4. Sub-header integrado dentro del ListView para scroll 100% nativo
     assert view.sub_header_container is not None
     assert view.lista_tarjetas_listview.controls[0] == view.sub_header_container
     assert getattr(view.lista_tarjetas_listview, "on_scroll", None) is None
@@ -1612,17 +1621,22 @@ def test_notas_view_dock_retractil_y_header_colapsable_y_lapiz_edicion(isolated_
     mock_page_mobile.pop_dialog()
     assert view.dock_container.visible is False
 
-    # 5. Tarjeta plegada: número y nombre con máximo ancho, sin píldoras en la fila
+    # 5. Fila plegada editorial: Monograma 4px, Columna (nombre + resumen tabular), GradeCell dominante, Chevron
     card_col = view.tarjetas_alumnos['1'].content
     header_row = card_col.controls[0].content
-    # Controles: Avatar, Text(f"#{id_str} {nombre_al}"), Chevron
-    text_nombre = header_row.controls[1]
+    assert header_row.controls[0].border_radius == 4
+    center_col = header_row.controls[1]
+    assert isinstance(center_col, ft.Column)
+    text_nombre = center_col.controls[0]
     assert isinstance(text_nombre, ft.Text)
-    assert text_nombre.expand is True
     assert "#1" in text_nombre.value
-    # Comprobar que no hay PopupMenuButton ni header_pills en la fila
     assert not any(isinstance(c, ft.PopupMenuButton) for c in header_row.controls)
     assert not any(getattr(c, "data", None) == "grade-pill" for c in header_row.controls)
+    assert any(isinstance(c, GradeCell) for c in header_row.controls)
+    # Verificar B1: chevron muta .icon
+    assert view.chevron_icons['1'].icon == ft.Icons.EXPAND_LESS
+    view._toggle_expand_alumno('1')
+    assert view.chevron_icons['1'].icon == ft.Icons.EXPAND_MORE
 
     # 6. Tarjeta desplegada: botón de lápiz que abre el modal de edición/borrado
     view._abrir_modal_renombrar_alumno("1", "Gomez Juan")

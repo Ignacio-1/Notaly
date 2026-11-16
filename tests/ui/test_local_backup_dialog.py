@@ -159,30 +159,27 @@ def _obtener_texto_boton(control):
 
 
 def test_local_backup_dialog_tabs_navigation(populated_state, mock_page):
-    """Verifica que cambiar entre apartados actualice el estado del selector y despliegue el contenido respectivo."""
+    """RF-21, RF-23: Verifica que LocalBackupDialog herede NotalySheet sin tab_selector muerto y muestre guardar + restaurar."""
+    import flet as ft
+    from mobile.components.notaly_sheet import NotalySheet
+
     dlg = LocalBackupDialog(populated_state, mock_page)
     mock_page.show_dialog(dlg)
 
-    # 1. Apartado 0: Guardar Copia por defecto
-    assert "guardar" in dlg.tab_selector.selected
-    assert dlg.tabs_content_container.content is not None
-
-    # 2. Apartado 1: Restaurar
-    dlg.tab_selector.selected = ["restaurar"]
-    dlg._on_tab_changed(None)
-    assert "restaurar" in dlg.tab_selector.selected
-    assert dlg.tabs_content_container.content is not None
-    textos_restaurar = _extraer_textos_recursivo(dlg.tabs_content_container.content)
-    assert any("descargas" in t.lower() or "copias" in t.lower() for t in textos_restaurar)
+    assert isinstance(dlg, NotalySheet)
+    assert not hasattr(dlg, "tab_selector")
+    assert dlg.tabs_content_container is not None
+    textos = _extraer_textos_recursivo(dlg.tabs_content_container)
+    assert any("copia diaria automática" in t.lower() for t in textos)
+    assert any("descargas" in t.lower() or "copias" in t.lower() or "archivo" in t.lower() for t in textos)
 
 
 def test_local_backup_dialog_summary_display(populated_state, mock_page):
-    """Verifica que el diálogo presente la información clara y justa para el usuario común (aviso de copias automáticas y copias disponibles)."""
+    """Verifica que el diálogo presente el aviso claro de copia diaria automática y botón legible."""
     dlg = LocalBackupDialog(populated_state, mock_page)
-    dlg._mostrar_tab_guardar()
+    dlg._mostrar_vista_unificada()
 
-    textos_visibles = _extraer_textos_recursivo(dlg.tabs_content_container.content)
-    # Debe indicar claramente el aviso de que las copias se generan automáticamente y el panel
+    textos_visibles = _extraer_textos_recursivo(dlg.tabs_content_container)
     assert any("copia diaria automática" in t.lower() for t in textos_visibles)
     assert any("automáticamente" in t.lower() for t in textos_visibles)
 
@@ -246,9 +243,10 @@ def test_local_backup_dialog_share_backup_missing_shows_error(populated_state, m
         assert btn is not None
         btn.on_click(None)
 
+        from mobile.theme import LIGHT_TOKENS
         assert len(mock_page.overlay) == 1
         assert "Aún no hay una copia automática creada" in mock_page.overlay[0].content.value
-        assert mock_page.overlay[0].bgcolor == ft.Colors.ERROR
+        assert mock_page.overlay[0].bgcolor == LIGHT_TOKENS.fail_bg
 
 
 def test_local_backup_dialog_restore_confirm_decision(populated_state, mock_page):
@@ -323,38 +321,27 @@ def test_local_backup_dialog_file_picker_bytes_handling(populated_state, mock_pa
     assert any("Confirmar Restauración" in t for t in textos_titulo)
 
 
-def test_main_appbar_backup_icon_not_in_three_dots():
-    """Verifica que en mobile/main.py el acceso a copias de seguridad esté en un IconButton y NO en el PopupMenuButton."""
+def test_main_shell_options_sheet_and_no_appbar():
+    """Verifica T22: eliminación de page.appbar global y menú Más en NotalySheet con Backup y Acerca de."""
     from mobile.main import main
+    from mobile.components.notaly_sheet import NotalySheet
+    from mobile.theme import FONT_ASSETS
 
     test_page = MockMobilePage()
     main(test_page)
 
-    assert test_page.appbar is not None
-    actions = test_page.appbar.actions
-    assert len(actions) >= 2
+    assert test_page.appbar is None
+    assert test_page.fonts == FONT_ASSETS
+    assert test_page.theme is not None and test_page.dark_theme is not None
+    assert hasattr(test_page, "_shell_actions")
+    assert callable(test_page._shell_actions.get("on_more"))
 
-    # Debe haber un IconButton para copia de seguridad
-    icon_buttons = [a for a in actions if isinstance(a, ft.IconButton)]
-    backup_btn = next((b for b in icon_buttons if b.tooltip == "Copia de Seguridad"), None)
-    assert backup_btn is not None
-    assert backup_btn.icon == ft.Icons.SETTINGS_BACKUP_RESTORE_ROUNDED
-
-    # En el PopupMenuButton de los 3 puntos NO debe aparecer copia de seguridad
-    popup_menus = [a for a in actions if isinstance(a, ft.PopupMenuButton)]
-    assert len(popup_menus) >= 1
-    popup = popup_menus[0]
-    items_textos = []
-    for item in popup.items:
-        if hasattr(item, "content") and hasattr(item.content, "value"):
-            items_textos.append(item.content.value)
-        elif hasattr(item, "text"):
-            items_textos.append(item.text)
-
-    assert not any("copia" in t.lower() for t in items_textos)
-    # En SPEC-016 (REQ-EARS-25), Estadísticas se removió del menú de tres puntos para consolidarse en el Footer
-    assert not any("estadística" in t.lower() for t in items_textos)
-    assert any("Acerca de" in t for t in items_textos)
+    test_page._shell_actions["on_more"]()
+    assert isinstance(test_page.active_dialog, NotalySheet)
+    textos = _extraer_textos_recursivo(test_page.active_dialog.content)
+    assert any("copia de seguridad" in t.lower() for t in textos)
+    assert any("acerca de" in t.lower() for t in textos)
+    assert not any("estadística" in t.lower() for t in textos)
 
 
 def test_local_backup_dialog_triggers_on_restored_callback(populated_state, mock_page):
@@ -446,11 +433,12 @@ def test_main_app_refreshes_view_immediately_on_restore(tmp_path):
         assert any("Colegio Inicial" in t for t in textos_iniciales)
         assert not any("Colegio Restaurado" in t for t in textos_iniciales)
 
-        # Simular apertura de diálogo de copias
-        actions = test_page.appbar.actions
-        btn_backup = next((a for a in actions if isinstance(a, ft.IconButton) and a.tooltip == "Copia de Seguridad"), None)
-        assert btn_backup is not None
-        btn_backup.on_click(None)
+        # Simular apertura de diálogo de copias vía menú editorial Más (NotalySheet)
+        test_page._shell_actions["on_more"]()
+        options_sheet = test_page.active_dialog
+        backup_item = options_sheet.body_column.controls[0]
+        assert backup_item.on_click is not None
+        backup_item.on_click(None)
 
         assert len(test_page.dialog_stack) == 1
         dlg_copia = test_page.active_dialog
@@ -466,7 +454,24 @@ def test_main_app_refreshes_view_immediately_on_restore(tmp_path):
         dlg_copia._mostrar_opciones_restauracion(nuevo_backup)
         confirm_dlg = test_page.active_dialog
 
-        btn_combinar = next((a for a in confirm_dlg.actions if "Combinar" in _obtener_texto_boton(a)), None)
+        def _buscar_combinar(ctrl):
+            if ctrl is None:
+                return None
+            if "Combinar" in _obtener_texto_boton(ctrl) and getattr(ctrl, "on_click", None):
+                return ctrl
+            for ch in getattr(ctrl, "controls", []) or []:
+                r = _buscar_combinar(ch)
+                if r:
+                    return r
+            if hasattr(ctrl, "content") and not isinstance(ctrl.content, str):
+                return _buscar_combinar(ctrl.content)
+            return None
+
+        btn_combinar = None
+        for act in confirm_dlg.actions:
+            btn_combinar = _buscar_combinar(act)
+            if btn_combinar is not None:
+                break
         assert btn_combinar is not None
         btn_combinar.on_click(None)
 

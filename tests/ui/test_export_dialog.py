@@ -125,12 +125,14 @@ def test_export_dialog_selectores_fechas_asistencias_y_todas():
     assert hasattr(dlg, "dd_hasta")
     assert dlg.dd_desde.disabled is True
     assert dlg.dd_hasta.disabled is True
+    assert dlg.fechas_row.visible is False
 
     opciones_desde = [opt.key for opt in dlg.dd_desde.options]
     assert opciones_desde == ["05-04-2026", "20-04-2026", "10-05-2026"]
 
     dlg.chk_todas_fechas.value = False
     dlg._al_cambiar_todas_fechas(None)
+    assert dlg.fechas_row.visible is True
     assert dlg.dd_desde.disabled is False
     assert dlg.dd_hasta.disabled is False
 
@@ -203,6 +205,8 @@ def test_export_dialog_curso_sin_alumnos():
 
 
 def test_export_dialog_responsividad_y_scroll():
+    from mobile.components.notaly_sheet import NotalySheet
+
     page = MockMobilePage(width=400, height=800)
     curso_data = {
         K_ALUMNOS: {"1": {K_NOMBRE: "Alumno 1"}},
@@ -216,9 +220,8 @@ def test_export_dialog_responsividad_y_scroll():
         page=page,
     )
 
-    # calc_w = min(400 - 24, 380) = 376
-    assert dlg.content.width == 376
-    assert dlg.content.height == pytest.approx(min(480, 800 * 0.70), rel=1e-2)
+    assert isinstance(dlg, NotalySheet)
+    assert dlg.size_constraints.max_height == int(800 * 0.85)
     assert dlg.content_col.scroll == ft.ScrollMode.AUTO
 
 

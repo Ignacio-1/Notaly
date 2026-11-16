@@ -29,3 +29,21 @@ def test_ui_renders_header_or_navigation(driver):
         for kw in ["notas", "asistencia", "grupos", "colegio", "volver", "notaly"]
     )
     assert has_known_control, f"No se encontró ningún control reconocible en pantalla: {desc_list[:10]}"
+
+
+def test_doble_back_snackbar_resiliencia(driver):
+    """Verifica que el primer retroceso nativo en ColegiosView no crashee y mantenga la app viva."""
+    driver.ensure_in_colegios()
+
+    # Presionar una vez el botón de retroceso nativo de Android
+    driver.keyevent(4)  # KEYCODE_BACK
+    time.sleep(0.8)
+
+    # Verificar que el proceso sigue vivo sin crasheos
+    ps_out, _, _ = driver.run_cmd(f"shell pidof {driver.package_name}")
+    assert ps_out.strip() != "", "La app colapsó al presionar Atrás en pantalla raíz."
+
+    crashes = driver.get_recent_crashes()
+    fatal = [c for c in crashes if "fatal" in c.lower() or "traceback" in c.lower() or "has no setter" in c.lower()]
+    assert not fatal, f"Se detectaron errores en logcat al pulsar Atrás: {fatal}"
+

@@ -1,291 +1,360 @@
 """
-Vista de Cursos: Listado, búsqueda y gestión de cursos pertenecientes al colegio seleccionado.
-Rediseñada con el sistema de diseño Slate 50 / Indigo 600, tarjetas limpias y acceso directo a asistencias y notas.
+Vista editorial de Cursos ("Crisp Editorial Ledger") (SPEC-028).
+
+Presenta los cursos de la institución seleccionada en filas planas continuas (`0px`
+radio) como acceso directo hacia la planilla, oculta `"Planificaciones"` si hay `0` cursos,
+omite textos estáticos redundantes y abre opciones secundarias en `NotalySheet` (RF-14, B4, B7).
 """
 
+from __future__ import annotations
+
+from typing import Any, Callable
+
 import flet as ft
-from mobile.state import AppState
-from mobile.components.student_dialog import CreateCursoDialog, RenameDialog, ConfirmDeleteDialog
+
+from mobile.components.ledger_primitives import EmptyStateView, NotalyListRow
+from mobile.components.notaly_sheet import (
+    NotalySheet,
+    open_dialog_safe,
+    sheet_action_button,
+    sheet_menu_item,
+)
 from mobile.components.planificacion_dialog import PlanificacionCursoDialog
-from mobile.components.planificaciones_institucion_dialog import PlanificacionesInstitucionDialog
-from mobile.components.ui_header import build_app_header
+from mobile.components.planificaciones_institucion_dialog import (
+    PlanificacionesInstitucionDialog,
+)
+from mobile.components.student_dialog import (
+    ConfirmDeleteDialog,
+    CreateCursoDialog,
+    RenameDialog,
+)
+from mobile.components.ui_header import NotalyTopHeader
+from mobile.state import AppState
 from mobile.theme import (
-    BG_PAGE,
-    SURFACE_WHITE,
-    BORDER_COLOR,
-    PRIMARY,
-    PRIMARY_LIGHT,
-    TEXT_MAIN,
-    TEXT_MUTED,
+    SPACE_MD,
+    SPACE_SM,
+    ThemeTokens,
+    constrain_tablet_content,
+    extract_initials,
+    get_avatar_palette,
+    is_dark_tokens,
+    pluralizar,
+    resolve_tokens,
+    responsive_gutter,
+    tabular_text,
 )
 
 
 class CursosView(ft.Container):
-    def __init__(self, state: AppState, page: ft.Page, on_navigate: callable):
-        super().__init__(expand=True, bgcolor=state.tokens.bg_page)
+    """Pantalla editorial para listar y gestionar los cursos de un colegio."""
+
+    def __init__(
+        self,
+        state: AppState,
+        page: ft.Page | None,
+        on_navigate: Callable[[str], Any],
+        *,
+        tokens: ThemeTokens | None = None,
+    ) -> None:
         self.state = state
         self.app_page = page
         self.on_navigate = on_navigate
-        self.padding = 0
+        self.tokens = resolve_tokens(tokens=tokens, page=page, state=state)
 
+        self.list_view = ft.ListView(
+            expand=True,
+            spacing=0,
+            padding=ft.Padding(left=0, right=0, top=0, bottom=88),
+        )
+        self.summary_header: ft.Column = ft.Column(spacing=SPACE_SM, tight=True)
+        self.summary_count_text: ft.Text = tabular_text("", size=12)
+        self.btn_planificaciones: ft.Control | None = None
+
+        super().__init__(
+            expand=True,
+            bgcolor=self.tokens.bg_canvas,
+            content=ft.Column(
+                spacing=0,
+                expand=True,
+                controls=[
+                    self._build_top_header(),
+                    constrain_tablet_content(
+                        self.list_view,
+                        getattr(page, "width", None) if page else None,
+                        self.tokens,
+                    ),
+                ],
+            ),
+        )
         self._build_ui()
 
-    def _build_ui(self):
-        tok = self.state.tokens
-        self.bgcolor = tok.bg_page
-        colegio = self.state.selected_colegio or "Colegio"
-        cursos = self.state.get_cursos(colegio)
+    def _safe_update(self) -> None:
+        try:
+            if self.app_page is not None:
+                self.app_page.update()
+        except Exception:
+            pass
 
-        header_section = ft.Column(
-            spacing=10,
+    def _build_top_header(self) -> NotalyTopHeader:
+        tok = resolve_tokens(page=self.app_page, state=self.state)
+        self.tokens = tok
+        colegio = getattr(self.state, "selected_colegio", None) or "Cursos"
+        return NotalyTopHeader(
+            title=colegio,
+            eyebrow="Institución",
+            on_back=lambda: self.on_navigate("colegios"),
+            actions=[
+                ft.IconButton(
+                    icon=ft.Icons.BAR_CHART_OUTLINED,
+                    icon_color=tok.text_secondary,
+                    icon_size=22,
+                    width=48,
+                    height=48,
+                    tooltip="Estadísticas institucionales",
+                    on_click=lambda _e: self._abrir_estadisticas_colegio(),
+                )
+            ],
+            tokens=tok,
+            page=self.app_page,
+            state=self.state,
+        )
+
+    def _build_ui(self) -> None:
+        tok = resolve_tokens(page=self.app_page, state=self.state)
+        self.tokens = tok
+        self.bgcolor = tok.bg_canvas
+        if isinstance(self.content, ft.Column) and self.content.controls:
+            self.content.controls[0] = self._build_top_header()
+
+        colegio = getattr(self.state, "selected_colegio", None) or ""
+        cursos = self.state.get_cursos(colegio)
+        is_dark = is_dark_tokens(tok)
+        pw = getattr(self.app_page, "width", None) if self.app_page else None
+        gutter = responsive_gutter(pw if isinstance(pw, (int, float)) else None)
+
+        conteo_label = f"{pluralizar(len(cursos), 'curso')} {'activo' if len(cursos) == 1 else 'activos'}"
+        self.summary_count_text = tabular_text(
+            conteo_label,
+            size=12,
+            color=tok.text_secondary,
+        )
+
+        btn_crear = sheet_action_button(
+            "Curso",
+            self._abrir_modal_crear,
+            tokens=tok,
+            primary=True,
+            icon=ft.Icons.ADD,
+            expand=True,
+        )
+
+        action_controls: list[ft.Control] = []
+        if len(cursos) > 0:
+            self.btn_planificaciones = sheet_action_button(
+                "Planificaciones",
+                lambda _e: self._abrir_planificaciones_institucion(),
+                tokens=tok,
+                primary=False,
+                icon=ft.Icons.EVENT_NOTE,
+                expand=True,
+            )
+            action_controls.append(self.btn_planificaciones)
+        else:
+            self.btn_planificaciones = None
+        action_controls.append(btn_crear)
+
+        self.summary_header = ft.Column(
+            spacing=SPACE_MD,
+            tight=True,
             controls=[
                 ft.Row(
-                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                    spacing=SPACE_SM,
                     vertical_alignment=ft.CrossAxisAlignment.CENTER,
                     controls=[
                         ft.Column(
                             spacing=2,
+                            tight=True,
+                            expand=True,
                             controls=[
-                                ft.Text("Mis cursos", size=16, weight=ft.FontWeight.BOLD, color=tok.text_main),
-                                ft.Text(f"{len(cursos)} activos · Ciclo lectivo", size=12, color=tok.text_muted),
+                                ft.Text(
+                                    "Mis cursos",
+                                    size=16,
+                                    weight=ft.FontWeight.BOLD,
+                                    color=tok.text_primary,
+                                ),
+                                self.summary_count_text,
                             ],
                         ),
                     ],
                 ),
-                ft.Row(
-                    spacing=8,
-                    controls=[
-                        ft.OutlinedButton(
-                            "Planificaciones",
-                            icon=ft.Icons.EVENT_NOTE,
-                            expand=True,
-                            style=ft.ButtonStyle(
-                                color=tok.primary,
-                                side=ft.BorderSide(1, tok.primary),
-                                shape=ft.RoundedRectangleBorder(radius=10),
-                            ),
-                            height=36,
-                            on_click=lambda _: self._abrir_planificaciones_institucion(),
-                        ),
-                        ft.FilledButton(
-                            "+ Curso",
-                            expand=True,
-                            style=ft.ButtonStyle(
-                                bgcolor=tok.primary,
-                                color=ft.Colors.WHITE,
-                                shape=ft.RoundedRectangleBorder(radius=10),
-                            ),
-                            height=36,
-                            on_click=self._abrir_modal_crear,
-                        ),
-                    ],
-                ),
+                ft.Row(spacing=SPACE_SM, controls=action_controls),
             ],
         )
 
-        cards = []
+        header_section = ft.Container(
+            bgcolor=tok.surface_primary,
+            border=ft.Border.only(bottom=ft.BorderSide(1, tok.border_hairline)),
+            padding=ft.Padding.symmetric(horizontal=gutter, vertical=SPACE_MD),
+            content=self.summary_header,
+        )
+
+        self.list_view.controls.clear()
+        self.list_view.controls.append(header_section)
+
         if not cursos:
-            cards.append(
-                ft.Container(
-                    content=ft.Column(
-                        [
-                            ft.Container(
-                                width=64,
-                                height=64,
-                                bgcolor=tok.primary_light,
-                                border_radius=16,
-                                alignment=ft.Alignment.CENTER,
-                                content=ft.Icon(ft.Icons.CLASS_OUTLINED, size=32, color=tok.primary),
-                            ),
-                            ft.Text(
-                                "No se encontraron cursos" if self.state.search_query_cursos else "No hay cursos registrados",
-                                size=17,
-                                weight=ft.FontWeight.BOLD,
-                                color=tok.text_main,
-                            ),
-                            ft.Text(
-                                "Toca '+ Curso' para agregar el primer curso a este colegio."
-                                if not self.state.search_query_cursos
-                                else "Intenta con otra búsqueda.",
-                                size=13,
-                                color=tok.text_muted,
-                                text_align=ft.TextAlign.CENTER,
-                            ),
-                        ],
-                        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                        spacing=10,
-                    ),
-                    alignment=ft.Alignment.CENTER,
-                    padding=ft.Padding(top=60, bottom=30, left=20, right=20),
+            self.list_view.controls.append(
+                EmptyStateView(
+                    icon=ft.Icons.CLASS_OUTLINED,
+                    title="No hay cursos registrados",
+                    description="Crea el primer curso para comenzar a tomar notas y asistencias.",
+                    cta_label="Nuevo Curso",
+                    on_cta=self._abrir_modal_crear,
+                    tokens=tok,
+                    page=self.app_page,
                 )
             )
-        else:
-            for nombre in cursos:
-                curso_data = self.state.data.get("colegios", {}).get(colegio, {}).get("cursos", {}).get(nombre, {})
-                alumnos = curso_data.get("alumnos", {})
-                num_alumnos = len(alumnos)
-                horario = self.state.get_horario_curso(colegio, nombre)
-                clases = self.state.get_clases_curso(colegio, nombre)
-                num_clases = len(clases)
+            return
 
-                card_controls = [
-                    ft.Row(
-                        spacing=12,
-                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                        controls=[
-                            ft.Container(
-                                width=44,
-                                height=44,
-                                bgcolor=tok.primary_light,
-                                border_radius=12,
-                                alignment=ft.Alignment.CENTER,
-                                content=ft.Icon(ft.Icons.BOOK, color=tok.primary, size=22),
-                            ),
-                            ft.Column(
-                                expand=True,
-                                spacing=2,
-                                controls=[
-                                    ft.Text(nombre, weight=ft.FontWeight.BOLD, size=15, color=tok.text_main, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS),
-                                    ft.Text("Planilla y gestión integral", size=12, color=tok.text_muted, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS),
-                                ],
-                            ),
-                            ft.IconButton(
-                                icon=ft.Icons.EVENT_NOTE,
-                                tooltip="Planificaciones del curso",
-                                icon_color=tok.primary,
-                                icon_size=20,
-                                on_click=lambda e, cur=nombre: self._abrir_planificaciones_institucion(cur),
-                            ),
-                            ft.PopupMenuButton(
-                                icon=ft.Icons.MORE_VERT,
-                                icon_color=tok.text_muted,
-                                items=[
-                                    ft.PopupMenuItem(
-                                        icon=ft.Icons.EVENT_NOTE,
-                                        content=ft.Text("Planificación de Clases"),
-                                        on_click=lambda e, cur=nombre: self._abrir_planificaciones_institucion(cur),
-                                    ),
-                                    ft.PopupMenuItem(
-                                        icon=ft.Icons.INSIGHTS,
-                                        content=ft.Text("Estadísticas"),
-                                        on_click=lambda e, cur=nombre: self._abrir_estadisticas_curso(cur),
-                                    ),
-                                    ft.PopupMenuItem(
-                                        icon=ft.Icons.TABLE_CHART,
-                                        content=ft.Text("Planilla de Notas"),
-                                        on_click=lambda e, cur=nombre: self._abrir_curso(cur, "notas"),
-                                    ),
-                                    ft.PopupMenuItem(
-                                        icon=ft.Icons.CHECKLIST,
-                                        content=ft.Text("Asistencias"),
-                                        on_click=lambda e, cur=nombre: self._abrir_curso(cur, "asistencias"),
-                                    ),
-                                    ft.PopupMenuItem(
-                                        icon=ft.Icons.EDIT_OUTLINED,
-                                        content=ft.Text("Renombrar"),
-                                        on_click=lambda e, cur=nombre: self._abrir_modal_renombrar(cur),
-                                    ),
-                                    ft.PopupMenuItem(
-                                        icon=ft.Icons.DELETE_OUTLINE,
-                                        content=ft.Text("Eliminar"),
-                                        on_click=lambda e, cur=nombre: self._abrir_modal_eliminar(cur),
-                                    ),
-                                ],
-                            ),
-                        ],
-                    ),
-                ]
+        for idx, nombre in enumerate(cursos):
+            alumnos = self.state.get_alumnos(colegio, nombre)
+            num_alumnos = len(alumnos)
+            horario = (self.state.get_horario_curso(colegio, nombre) or "").strip()
+            clases = self.state.get_clases_curso(colegio, nombre)
+            num_clases = len(clases)
 
-                if horario.strip():
-                    card_controls.append(
-                        ft.Row(
-                            spacing=4,
-                            controls=[
-                                ft.Icon(ft.Icons.ACCESS_TIME_ROUNDED, size=13, color=tok.text_muted),
-                                ft.Text(
-                                    horario.strip(),
-                                    size=11,
-                                    color=tok.text_muted,
-                                    expand=True,
-                                    max_lines=1,
-                                    overflow=ft.TextOverflow.ELLIPSIS,
-                                ),
-                            ],
-                        )
-                    )
-
-                card_controls.append(ft.Divider(height=1, color=tok.border_color))
-
-                texto_pie = (
-                    (f"{num_clases} clases planificadas" if num_clases != 1 else "1 clase planificada")
-                    if num_clases > 0
-                    else "Ciclo Lectivo Activo"
+            partes_meta: list[str] = []
+            if horario:
+                partes_meta.append(horario)
+            if num_clases > 0:
+                clases_label = (
+                    f"{pluralizar(num_clases, 'clase')} "
+                    f"{'planificada' if num_clases == 1 else 'planificadas'}"
                 )
+                partes_meta.append(clases_label)
+            subtitulo_meta = " · ".join(partes_meta) if partes_meta else None
 
-                card_controls.append(
-                    ft.Row(
-                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                        controls=[
-                            ft.Text(f"{num_alumnos} estudiantes", size=11, color=tok.text_muted),
-                            ft.Text(texto_pie, size=11, color=tok.text_muted),
-                        ],
-                    )
+            av_bg, av_fg = get_avatar_palette(idx, is_dark=is_dark)
+
+            btn_menu = ft.IconButton(
+                icon=ft.Icons.MORE_VERT,
+                icon_color=tok.text_secondary,
+                icon_size=20,
+                width=48,
+                height=48,
+                tooltip=f"Opciones de {nombre}",
+                on_click=lambda _e, cur=nombre: self._abrir_menu_curso(cur),
+            )
+
+            self.list_view.controls.append(
+                NotalyListRow(
+                    title=nombre,
+                    subtitle=subtitulo_meta,
+                    tabular_summary=pluralizar(num_alumnos, "alumno"),
+                    initials=extract_initials(nombre),
+                    monogram_bg=av_bg,
+                    monogram_fg=av_fg,
+                    trailing=[
+                        ft.Icon(
+                            icon=ft.Icons.CHEVRON_RIGHT,
+                            size=18,
+                            color=tok.text_secondary,
+                        ),
+                        btn_menu,
+                    ],
+                    horizontal_padding=gutter,
+                    show_divider=True,
+                    tokens=tok,
+                    on_click=lambda _e, cur=nombre: self._abrir_curso(cur, "notas"),
                 )
+            )
 
-                card = ft.Container(
-                    bgcolor=tok.surface,
-                    border=ft.Border.all(1, tok.border_color),
-                    border_radius=16,
-                    padding=16,
-                    ink=True,
-                    on_click=lambda e, cur=nombre: self._abrir_curso(cur, "notas"),
-                    content=ft.Column(
-                        spacing=10,
-                        controls=card_controls,
-                    ),
-                )
-                cards.append(card)
+    def _abrir_menu_curso(self, cur: str) -> None:
+        tok = resolve_tokens(page=self.app_page, state=self.state)
+        colegio = getattr(self.state, "selected_colegio", None) or ""
+        num_alumnos = len(self.state.get_alumnos(colegio, cur))
 
-        self.list_view = ft.ListView(
-            spacing=12,
-            padding=ft.Padding(left=0, top=0, right=0, bottom=84),
-            controls=[
-                header_section,
-                *cards,
-            ],
+        def _exec(fn: Callable[[], Any]) -> None:
+            sheet.close()
+            fn()
+
+        items: list[ft.Control] = [
+            sheet_menu_item(
+                ft.Icons.ASSIGNMENT_OUTLINED,
+                "Planilla de Notas",
+                lambda _e: _exec(lambda: self._abrir_curso(cur, "notas")),
+                tokens=tok,
+            ),
+            sheet_menu_item(
+                ft.Icons.FACT_CHECK_OUTLINED,
+                "Asistencias",
+                lambda _e: _exec(lambda: self._abrir_curso(cur, "asistencias")),
+                tokens=tok,
+            ),
+            sheet_menu_item(
+                ft.Icons.GROUPS_OUTLINED,
+                "Trabajos en Grupo",
+                lambda _e: _exec(lambda: self._abrir_curso(cur, "grupos")),
+                tokens=tok,
+            ),
+            sheet_menu_item(
+                ft.Icons.EVENT_NOTE_OUTLINED,
+                "Planificación de Clases",
+                lambda _e: _exec(lambda: self._abrir_planificacion_curso(cur)),
+                tokens=tok,
+            ),
+            sheet_menu_item(
+                ft.Icons.BAR_CHART_OUTLINED,
+                "Estadísticas del Curso",
+                lambda _e: _exec(lambda: self._abrir_estadisticas_curso(cur)),
+                tokens=tok,
+            ),
+            sheet_menu_item(
+                ft.Icons.EDIT_OUTLINED,
+                "Renombrar curso",
+                lambda _e: _exec(lambda: self._abrir_modal_renombrar(cur)),
+                tokens=tok,
+            ),
+            sheet_menu_item(
+                ft.Icons.DELETE_OUTLINE,
+                "Eliminar curso",
+                lambda _e: _exec(lambda: self._abrir_modal_eliminar(cur)),
+                tokens=tok,
+                destructive=True,
+                show_divider=False,
+            ),
+        ]
+
+        sheet = NotalySheet(
+            page=self.app_page,
+            title=cur,
+            subtitle=pluralizar(num_alumnos, "alumno"),
+            body=ft.Column(items, spacing=0, tight=True),
+            tokens=tok,
+            state=self.state,
         )
-        body = ft.Container(
-            expand=True,
-            padding=ft.Padding(left=16, right=16, top=12, bottom=0),
-            content=self.list_view,
-        )
+        open_dialog_safe(self.app_page, sheet)
 
-        self.content = ft.Column(
-            expand=True,
-            spacing=0,
-            controls=[
-                build_app_header("Institución", colegio, on_back=lambda: self.on_navigate("colegios"), tokens=tok),
-                body,
-            ],
-        )
-
-    def _on_search_change(self, e):
+    def _on_search_change(self, e: Any) -> None:
         self.state.search_query_cursos = e.control.value
         self._build_ui()
-        self.app_page.update()
+        self._safe_update()
 
-    def _abrir_curso(self, nombre_curso: str, pestana: str = "notas"):
+    def _abrir_curso(self, nombre_curso: str, pestana: str = "notas") -> None:
+        """Navega a la planilla o módulo del curso delegando en `on_navigate` (B4)."""
         self.state.selected_curso = nombre_curso
-        self.state.current_screen = pestana
         self.on_navigate(pestana)
 
-    def _abrir_modal_crear(self, e=None):
-        def confirmar_creacion(nuevo_nombre, cant_alumnos, horario=""):
-            exito, msg = self.state.add_curso(self.state.selected_colegio, nuevo_nombre, cant_alumnos, horario)
+    def _abrir_modal_crear(self, _e: Any = None) -> None:
+        def confirmar_creacion(nuevo_nombre: str, cant_alumnos: int, horario: str = "") -> None:
+            exito, msg = self.state.add_curso(
+                self.state.selected_colegio,
+                nuevo_nombre,
+                cant_alumnos,
+                horario,
+            )
             if exito:
                 self._build_ui()
-                self.app_page.update()
+                self._safe_update()
             else:
                 self._mostrar_snackbar(msg, error=True)
 
@@ -295,21 +364,17 @@ class CursosView(ft.Container):
             page=self.app_page,
             tokens=self.state.tokens,
         )
-        self.app_page.show_dialog(dlg)
-        self.app_page.update()
+        open_dialog_safe(self.app_page, dlg)
 
-    def _abrir_planificaciones_institucion(self, curso_foco: str | None = None):
-        def refrescar():
+    def _abrir_planificaciones_institucion(self, curso_foco: str | None = None) -> None:
+        def refrescar() -> None:
             self._build_ui()
             try:
-                self.update()
+                if self.page is not None:
+                    self.update()
             except Exception:
                 pass
-            if self.app_page:
-                try:
-                    self.app_page.update()
-                except Exception:
-                    pass
+            self._safe_update()
 
         dlg = PlanificacionesInstitucionDialog(
             state=self.state,
@@ -320,21 +385,17 @@ class CursosView(ft.Container):
             on_change=refrescar,
             on_close=refrescar,
         )
-        self.app_page.show_dialog(dlg)
-        self.app_page.update()
+        open_dialog_safe(self.app_page, dlg)
 
-    def _abrir_planificacion_curso(self, cur: str):
-        def refrescar():
+    def _abrir_planificacion_curso(self, cur: str) -> None:
+        def refrescar() -> None:
             self._build_ui()
             try:
-                self.update()
+                if self.page is not None:
+                    self.update()
             except Exception:
                 pass
-            if self.app_page:
-                try:
-                    self.app_page.update()
-                except Exception:
-                    pass
+            self._safe_update()
 
         dlg = PlanificacionCursoDialog(
             state=self.state,
@@ -345,15 +406,18 @@ class CursosView(ft.Container):
             on_close=refrescar,
             page=self.app_page,
         )
-        self.app_page.show_dialog(dlg)
-        self.app_page.update()
+        open_dialog_safe(self.app_page, dlg)
 
-    def _abrir_modal_renombrar(self, nombre_actual: str):
-        def confirmar_renombrar(nuevo_nombre):
-            exito, msg = self.state.rename_curso(self.state.selected_colegio, nombre_actual, nuevo_nombre)
+    def _abrir_modal_renombrar(self, nombre_actual: str) -> None:
+        def confirmar_renombrar(nuevo_nombre: str) -> None:
+            exito, msg = self.state.rename_curso(
+                self.state.selected_colegio,
+                nombre_actual,
+                nuevo_nombre,
+            )
             if exito:
                 self._build_ui()
-                self.app_page.update()
+                self._safe_update()
             else:
                 self._mostrar_snackbar(msg, error=True)
 
@@ -364,46 +428,51 @@ class CursosView(ft.Container):
             page=self.app_page,
             tokens=self.state.tokens,
         )
-        self.app_page.show_dialog(dlg)
-        self.app_page.update()
+        open_dialog_safe(self.app_page, dlg)
 
-    def _abrir_modal_eliminar(self, nombre: str):
-        def confirmar_eliminar():
+    def _abrir_modal_eliminar(self, nombre: str) -> None:
+        def confirmar_eliminar() -> None:
             exito, msg = self.state.delete_curso(self.state.selected_colegio, nombre)
             if exito:
                 self._build_ui()
-                self.app_page.update()
+                self._safe_update()
                 self._mostrar_snackbar(f"Curso '{nombre}' eliminado.")
             else:
                 self._mostrar_snackbar(msg, error=True)
 
         dlg = ConfirmDeleteDialog(
             titulo="Eliminar Curso",
-            mensaje=f"¿Estás seguro de que deseas eliminar el curso '{nombre}' con todos sus alumnos, notas y asistencias?\n\nEsta acción no se puede deshacer.",
+            mensaje=(
+                f"¿Estás seguro de que deseas eliminar el curso '{nombre}' con todos sus alumnos, notas y asistencias?\n\n"
+                "Esta acción no se puede deshacer."
+            ),
             on_confirm=confirmar_eliminar,
             page=self.app_page,
             tokens=self.state.tokens,
         )
-        self.app_page.show_dialog(dlg)
-        self.app_page.update()
+        open_dialog_safe(self.app_page, dlg)
 
-    def _mostrar_snackbar(self, mensaje: str, error: bool = False):
+    def _mostrar_snackbar(self, mensaje: str, error: bool = False) -> None:
+        if not self.app_page:
+            return
+        tok = resolve_tokens(page=self.app_page, state=self.state)
         sb = ft.SnackBar(
-            content=ft.Text(mensaje, color=ft.Colors.WHITE),
-            bgcolor=ft.Colors.ERROR if error else ft.Colors.GREEN_700,
+            content=ft.Text(mensaje, color=tok.fail_fg if error else tok.pass_fg),
+            bgcolor=tok.fail_bg if error else tok.pass_bg,
         )
-        self.app_page.overlay.append(sb)
+        overlay = getattr(self.app_page, "overlay", None)
+        if isinstance(overlay, list):
+            overlay.append(sb)
         sb.open = True
-        self.app_page.update()
+        self._safe_update()
 
-    def _abrir_estadisticas_colegio(self):
+    def _abrir_estadisticas_colegio(self) -> None:
         self.state.origen_pantalla = "cursos"
         self.state.estadisticas_nivel = "colegio"
         self.on_navigate("estadisticas")
 
-    def _abrir_estadisticas_curso(self, cur: str):
+    def _abrir_estadisticas_curso(self, cur: str) -> None:
         self.state.origen_pantalla = "cursos"
         self.state.selected_curso = cur
         self.state.estadisticas_nivel = "curso"
         self.on_navigate("estadisticas")
-

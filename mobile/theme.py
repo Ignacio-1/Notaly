@@ -1,246 +1,574 @@
 """
-Sistema de Diseño y Tokens de Estilo para la aplicación móvil Notaly.
-Basado en Material Design 3, paleta Slate/Indigo y especificación Figma.
-Soporte completo para Modo Claro (Light) y Modo Oscuro (Dark).
+Sistema de diseño editorial dual ("Crisp Editorial Ledger") para Notaly Móvil.
+
+Centraliza la paleta calibrada (Modo Claro Alabaster y Modo Oscuro Graphite Slate),
+tríadas semánticas indivisibles (fondo, primer plano y borde), tipografía tabular
+offline, monogramas sobrios y helpers responsivos y de contraste WCAG 2.1.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass
+from typing import Any
+
 import flet as ft
+
+
+# ---------------------------------------------------------------------------
+# Tipografía offline y escala geométrica estricta (RF-02, RF-03, RF-07)
+# ---------------------------------------------------------------------------
+
+FONT_SANS = "LedgerSans"
+FONT_MONO = "LedgerMono"
+
+FONT_ASSETS: dict[str, str] = {
+    "LedgerSans": "fonts/PlusJakartaSans-Regular.ttf",
+    "LedgerSans-Medium": "fonts/PlusJakartaSans-Medium.ttf",
+    "LedgerSans-SemiBold": "fonts/PlusJakartaSans-SemiBold.ttf",
+    "LedgerSans-Bold": "fonts/PlusJakartaSans-Bold.ttf",
+    "LedgerMono": "fonts/JetBrainsMono-Regular.ttf",
+    "LedgerMono-Medium": "fonts/JetBrainsMono-Medium.ttf",
+    "LedgerMono-Bold": "fonts/JetBrainsMono-Bold.ttf",
+}
+
+SPACE_XS = 4
+SPACE_SM = 8
+SPACE_MD = 12
+SPACE_LG = 16
+SPACE_XL = 24
+SPACE_XXL = 32
+
+RADIUS_NONE = 0
+RADIUS_SM = 4
+RADIUS_MD = 6
+RADIUS_SHEET_TOP = 8
+
+
+# ---------------------------------------------------------------------------
+# Tokens duales inmutables (Light & Dark)
+# ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
 class ThemeTokens:
-    """Conjunto inmutable y tipado de tokens de diseño semánticos."""
-    # Fondos y superficies
-    bg_page: str
-    surface: str             # Superficies principales (tarjetas, cabeceras, modales)
-    surface_variant: str     # Fondos neutros de tabs, chips inactivos, elevación secundaria
-    border_color: str        # Bordes sutiles y divisores
-    border_active: str       # Bordes en foco o selección activa
+    """Contenedor tipado de tokens de diseño editorial para Notaly Móvil."""
 
-    # Primarios y acentos
-    primary: str             # Color de marca primario
-    primary_light: str       # Fondos de acento sutil o badges primarios
-    primary_hover: str       # Estados hover o pulsado
+    # Superficies y contenedores
+    bg_canvas: str
+    surface_primary: str
+    surface_subtle: str
+    surface_elevated: str
 
-    # Tipografía
-    text_main: str           # Títulos principales, nombres de alumnos (contraste alto)
-    text_muted: str          # Subtítulos, fechas, leyendas secundarias
-    text_subtle: str         # Eyebrows, placeholders, slots vacíos
+    # Texto y bordes
+    text_primary: str
+    text_secondary: str
+    text_placeholder: str
+    border_hairline: str
+    border_focus: str
 
-    # Calificaciones
-    grade_pass_bg: str       # Fondo píldora aprobada (>= 6)
-    grade_pass_text: str     # Texto píldora aprobada
-    grade_fail_bg: str       # Fondo píldora desaprobada (< 6)
-    grade_fail_text: str     # Texto píldora desaprobada
-    grade_empty_bg: str      # Fondo casillero sin nota ("--")
-    grade_empty_text: str    # Texto casillero sin nota
+    # Acentos editoriales
+    accent_primary: str
+    accent_on_primary: str
+    accent_subtle: str
+    accent_hover: str
 
-    # Asistencias
-    attendance_p_bg: str     # Presente (fondo)
-    attendance_p_text: str   # Presente (texto)
-    attendance_p_solid: str  # Presente (punto indicador)
-    attendance_a_bg: str     # Ausente (fondo)
-    attendance_a_text: str   # Ausente (texto)
-    attendance_a_solid: str  # Ausente (punto indicador)
-    attendance_t_bg: str     # Tarde (fondo)
-    attendance_t_text: str   # Tarde (texto)
-    attendance_t_solid: str  # Tarde (punto indicador)
-    attendance_j_bg: str     # Justificado (fondo)
-    attendance_j_text: str   # Justificado (texto)
-    attendance_j_solid: str  # Justificado (punto indicador)
+    # Tríadas semánticas indivisibles (fondo, primer plano, borde)
+    pass_bg: str
+    pass_fg: str
+    pass_border: str
 
-    # Estados y Micro-indicadores
-    warning_amber: str       # Alertas o cambios pendientes
-    save_status_bg: str      # Fondo badge "Guardado"
-    save_status_text: str    # Texto badge "Guardado"
-    save_pending_bg: str     # Fondo badge "Guardando..."
-    save_pending_text: str   # Texto badge "Guardando..."
+    warn_bg: str
+    warn_fg: str
+    warn_border: str
+
+    fail_bg: str
+    fail_fg: str
+    fail_border: str
+
+    justif_bg: str
+    justif_fg: str
+    justif_border: str
+
+    empty_bg: str
+    empty_fg: str
+    empty_border: str
+
+    # Gráficos vectoriales (flet.canvas)
+    chart_pass: str
+    chart_good: str
+    chart_warn: str
+    chart_fail: str
+    chart_justif: str
+    chart_empty: str
+
+    # Indicador discreto de autoguardado
+    save_status_bg: str
+    save_status_text: str
+    save_pending_bg: str
+    save_pending_text: str
+
+    # --- Propiedades alias retrocompatibles (sin colisión nominal) ---
+
+    @property
+    def bg_page(self) -> str:
+        return self.bg_canvas
+
+    @property
+    def surface(self) -> str:
+        return self.surface_primary
+
+    @property
+    def surface_variant(self) -> str:
+        return self.surface_subtle
+
+    @property
+    def border_color(self) -> str:
+        return self.border_hairline
+
+    @property
+    def border_active(self) -> str:
+        return self.border_hairline
+
+    @property
+    def primary(self) -> str:
+        return self.accent_primary
+
+    @property
+    def on_primary(self) -> str:
+        return self.accent_on_primary
+
+    @property
+    def primary_light(self) -> str:
+        return self.accent_subtle
+
+    @property
+    def primary_hover(self) -> str:
+        return self.accent_hover
+
+    @property
+    def text_main(self) -> str:
+        return self.text_primary
+
+    @property
+    def text_muted(self) -> str:
+        """Retorna el tono secundario legible (>= 4.5:1) para subtítulos y eyebrows."""
+        return self.text_secondary
+
+    @property
+    def text_subtle(self) -> str:
+        """Retorna el tono reservado exclusivamente para placeholders y guiones vacíos."""
+        return self.text_placeholder
+
+    @property
+    def grade_pass_bg(self) -> str:
+        return self.pass_bg
+
+    @property
+    def grade_pass_text(self) -> str:
+        return self.pass_fg
+
+    @property
+    def grade_fail_bg(self) -> str:
+        return self.fail_bg
+
+    @property
+    def grade_fail_text(self) -> str:
+        return self.fail_fg
+
+    @property
+    def grade_empty_bg(self) -> str:
+        return self.empty_bg
+
+    @property
+    def grade_empty_text(self) -> str:
+        return self.empty_fg
+
+    @property
+    def attendance_p_bg(self) -> str:
+        return self.pass_bg
+
+    @property
+    def attendance_p_text(self) -> str:
+        return self.pass_fg
+
+    @property
+    def attendance_p_solid(self) -> str:
+        return self.pass_fg
+
+    @property
+    def attendance_a_bg(self) -> str:
+        return self.fail_bg
+
+    @property
+    def attendance_a_text(self) -> str:
+        return self.fail_fg
+
+    @property
+    def attendance_a_solid(self) -> str:
+        return self.fail_fg
+
+    @property
+    def attendance_t_bg(self) -> str:
+        return self.warn_bg
+
+    @property
+    def attendance_t_text(self) -> str:
+        return self.warn_fg
+
+    @property
+    def attendance_t_solid(self) -> str:
+        return self.warn_fg
+
+    @property
+    def attendance_j_bg(self) -> str:
+        return self.justif_bg
+
+    @property
+    def attendance_j_text(self) -> str:
+        return self.justif_fg
+
+    @property
+    def attendance_j_solid(self) -> str:
+        return self.justif_fg
+
+    @property
+    def warning_amber(self) -> str:
+        return self.warn_fg
 
     @property
     def danger(self) -> str:
-        """Alias semántico para acciones destructivas o alertas rojas."""
-        return self.attendance_a_solid
+        return self.fail_fg
 
     @property
     def warning(self) -> str:
-        """Alias semántico para advertencias y cambios pendientes."""
-        return self.warning_amber
+        return self.warn_fg
 
 
 LIGHT_TOKENS = ThemeTokens(
-    bg_page="#F8FAFC",          # Slate 50
-    surface="#FFFFFF",          # White
-    surface_variant="#F1F5F9",  # Slate 100
-    border_color="#E2E8F0",     # Slate 200
-    border_active="#CBD5E1",    # Slate 300
-    primary="#4F46E5",          # Indigo 600
-    primary_light="#EEF2FF",    # Indigo 50
-    primary_hover="#4338CA",    # Indigo 700
-    text_main="#0F172A",        # Slate 900
-    text_muted="#64748B",       # Slate 500
-    text_subtle="#94A3B8",      # Slate 400
-    grade_pass_bg="#DCFCE7",    # Green 100
-    grade_pass_text="#166534",  # Green 800
-    grade_fail_bg="#FEE2E2",    # Red 100
-    grade_fail_text="#991B1B",  # Red 800
-    grade_empty_bg="#F1F5F9",   # Slate 100
-    grade_empty_text="#64748B", # Slate 500
-    attendance_p_bg="#DCFCE7",
-    attendance_p_text="#166534",
-    attendance_p_solid="#10B981", # Emerald 500
-    attendance_a_bg="#FEE2E2",
-    attendance_a_text="#991B1B",
-    attendance_a_solid="#EF4444", # Red 500
-    attendance_t_bg="#FEF3C7",
-    attendance_t_text="#B45309",
-    attendance_t_solid="#F59E0B", # Amber 500
-    attendance_j_bg="#F1F5F9",
-    attendance_j_text="#475569",
-    attendance_j_solid="#3B82F6", # Blue 500
-    warning_amber="#D97706",
-    save_status_bg="#DCFCE7",
-    save_status_text="#166534",
+    bg_canvas="#F6F5F1",
+    surface_primary="#FCFBF9",
+    surface_subtle="#ECEAE2",
+    surface_elevated="#FFFFFF",
+    text_primary="#18181B",
+    text_secondary="#52525B",
+    text_placeholder="#71717A",
+    border_hairline="#DCD8CE",
+    border_focus="#1B3B5A",
+    accent_primary="#1B3B5A",
+    accent_on_primary="#FCFBF9",
+    accent_subtle="#E4ECF4",
+    accent_hover="#132B42",
+    pass_bg="#E6F4EA",
+    pass_fg="#135E3D",
+    pass_border="#B7DFC5",
+    warn_bg="#FEF3C7",
+    warn_fg="#92400E",
+    warn_border="#FDE68A",
+    fail_bg="#FEE2E2",
+    fail_fg="#991B1B",
+    fail_border="#FECACA",
+    justif_bg="#E4ECF4",
+    justif_fg="#1B3B5A",
+    justif_border="#C2D4E6",
+    empty_bg="#ECEAE2",
+    empty_fg="#52525B",
+    empty_border="#DCD8CE",
+    chart_pass="#135E3D",
+    chart_good="#2E7D5B",
+    chart_warn="#92400E",
+    chart_fail="#991B1B",
+    chart_justif="#1B3B5A",
+    chart_empty="#52525B",
+    save_status_bg="#E6F4EA",
+    save_status_text="#135E3D",
     save_pending_bg="#FEF3C7",
-    save_pending_text="#B45309",
+    save_pending_text="#92400E",
 )
 
 DARK_TOKENS = ThemeTokens(
-    bg_page="#0F172A",          # Slate 900
-    surface="#1E293B",          # Slate 800
-    surface_variant="#334155",  # Slate 700
-    border_color="#334155",     # Slate 700
-    border_active="#475569",    # Slate 600
-    primary="#818CF8",          # Indigo 400 (Luminosidad alta para fondos oscuros)
-    primary_light="#1E1B4B",    # Indigo 950
-    primary_hover="#6366F1",    # Indigo 500
-    text_main="#F8FAFC",        # Slate 50 (Ratio > 13:1)
-    text_muted="#94A3B8",       # Slate 400 (Ratio > 4.8:1)
-    text_subtle="#64748B",      # Slate 500
-    grade_pass_bg="#064E3B",    # Emerald 900
-    grade_pass_text="#4ADE80",  # Green 400
-    grade_fail_bg="#7F1D1D",    # Red 900
-    grade_fail_text="#F87171",  # Red 400
-    grade_empty_bg="#334155",   # Slate 700
-    grade_empty_text="#94A3B8", # Slate 400
-    attendance_p_bg="#064E3B",
-    attendance_p_text="#4ADE80",
-    attendance_p_solid="#34D399", # Emerald 400
-    attendance_a_bg="#7F1D1D",
-    attendance_a_text="#F87171",
-    attendance_a_solid="#F87171", # Red 400
-    attendance_t_bg="#78350F",    # Amber 900
-    attendance_t_text="#FBBF24",  # Amber 400
-    attendance_t_solid="#FBBF24",
-    attendance_j_bg="#1E3A8A",    # Blue 900
-    attendance_j_text="#60A5FA",  # Blue 400
-    attendance_j_solid="#60A5FA",
-    warning_amber="#F59E0B",
-    save_status_bg="#064E3B",
-    save_status_text="#4ADE80",
-    save_pending_bg="#78350F",
-    save_pending_text="#FBBF24",
+    bg_canvas="#111315",
+    surface_primary="#181B1F",
+    surface_subtle="#20242A",
+    surface_elevated="#262B32",
+    text_primary="#F1F3F5",
+    text_secondary="#A1A8B3",
+    text_placeholder="#757D8A",
+    border_hairline="#2D333B",
+    border_focus="#7FB3D5",
+    accent_primary="#7FB3D5",
+    accent_on_primary="#0D1B2A",
+    accent_subtle="#1B2A38",
+    accent_hover="#9CC5E0",
+    pass_bg="#142E24",
+    pass_fg="#6EE7B7",
+    pass_border="#234E3D",
+    warn_bg="#332512",
+    warn_fg="#FCD34D",
+    warn_border="#573E1C",
+    fail_bg="#35181B",
+    fail_fg="#FCA5A5",
+    fail_border="#5C262C",
+    justif_bg="#1A2838",
+    justif_fg="#93C5FD",
+    justif_border="#2B425C",
+    empty_bg="#262B32",
+    empty_fg="#A1A8B3",
+    empty_border="#2D333B",
+    chart_pass="#6EE7B7",
+    chart_good="#34D399",
+    chart_warn="#FCD34D",
+    chart_fail="#FCA5A5",
+    chart_justif="#93C5FD",
+    chart_empty="#A1A8B3",
+    save_status_bg="#142E24",
+    save_status_text="#6EE7B7",
+    save_pending_bg="#332512",
+    save_pending_text="#FCD34D",
+)
+
+# 5 tonos editoriales de monograma (>= 6.0:1 en claro y oscuro)
+_LIGHT_AVATAR_PALETTES: tuple[tuple[str, str], ...] = (
+    ("#E4ECF4", "#1B3B5A"),  # Prusiano
+    ("#E6F4EA", "#135E3D"),  # Salvia
+    ("#FEF3C7", "#92400E"),  # Ocre
+    ("#F8E7E4", "#8C2D25"),  # Terracota
+    ("#ECEAE2", "#3F3F46"),  # Grafito
+)
+
+_DARK_AVATAR_PALETTES: tuple[tuple[str, str], ...] = (
+    ("#1A2838", "#93C5FD"),  # Prusiano oscuro
+    ("#142E24", "#6EE7B7"),  # Salvia oscuro
+    ("#332512", "#FCD34D"),  # Ocre oscuro
+    ("#351B19", "#FCA5A5"),  # Terracota oscuro
+    ("#262B32", "#D1D5DB"),  # Grafito oscuro
 )
 
 
 def get_tokens(mode: str = "light") -> ThemeTokens:
-    """Retorna el conjunto de tokens de diseño semánticos según el modo especificado."""
-    if mode == "dark":
+    """Devuelve el conjunto de tokens editoriales según el modo activo."""
+    if isinstance(mode, str) and mode.strip().lower() == "dark":
         return DARK_TOKENS
     return LIGHT_TOKENS
 
 
-# --- CONSTANTES RETROCOMPATIBLES HISTÓRICAS (MODO CLARO) ---
-BG_PAGE = LIGHT_TOKENS.bg_page
-SURFACE_WHITE = LIGHT_TOKENS.surface
-BORDER_COLOR = LIGHT_TOKENS.border_color
-BORDER_ACTIVE = LIGHT_TOKENS.border_active
-
-PRIMARY = LIGHT_TOKENS.primary
-PRIMARY_LIGHT = LIGHT_TOKENS.primary_light
-PRIMARY_HOVER = LIGHT_TOKENS.primary_hover
-
-TEXT_MAIN = LIGHT_TOKENS.text_main
-TEXT_MUTED = LIGHT_TOKENS.text_muted
-TEXT_SUBTLE = LIGHT_TOKENS.text_subtle
-
-GRADE_PASS_BG = LIGHT_TOKENS.grade_pass_bg
-GRADE_PASS_TEXT = LIGHT_TOKENS.grade_pass_text
-GRADE_FAIL_BG = LIGHT_TOKENS.grade_fail_bg
-GRADE_FAIL_TEXT = LIGHT_TOKENS.grade_fail_text
-GRADE_EMPTY_BG = LIGHT_TOKENS.grade_empty_bg
-GRADE_EMPTY_TEXT = LIGHT_TOKENS.grade_empty_text
-
-ATTENDANCE_P_BG = LIGHT_TOKENS.attendance_p_bg
-ATTENDANCE_P_TEXT = LIGHT_TOKENS.attendance_p_text
-ATTENDANCE_P_SOLID = LIGHT_TOKENS.attendance_p_solid
-
-ATTENDANCE_A_BG = LIGHT_TOKENS.attendance_a_bg
-ATTENDANCE_A_TEXT = LIGHT_TOKENS.attendance_a_text
-ATTENDANCE_A_SOLID = LIGHT_TOKENS.attendance_a_solid
-
-ATTENDANCE_T_BG = LIGHT_TOKENS.attendance_t_bg
-ATTENDANCE_T_TEXT = LIGHT_TOKENS.attendance_t_text
-ATTENDANCE_T_SOLID = LIGHT_TOKENS.attendance_t_solid
-
-ATTENDANCE_J_BG = LIGHT_TOKENS.attendance_j_bg
-ATTENDANCE_J_TEXT = LIGHT_TOKENS.attendance_j_text
-ATTENDANCE_J_SOLID = LIGHT_TOKENS.attendance_j_solid
-
-WARNING_AMBER = LIGHT_TOKENS.warning_amber
-
-
-def get_grade_tone(value: float | int | str | None, is_dark: bool = False) -> tuple[str, str]:
+def resolve_tokens(
+    tokens: ThemeTokens | None = None,
+    page: ft.Page | None = None,
+    state: Any = None,
+) -> ThemeTokens:
     """
-    Retorna (bg_color, text_color) según la calificación y el tema activo.
-    Conserva retrocompatibilidad con invocaciones previas mediante is_dark=False por defecto.
+    Resuelve de forma unificada los tokens del tema vigente sin recurrir
+    a comparaciones frágiles ni constantes claras fijas.
     """
-    tokens = DARK_TOKENS if is_dark else LIGHT_TOKENS
-    if value is None or value == "" or value == "--":
-        return tokens.grade_empty_bg, tokens.grade_empty_text
+    if isinstance(tokens, ThemeTokens):
+        return tokens
+    if state is not None:
+        state_mode = getattr(state, "theme_mode", None)
+        if state_mode is not None:
+            return get_tokens(str(state_mode))
+    if page is not None:
+        page_mode = getattr(page, "theme_mode", None)
+        if page_mode == ft.ThemeMode.DARK:
+            return DARK_TOKENS
+        if isinstance(page_mode, str) and page_mode.strip().lower() == "dark":
+            return DARK_TOKENS
+    return LIGHT_TOKENS
+
+
+def is_dark_tokens(tokens: Any) -> bool:
+    """Retorna True si la paleta resuelta corresponde al modo oscuro editorial."""
+    bg = getattr(tokens, "bg_canvas", "")
+    return isinstance(bg, str) and bg.lower() == DARK_TOKENS.bg_canvas.lower()
+
+
+def get_grade_triad(value: Any, tokens: ThemeTokens) -> tuple[str, str, str]:
+    """
+    Retorna la tríada indivisible (bg, fg, border) correspondiente a una nota
+    numérica según la regla constitucional de corte < 5.50.
+    """
+    if value is None or str(value).strip() in ("", "--", "-"):
+        return (tokens.empty_bg, tokens.empty_fg, tokens.empty_border)
     try:
-        num = float(value)
-        if num >= 6.0:
-            return tokens.grade_pass_bg, tokens.grade_pass_text
-        return tokens.grade_fail_bg, tokens.grade_fail_text
+        num = float(str(value).replace(",", "."))
     except (ValueError, TypeError):
-        return tokens.grade_empty_bg, tokens.grade_empty_text
+        return (tokens.empty_bg, tokens.empty_fg, tokens.empty_border)
+    if num >= 5.50:
+        return (tokens.pass_bg, tokens.pass_fg, tokens.pass_border)
+    return (tokens.fail_bg, tokens.fail_fg, tokens.fail_border)
+
+
+def get_grade_tone(
+    value: Any,
+    is_dark: bool = False,
+    tokens: ThemeTokens | None = None,
+) -> tuple[str, str]:
+    """Devuelve el par semántico (bg, fg) para una nota o promedio."""
+    tok = tokens if isinstance(tokens, ThemeTokens) else (DARK_TOKENS if is_dark else LIGHT_TOKENS)
+    bg, fg, _ = get_grade_triad(value, tok)
+    return (bg, fg)
 
 
 def get_avatar_palette(index: int | str, is_dark: bool = False) -> tuple[str, str]:
-    """Genera pares armónicos de color para los avatares circulares de alumnos."""
-    if is_dark:
-        palettes = [
-            ("#2E1065", "#C4B5FD"),  # Violeta profundo / Lavanda luminoso
-            ("#082F49", "#7DD3FC"),  # Cyan profundo / Celeste luminoso
-            ("#4C0519", "#FDA4AF"),  # Carmesí oscuro / Rosa suave
-            ("#451A03", "#FCD34D"),  # Ámbar oscuro / Dorado luminoso
-            ("#022C22", "#6EE7B7"),  # Verde esmeralda profundo / Menta luminoso
-            ("#1E293B", "#CBD5E1"),  # Slate 800 / Slate 300
-        ]
+    """
+    Devuelve la paleta editorial (bg, fg) del monograma rectangular para un
+    índice entero o clave textual determinística.
+    """
+    palettes = _DARK_AVATAR_PALETTES if is_dark else _LIGHT_AVATAR_PALETTES
+    if isinstance(index, int):
+        idx = index % len(palettes)
     else:
-        palettes = [
-            ("#EDE9FE", "#6D28D9"),  # Púrpura suave / violeta
-            ("#E0F2FE", "#0369A1"),  # Azul cielo / azul marino
-            ("#FFE4E6", "#BE123C"),  # Rosa suave / carmesí
-            ("#FEF3C7", "#B45309"),  # Ámbar suave / marrón cálido
-            ("#D1FAE5", "#047857"),  # Esmeralda suave / verde oscuro
-            ("#F1F5F9", "#475569"),  # Slate neutro
-        ]
-    try:
-        idx = int(index)
-    except (ValueError, TypeError):
-        idx = sum(ord(c) for c in str(index))
-    return palettes[idx % len(palettes)]
+        clave = str(index or "")
+        acum = sum((pos + 1) * ord(ch) for pos, ch in enumerate(clave))
+        idx = acum % len(palettes)
+    return palettes[idx]
 
 
 def extract_initials(nombre_completo: str) -> str:
-    """Extrae las iniciales en mayúsculas de un nombre completo ('Apellido, Nombre' o 'Nombre Apellido')."""
-    if not nombre_completo:
+    """Extrae hasta dos iniciales en mayúscula para monogramas de fila."""
+    texto = (nombre_completo or "").strip()
+    if not texto:
         return "?"
-    partes = [p.strip() for p in nombre_completo.replace(",", " ").split() if p.strip()]
-    if not partes:
-        return "?"
-    if len(partes) == 1:
-        return partes[0][:2].upper()
-    return (partes[0][0] + partes[1][0]).upper()
+    partes = [p for p in texto.replace(",", " ").split() if p]
+    if len(partes) >= 2:
+        return (partes[0][0] + partes[1][0]).upper()
+    return partes[0][:2].upper()
+
+
+def tabular_text(
+    value: str,
+    size: int = 13,
+    weight: ft.FontWeight = ft.FontWeight.NORMAL,
+    color: str | None = None,
+    **kwargs: Any,
+) -> ft.Text:
+    """
+    Crea un control `ft.Text` configurado con tipografía monoespaciada tabular
+    offline (`LedgerMono`), aplicando guardia defensiva para `ft.FontFeature` en Flet 0.86.5.
+    """
+    text_kwargs: dict[str, Any] = {
+        "value": value,
+        "font_family": FONT_MONO,
+        "size": size,
+        "weight": weight,
+    }
+    if color is not None:
+        text_kwargs["color"] = color
+    text_kwargs.update(kwargs)
+    if hasattr(ft, "FontFeature") and "font_features" not in text_kwargs:
+        text_kwargs["font_features"] = [ft.FontFeature.tabular_figures()]
+    return ft.Text(**text_kwargs)
+
+
+def pluralizar(
+    cantidad: int,
+    singular: str,
+    plural: str | None = None,
+) -> str:
+    """Devuelve cantidad + sustantivo concordado en español (RF-13..RF-23, B7)."""
+    if cantidad == 1:
+        return f"1 {singular}"
+    if plural is not None:
+        return f"{cantidad} {plural}"
+    base = singular.strip()
+    if base.endswith("ión"):
+        return f"{cantidad} {base[:-3]}iones"
+    if base.endswith("z"):
+        return f"{cantidad} {base[:-1]}ces"
+    if base.lower().endswith(("a", "e", "i", "o", "u", "á", "é", "í", "ó", "ú")):
+        return f"{cantidad} {base}s"
+    return f"{cantidad} {base}es"
+
+
+def _relative_luminance(hex_color: str) -> float:
+    """Calcula la luminancia relativa WCAG 2.1 para un color hexadecimal `#RRGGBB`."""
+    raw = hex_color.strip().lstrip("#")
+    if len(raw) == 8:
+        raw = raw[2:]
+    r = int(raw[0:2], 16) / 255.0
+    g = int(raw[2:4], 16) / 255.0
+    b = int(raw[4:6], 16) / 255.0
+
+    def _linearize(channel: float) -> float:
+        if channel <= 0.03928:
+            return channel / 12.92
+        return ((channel + 0.055) / 1.055) ** 2.4
+
+    return 0.2126 * _linearize(r) + 0.7152 * _linearize(g) + 0.0722 * _linearize(b)
+
+
+def compute_contrast_ratio(fg_hex: str, bg_hex: str) -> float:
+    """Calcula el ratio de contraste WCAG 2.1 entre primer plano y fondo."""
+    lum_fg = _relative_luminance(fg_hex)
+    lum_bg = _relative_luminance(bg_hex)
+    brighter = max(lum_fg, lum_bg)
+    darker = min(lum_fg, lum_bg)
+    return (brighter + 0.05) / (darker + 0.05)
+
+
+def responsive_gutter(page_width: float | None) -> int:
+    """Margen lateral responsivo por clase de ancho: <360->12, <600->16, >=600->24."""
+    if not isinstance(page_width, (int, float)) or page_width <= 0:
+        return SPACE_LG
+    if page_width < 360:
+        return SPACE_MD
+    if page_width < 600:
+        return SPACE_LG
+    return SPACE_XL
+
+
+def constrain_tablet_content(
+    control: ft.Control,
+    page_width: float | None,
+    tokens: ThemeTokens | None = None,
+) -> ft.Control:
+    """Centra y limita el ancho máximo de lectura a 720dp en tabletas (>= 600dp)."""
+    if isinstance(page_width, (int, float)) and page_width >= 600:
+        tok = resolve_tokens(tokens)
+        return ft.Container(
+            content=ft.Container(content=control, width=720, expand=True),
+            expand=getattr(control, "expand", True),
+            alignment=ft.Alignment.TOP_CENTER,
+            bgcolor=tok.bg_canvas,
+        )
+    return control
+
+
+# ---------------------------------------------------------------------------
+# Alias legados derivados exclusivamente de LIGHT_TOKENS (solo retrocompatibilidad
+# de tests antiguos; prohibido importarlos desde mobile/components, views o main)
+# ---------------------------------------------------------------------------
+
+BG_PAGE = LIGHT_TOKENS.bg_canvas
+SURFACE_WHITE = LIGHT_TOKENS.surface_primary
+BORDER_COLOR = LIGHT_TOKENS.border_hairline
+BORDER_ACTIVE = LIGHT_TOKENS.border_hairline
+
+PRIMARY = LIGHT_TOKENS.accent_primary
+PRIMARY_LIGHT = LIGHT_TOKENS.accent_subtle
+PRIMARY_HOVER = LIGHT_TOKENS.accent_hover
+
+TEXT_MAIN = LIGHT_TOKENS.text_primary
+TEXT_MUTED = LIGHT_TOKENS.text_secondary
+TEXT_SUBTLE = LIGHT_TOKENS.text_placeholder
+
+GRADE_PASS_BG = LIGHT_TOKENS.pass_bg
+GRADE_PASS_TEXT = LIGHT_TOKENS.pass_fg
+GRADE_FAIL_BG = LIGHT_TOKENS.fail_bg
+GRADE_FAIL_TEXT = LIGHT_TOKENS.fail_fg
+GRADE_EMPTY_BG = LIGHT_TOKENS.empty_bg
+GRADE_EMPTY_TEXT = LIGHT_TOKENS.empty_fg
+
+ATTENDANCE_P_BG = LIGHT_TOKENS.pass_bg
+ATTENDANCE_P_TEXT = LIGHT_TOKENS.pass_fg
+ATTENDANCE_P_SOLID = LIGHT_TOKENS.pass_fg
+ATTENDANCE_A_BG = LIGHT_TOKENS.fail_bg
+ATTENDANCE_A_TEXT = LIGHT_TOKENS.fail_fg
+ATTENDANCE_A_SOLID = LIGHT_TOKENS.fail_fg
+ATTENDANCE_T_BG = LIGHT_TOKENS.warn_bg
+ATTENDANCE_T_TEXT = LIGHT_TOKENS.warn_fg
+ATTENDANCE_T_SOLID = LIGHT_TOKENS.warn_fg
+ATTENDANCE_J_BG = LIGHT_TOKENS.justif_bg
+ATTENDANCE_J_TEXT = LIGHT_TOKENS.justif_fg
+ATTENDANCE_J_SOLID = LIGHT_TOKENS.justif_fg
+
+WARNING_AMBER = LIGHT_TOKENS.warn_fg

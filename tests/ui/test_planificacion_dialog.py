@@ -236,6 +236,7 @@ def test_planificacion_dialog_cerrar_y_flush(temp_state):
 
 
 def test_planificacion_dialog_modo_oscuro_y_tokens(temp_state):
+    from mobile.components.notaly_sheet import NotalySheet
     from mobile.theme import DARK_TOKENS, LIGHT_TOKENS
     page = MockMobilePage(width=360, height=800)
 
@@ -247,12 +248,12 @@ def test_planificacion_dialog_modo_oscuro_y_tokens(temp_state):
         page=page,
         tokens=DARK_TOKENS,
     )
+    assert isinstance(dlg_dark, NotalySheet)
     assert dlg_dark.tokens == DARK_TOKENS
-    assert dlg_dark.bgcolor == DARK_TOKENS.surface
-    assert dlg_dark.title.controls[0].color == DARK_TOKENS.primary
-    assert dlg_dark.title.controls[1].controls[0].color == DARK_TOKENS.text_main
-    assert dlg_dark.title.controls[1].controls[1].color == DARK_TOKENS.text_muted
-    assert dlg_dark.content.width == max(280, min(360 - 32, 380))
+    assert dlg_dark.bgcolor == DARK_TOKENS.surface_primary
+    assert dlg_dark.header_row.controls[0].controls[0].color == DARK_TOKENS.text_primary
+    assert dlg_dark.header_row.controls[0].controls[1].color == DARK_TOKENS.text_secondary
+    assert dlg_dark.body_column.scroll == ft.ScrollMode.AUTO
 
     # Modo Claro por defecto
     dlg_light = PlanificacionCursoDialog(
@@ -263,7 +264,7 @@ def test_planificacion_dialog_modo_oscuro_y_tokens(temp_state):
         tokens=LIGHT_TOKENS,
     )
     assert dlg_light.tokens == LIGHT_TOKENS
-    assert dlg_light.bgcolor == LIGHT_TOKENS.surface
+    assert dlg_light.bgcolor == LIGHT_TOKENS.surface_primary
 
 
 def test_planificacion_dialog_on_change_callbacks(temp_state):

@@ -80,46 +80,34 @@ def responsive_state(tmp_path):
 
 
 def test_cursos_view_card_layout_no_crowding(responsive_state):
-    """Verifica que la tarjeta de curso tenga un top_row despejado sin estrangulamiento de texto."""
+    """Verifica que la fila NotalyListRow de CursosView no tenga botón duplicado ni estrangulamiento."""
+    from mobile.components.ledger_primitives import NotalyListRow
+
     page = MockResponsivePage(width=360)
     view = CursosView(responsive_state, page, on_navigate=lambda _: None)
 
-    # Obtener la primera tarjeta de curso
-    card = view.content.controls[1].content.controls[1]
-    top_row = card.content.controls[0]
+    rows = [c for c in view.list_view.controls if isinstance(c, NotalyListRow)]
+    assert len(rows) >= 1
+    row = rows[0]
+    assert row.border_radius == 0
+    assert row.monogram_box.border_radius == 4
+    assert row.title_control.max_lines == 1
+    assert row.title_control.overflow == ft.TextOverflow.ELLIPSIS
 
-    # Controles esperados en top_row: avatar (0), column con textos (1), botón directo planificaciones (2), popup (3)
-    assert len(top_row.controls) == 4
-
-    col_textos = top_row.controls[1]
-    assert isinstance(col_textos, ft.Column)
-    assert col_textos.expand is True
-
-    # El título y subtítulo deben tener max_lines=1 y overflow ELLIPSIS
-    titulo = col_textos.controls[0]
-    subtitulo = col_textos.controls[1]
-    assert titulo.max_lines == 1
-    assert titulo.overflow == ft.TextOverflow.ELLIPSIS
-    assert subtitulo.max_lines == 1
-    assert subtitulo.overflow == ft.TextOverflow.ELLIPSIS
-
-    # El botón directo de planificaciones está presente
-    btn_directo = top_row.controls[2]
-    assert isinstance(btn_directo, ft.IconButton)
-    assert btn_directo.icon == ft.Icons.EVENT_NOTE
-
-    # El popup menu está al final
-    popup = top_row.controls[3]
-    assert isinstance(popup, ft.PopupMenuButton)
+    trailing = row.row_widget.controls[2:]
+    assert not any(isinstance(c, ft.PopupMenuButton) for c in trailing)
+    assert not any(getattr(c, "icon", None) == ft.Icons.EVENT_NOTE for c in trailing)
 
 
 def test_planificaciones_dialog_responsive_and_no_wrap(responsive_state):
-    """Verifica que el diálogo de planificaciones no comprima 'Sin clases planificadas' y calcule ancho/alto dinámicos."""
+    """Verifica que PlanificacionesInstitucionDialog use NotalySheet sin altura rígida y botón >= 44dp."""
+    from mobile.components.notaly_sheet import NotalySheet
+
     page = MockResponsivePage(width=360, height=700)
     dlg = PlanificacionesInstitucionDialog(responsive_state, "Colegio Modelo", page=page)
 
-    # Ancho responsivo debe adaptarse a la pantalla
-    assert dlg.content.width <= 360
+    assert isinstance(dlg, NotalySheet)
+    assert dlg.body_column.scroll == ft.ScrollMode.AUTO
 
     # Tarjeta del curso
     card = dlg.cursos_content_col.controls[0]
@@ -131,28 +119,26 @@ def test_planificaciones_dialog_responsive_and_no_wrap(responsive_state):
     assert contador.no_wrap is True
     assert contador.overflow == ft.TextOverflow.ELLIPSIS
 
-    # Botón Añadir planificación debe estar en la fila inferior de acciones y tener dimensiones compactas
+    # Botón Añadir planificación táctil accesible >= 44dp
     actions_row = card.content.controls[-1]
     btn_anadir = actions_row.controls[0]
     assert isinstance(btn_anadir, ft.OutlinedButton)
-    assert btn_anadir.height <= 32
+    assert btn_anadir.height >= 44
 
 
 def test_sorteador_dialog_stepper_and_scroll_responsiveness(responsive_state):
-    """Verifica que el stepper numérico sea flexible y el contenido tenga ScrollMode.AUTO para el teclado de Android."""
+    """Verifica que el stepper numérico sea flexible y use NotalySheet con ScrollMode.AUTO sin altura fija."""
+    from mobile.components.notaly_sheet import NotalySheet
+
     page = MockResponsivePage(width=360, height=720)
     dlg = SorteadorGruposDialog(responsive_state, page=page, on_created=lambda _: None)
 
-    container = dlg.content
-    assert container.width <= 360
-    assert container.height is not None
-
-    col_content = container.content
-    assert isinstance(col_content, ft.Column)
-    assert col_content.scroll == ft.ScrollMode.AUTO
+    assert isinstance(dlg, NotalySheet)
+    assert dlg.size_constraints.max_height == int(720 * 0.85)
+    assert dlg.body_column.scroll == ft.ScrollMode.AUTO
 
     # Verificar el stepper
-    stepper_row = col_content.controls[2]
+    stepper_row = dlg.stepper_row
     label = stepper_row.controls[0]
     assert label.expand is True
 
@@ -163,7 +149,10 @@ def test_sorteador_dialog_stepper_and_scroll_responsiveness(responsive_state):
 
 
 def test_export_dialog_responsive_and_scroll(responsive_state):
-    """Verifica que ExportDialog tenga ScrollMode.AUTO y ancho adaptable."""
+    """Verifica que ExportDialog herede NotalySheet con ScrollMode.AUTO y filas seleccionables sin ft.Radio."""
+    from mobile.components.ledger_primitives import NotalyListRow
+    from mobile.components.notaly_sheet import NotalySheet
+
     page = MockResponsivePage(width=360)
     curso_data = responsive_state.get_curso_data("Colegio Modelo", "5to A")
     dlg = ExportDialog(
@@ -175,15 +164,13 @@ def test_export_dialog_responsive_and_scroll(responsive_state):
         page=page,
     )
 
-    container = dlg.content
-    assert container.width <= 360
-    assert container.content.scroll == ft.ScrollMode.AUTO
+    assert isinstance(dlg, NotalySheet)
+    assert dlg.body_column.scroll == ft.ScrollMode.AUTO
 
-    # Las opciones de radio deben ser concisas
-    radios = dlg.formato_selector.content.controls
-    for r in radios:
-        assert isinstance(r, ft.Radio)
-        # Ninguna etiqueta debe ser excesivamente larga
+    # Las opciones deben ser filas planas editoriales concisas
+    opciones = dlg.formato_selector.content.controls
+    for r in opciones:
+        assert isinstance(r, NotalyListRow)
         assert len(r.label) < 40
 
 

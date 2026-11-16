@@ -1,164 +1,180 @@
 """
-Diálogo interactivo para ingresar y editar notas en Android/móvil.
-Ofrece un campo numérico optimizado con soporte para calificaciones enteras y decimales (1 a 10).
+Editor modal editorial de notas (GradeEditorDialog) para Flet Mobile (SPEC-028).
 """
 
-import math
+from __future__ import annotations
+
+from typing import Any, Callable
+
 import flet as ft
-from typing import Callable
+
+from mobile.components.notaly_sheet import (
+    build_action_rows,
+    close_dialog_safe,
+    resolve_page_dimensions,
+    sheet_action_button,
+)
+from mobile.components.student_dialog import dialog_editorial_title
 from mobile.theme import (
-    PRIMARY,
-    TEXT_MAIN,
-    TEXT_MUTED,
-    BORDER_COLOR,
-    BG_PAGE,
-    LIGHT_TOKENS,
+    FONT_MONO,
+    RADIUS_MD,
+    RADIUS_SM,
+    SPACE_LG,
+    SPACE_MD,
+    SPACE_SM,
+    SPACE_XS,
     ThemeTokens,
-    get_tokens,
+    resolve_tokens,
+    tabular_text,
 )
 
 
 class GradeEditorDialog(ft.AlertDialog):
+    """
+    Diálogo editorial para ingreso/edición de una calificación (`1` a `10`)
+    con teclado rápido `44dp` y campo `LedgerMono`.
+    """
+
     def __init__(
         self,
         alumno_nombre: str,
         columna_nombre: str,
-        valor_actual: float | int | None,
-        on_save: Callable[[float | int | None], None],
+        valor_actual: float | None,
+        on_save: Callable[[float | None], None],
         on_close: Callable[[], None] | None = None,
         page: ft.Page | None = None,
         tokens: ThemeTokens | None = None,
-    ):
+    ) -> None:
         self.on_save = on_save
-        self.on_close_cb = on_close
+        self.on_close = on_close
         self.app_page = page
-        self.tokens = tokens or (get_tokens("dark") if getattr(page, "theme_mode", None) == ft.ThemeMode.DARK else LIGHT_TOKENS)
+        self.tokens = resolve_tokens(tokens=tokens, page=page)
         tok = self.tokens
 
-        # Campo de texto para notas (1 a 10)
-        initial_val_str = ""
+        val_str = ""
         if valor_actual is not None:
-            try:
-                num = float(str(valor_actual).replace(",", "."))
-                initial_val_str = str(int(math.floor(num + 0.5)))
-            except (ValueError, TypeError):
-                initial_val_str = str(valor_actual)
+            val_str = str(int(valor_actual)) if float(valor_actual).is_integer() else str(valor_actual)
 
         self.txt_nota = ft.TextField(
-            value=initial_val_str,
-            label="Calificación (1 a 10)",
-            hint_text="",
+            value=val_str,
+            label=f"Nota en {columna_nombre}",
+            hint_text="1 a 10 (vacío para limpiar)",
             keyboard_type=ft.KeyboardType.NUMBER,
-            text_align=ft.TextAlign.CENTER,
-            text_size=24,
             autofocus=True,
-            dense=False,
-            border_radius=12,
-            bgcolor=tok.bg_page,
-            border_color=tok.primary,
-            color=tok.text_main,
-            on_submit=lambda e: self._guardar_desde_input(),
+            text_align=ft.TextAlign.CENTER,
+            text_size=22,
+            border_radius=RADIUS_SM,
+            bgcolor=tok.bg_canvas,
+            border_color=tok.border_hairline,
+            focused_border_color=tok.accent_primary,
+            cursor_color=tok.accent_primary,
+            color=tok.text_primary,
+            label_style=ft.TextStyle(color=tok.text_secondary),
+            hint_style=ft.TextStyle(color=tok.text_placeholder),
+            text_style=ft.TextStyle(font_family=FONT_MONO, weight=ft.FontWeight.BOLD),
+            on_submit=lambda _e: self._guardar_desde_input(),
         )
 
-        self.error_text = ft.Text("", color=ft.Colors.ERROR, size=12, visible=False)
+        self.error_text = ft.Text("", color=tok.fail_fg, size=12, visible=False)
 
-        content = ft.Column(
+        def _make_quick_btn(num: int) -> ft.Container:
+            if num >= 6:
+                bg, fg, brd = tok.pass_bg, tok.pass_fg, tok.pass_border
+            else:
+                bg, fg, brd = tok.fail_bg, tok.fail_fg, tok.fail_border
+            return ft.Container(
+                content=tabular_text(str(num), size=15, weight=ft.FontWeight.BOLD, color=fg),
+                height=44,
+                expand=True,
+                alignment=ft.Alignment.CENTER,
+                border_radius=RADIUS_SM,
+                bgcolor=bg,
+                border=ft.Border.all(1, brd),
+                ink=True,
+                on_click=lambda _e, v=num: self._guardar_valor(v),
+            )
+
+        quick_grid = ft.Column(
+            spacing=SPACE_XS,
             tight=True,
-            spacing=12,
-            width=300,
             controls=[
-                ft.Container(
-                    content=ft.Column(
-                        [
-                            ft.Text(f"Alumno: {alumno_nombre}", weight=ft.FontWeight.BOLD, size=15, color=tok.text_main),
-                            ft.Text(f"Evaluación: {columna_nombre}", color=tok.text_muted, size=13),
-                        ],
-                        spacing=2,
-                    ),
-                    padding=ft.Padding(bottom=4, left=0, right=0, top=0),
+                ft.Row(spacing=SPACE_XS, controls=[_make_quick_btn(i) for i in range(1, 6)]),
+                ft.Row(spacing=SPACE_XS, controls=[_make_quick_btn(i) for i in range(6, 11)]),
+            ],
+        )
+
+        pw, _ = resolve_page_dimensions(page)
+        content_width = max(280.0, min(pw - 48.0, 380.0))
+
+        body = ft.Column(
+            tight=True,
+            scroll=ft.ScrollMode.AUTO,
+            spacing=SPACE_MD,
+            controls=[
+                ft.Text(
+                    alumno_nombre,
+                    size=14,
+                    weight=ft.FontWeight.W_600,
+                    color=tok.text_secondary,
+                    max_lines=1,
+                    overflow=ft.TextOverflow.ELLIPSIS,
                 ),
                 self.txt_nota,
                 self.error_text,
+                ft.Text("Selección rápida", size=11, weight=ft.FontWeight.BOLD, color=tok.text_secondary),
+                quick_grid,
             ],
         )
 
         actions = [
-            ft.TextButton(
-                "Borrar Nota",
-                icon=ft.Icons.DELETE_OUTLINE,
-                style=ft.ButtonStyle(color=ft.Colors.RED_600, shape=ft.RoundedRectangleBorder(radius=8)),
-                on_click=lambda e: self._guardar_valor(None),
-            ),
-            ft.OutlinedButton(
-                "Cancelar",
-                style=ft.ButtonStyle(color=tok.text_muted, side=ft.BorderSide(1, tok.border_color), shape=ft.RoundedRectangleBorder(radius=8)),
-                on_click=lambda e: self._cerrar(),
-            ),
-            ft.FilledButton(
-                "Guardar",
-                style=ft.ButtonStyle(bgcolor=tok.primary, color=ft.Colors.WHITE, shape=ft.RoundedRectangleBorder(radius=8)),
-                on_click=lambda e: self._guardar_desde_input(),
-            ),
+            sheet_action_button("Limpiar nota", lambda _e: self._guardar_valor(None), tokens=tok, primary=False, destructive=True),
+            sheet_action_button("Cancelar", lambda _e: self._cerrar(), tokens=tok, primary=False),
+            sheet_action_button("Guardar", lambda _e: self._guardar_desde_input(), tokens=tok, primary=True),
         ]
+        action_grid = build_action_rows(actions)
+        wrapped_actions = [ft.Container(content=action_grid, width=content_width)] if action_grid else []
 
         super().__init__(
-            bgcolor=tok.surface,
-            title=ft.Row(
-                [
-                    ft.Icon(ft.Icons.SCHOOL, color=tok.primary, size=24),
-                    ft.Text("Cargar Nota", weight=ft.FontWeight.BOLD, size=16, color=tok.text_main, expand=True),
-                ],
-                spacing=8,
-                vertical_alignment=ft.CrossAxisAlignment.CENTER,
-            ),
-            content=content,
-            actions=actions,
+            title=dialog_editorial_title(f"Calificar · {columna_nombre}", tokens=tok, on_close=self._cerrar),
+            content=ft.Container(width=content_width, content=body),
+            actions=wrapped_actions,
             actions_alignment=ft.MainAxisAlignment.END,
+            bgcolor=tok.surface_primary,
+            elevation=0,
+            scrollable=True,
+            shape=ft.RoundedRectangleBorder(radius=ft.BorderRadius.all(RADIUS_MD)),
+            content_padding=ft.Padding.symmetric(horizontal=SPACE_LG, vertical=SPACE_MD),
+            actions_padding=ft.Padding(left=SPACE_LG, right=SPACE_LG, bottom=SPACE_LG, top=SPACE_XS),
             modal=True,
         )
 
-    def _guardar_desde_input(self):
-        raw = self.txt_nota.value.strip().replace(",", ".")
+    def _guardar_desde_input(self) -> None:
+        raw = (self.txt_nota.value or "").strip().replace(",", ".")
         if not raw:
-            self.on_save(None)
-            self._cerrar()
+            self._guardar_valor(None)
             return
 
         try:
-            num = float(raw)
-            if 1.0 <= num <= 10.0:
-                entero = int(math.floor(num + 0.5))
-                entero = max(1, min(10, entero))
-                self.on_save(entero)
-                self._cerrar()
-            else:
-                self.error_text.value = "La nota debe estar entre 1 y 10."
+            val = float(raw)
+            if val < 1.0 or val > 10.0:
+                self.error_text.value = "La nota debe estar entre 1 y 10"
                 self.error_text.visible = True
                 if self.app_page:
                     self.app_page.update()
+                return
+            val_entero = round(val)
+            self._guardar_valor(val_entero)
         except ValueError:
-            self.error_text.value = "Ingresa un número válido."
+            self.error_text.value = "Ingrese un número válido (ej: 7 u 8)"
             self.error_text.visible = True
             if self.app_page:
                 self.app_page.update()
 
-    def _guardar_valor(self, val: float | int | None):
-        if val is not None:
-            try:
-                num = float(val)
-                val = max(1, min(10, int(math.floor(num + 0.5))))
-            except (ValueError, TypeError):
-                val = None
+    def _guardar_valor(self, val: Any) -> None:
         self.on_save(val)
         self._cerrar()
 
-    def _cerrar(self):
-        self.open = False
-        if self.app_page:
-            try:
-                self.app_page.pop_dialog()
-                self.app_page.update()
-            except Exception:
-                pass
-        if self.on_close_cb:
-            self.on_close_cb()
+    def _cerrar(self) -> None:
+        close_dialog_safe(self.app_page, self)
+        if self.on_close:
+            self.on_close()

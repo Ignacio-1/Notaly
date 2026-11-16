@@ -1,26 +1,48 @@
 """
-Diálogo modal de planificación de clases, cronograma y horarios para cursos en Notaly.
-Permite establecer el horario semanal libre, seleccionar días de clase mediante un
-calendario mensual interactivo con idioma en español y gestionar temas/actividades
-por día en una lista cronológica acumulada.
+Hoja modal editorial para planificación semanal y registro de clases de un curso (SPEC-028).
+
+Migra `PlanificacionCursoDialog` a `NotalySheet` adaptativo sin altura fija rígida,
+celdas de calendario >= 44dp (`radius=4`, `LedgerMono`, `accent_on_primary`),
+insignias tabulares de fecha (`radius=4`) y autoguardado reactivo.
 """
 
+from __future__ import annotations
+
 import calendar
-from datetime import datetime, date
-from typing import Callable
+import inspect
+from datetime import date, datetime
+from typing import Any, Callable
+
 import flet as ft
 
-from mobile.theme import (
-    ThemeTokens,
-    LIGHT_TOKENS,
-    get_tokens,
-)
-from core.constants import K_TEMA, K_CLASES, K_HORARIO
+from core.constants import K_TEMA
+from mobile.components.notaly_sheet import NotalySheet, sheet_action_button
 from mobile.state import AppState
+from mobile.theme import (
+    FONT_MONO,
+    RADIUS_MD,
+    RADIUS_SM,
+    SPACE_MD,
+    SPACE_SM,
+    SPACE_XS,
+    ThemeTokens,
+    resolve_tokens,
+    tabular_text,
+)
 
 MESES = [
-    "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
-    "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
+    "Enero",
+    "Febrero",
+    "Marzo",
+    "Abril",
+    "Mayo",
+    "Junio",
+    "Julio",
+    "Agosto",
+    "Septiembre",
+    "Octubre",
+    "Noviembre",
+    "Diciembre",
 ]
 
 DIAS_SEMANA = ["Lu", "Ma", "Mi", "Ju", "Vi"]
@@ -38,26 +60,8 @@ def format_fecha_badge(fecha_iso: str) -> str:
         return fecha_iso
 
 
-def _resolve_tokens(
-    tokens: ThemeTokens | None = None,
-    page: ft.Page | None = None,
-    state: AppState | None = None,
-) -> ThemeTokens:
-    """Resuelve los tokens de diseño defensivamente priorizando parámetros, estado o tema de la página."""
-    if tokens is not None:
-        return tokens
-    if state is not None and hasattr(state, "tokens") and state.tokens is not None:
-        return state.tokens
-    if page is not None and getattr(page, "theme_mode", None) == ft.ThemeMode.DARK:
-        return get_tokens("dark")
-    return LIGHT_TOKENS
-
-
-class PlanificacionCursoDialog(ft.AlertDialog):
-    """
-    Diálogo modal de planificación de clases de un curso.
-    Contiene un scroll unificado vertical para evitar desbordamientos en pantallas móviles.
-    """
+class PlanificacionCursoDialog(NotalySheet):
+    """Hoja modal editorial con calendario hábil (Lu–Vi), horario y temas de clase."""
 
     def __init__(
         self,
@@ -68,198 +72,154 @@ class PlanificacionCursoDialog(ft.AlertDialog):
         on_change: Callable[[], None] | None = None,
         page: ft.Page | None = None,
         tokens: ThemeTokens | None = None,
-    ):
+    ) -> None:
         self.state = state
         self.colegio = colegio
         self.curso = curso
         self.on_close_cb = on_close
         self.on_change_cb = on_change
-        self._closed = False
         self.app_page = page
-        self.tokens = _resolve_tokens(tokens, page, state)
+        self.tokens = resolve_tokens(tokens=tokens, page=page, state=state)
+        self._closed = False
         tok = self.tokens
 
-        # Diccionarios de referencia a controles para foco y navegación
-        self.tema_inputs: dict[str, ft.TextField] = {}
         self.item_containers: dict[str, ft.Container] = {}
+        self.tema_inputs: dict[str, ft.TextField] = {}
+        self.day_cells: list[ft.Container] = []
+        self.selected_date_iso: str | None = None
 
-        # Estado del mes en visualización
-        today = datetime.now()
-        self.current_view_year = today.year
-        self.current_view_month = today.month
+        hoy = datetime.now()
+        self.current_view_year = hoy.year
+        self.current_view_month = hoy.month
 
-        # Encabezado con título y subtítulo de contexto
-        title = ft.Row(
-            [
-                ft.Icon(ft.Icons.EVENT_NOTE, color=tok.primary, size=22),
-                ft.Column(
-                    [
-                        ft.Text("Planificación de Clases", weight=ft.FontWeight.BOLD, size=16, color=tok.text_main),
-                        ft.Text(f"{curso} · {colegio}", size=12, color=tok.text_muted),
-                    ],
-                    spacing=1,
-                    tight=True,
-                    expand=True,
-                ),
-            ],
-            vertical_alignment=ft.CrossAxisAlignment.CENTER,
-            spacing=8,
-        )
-
-        # 1. Sección Horario Semanal
         horario_actual = self.state.get_horario_curso(self.colegio, self.curso)
         self.txt_horario = ft.TextField(
             label="Horario del curso (opcional)",
             value=horario_actual,
-            hint_text="Ej: lun a vie 12:00 a 12:40 última hora",
-            prefix_icon=ft.Icons.ACCESS_TIME_ROUNDED,
-            dense=True,
+            hint_text="Ej: lun a vie 12:00 a 12:40",
+            prefix_icon=ft.Icons.ACCESS_TIME,
             text_size=13,
-            border_radius=10,
-            border_color=tok.border_color,
-            bgcolor=tok.bg_page,
-            color=tok.text_main,
+            border_radius=RADIUS_SM,
+            border_color=tok.border_hairline,
+            focused_border_color=tok.accent_primary,
+            cursor_color=tok.accent_primary,
+            bgcolor=tok.bg_canvas,
+            color=tok.text_primary,
+            label_style=ft.TextStyle(color=tok.text_secondary),
+            hint_style=ft.TextStyle(color=tok.text_placeholder),
             on_change=lambda e: self._on_horario_change(e.control.value),
         )
 
-        # 2. Sección Calendario Mensual Interactivo
         self.lbl_mes_anio = ft.Text(
             f"{MESES[self.current_view_month - 1]} {self.current_view_year}",
             weight=ft.FontWeight.BOLD,
-            size=14,
+            size=15,
             expand=True,
             text_align=ft.TextAlign.CENTER,
-            color=tok.text_main,
+            color=tok.text_primary,
         )
 
         header_nav_calendario = ft.Row(
-            [
+            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            controls=[
                 ft.IconButton(
                     icon=ft.Icons.CHEVRON_LEFT,
                     tooltip="Mes anterior",
                     icon_size=20,
-                    icon_color=tok.text_muted,
-                    on_click=lambda e: self._cambiar_mes(-1),
+                    width=48,
+                    height=48,
+                    icon_color=tok.text_secondary,
+                    on_click=lambda _e: self._cambiar_mes(-1),
                 ),
                 self.lbl_mes_anio,
                 ft.IconButton(
                     icon=ft.Icons.CHEVRON_RIGHT,
                     tooltip="Mes siguiente",
                     icon_size=20,
-                    icon_color=tok.text_muted,
-                    on_click=lambda e: self._cambiar_mes(1),
+                    width=48,
+                    height=48,
+                    icon_color=tok.text_secondary,
+                    on_click=lambda _e: self._cambiar_mes(1),
                 ),
             ],
-            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-            vertical_alignment=ft.CrossAxisAlignment.CENTER,
         )
 
         self.calendar_body = ft.Container()
         self._render_calendar()
 
         seccion_calendario = ft.Column(
-            [
-                ft.Text("Calendario de Clases", weight=ft.FontWeight.BOLD, size=13, color=tok.text_main),
+            spacing=SPACE_XS,
+            tight=True,
+            controls=[
+                ft.Text(
+                    "Calendario de Clases",
+                    weight=ft.FontWeight.BOLD,
+                    size=13,
+                    color=tok.text_secondary,
+                ),
                 header_nav_calendario,
                 self.calendar_body,
             ],
-            spacing=6,
-            tight=True,
         )
 
-        # 3. Sección Lista Acumulada de Clases
-        self.lbl_clases_header = ft.Text("Clases Planificadas", weight=ft.FontWeight.BOLD, size=13, color=tok.text_main)
-        self.lista_clases_col = ft.Column(spacing=8, tight=True)
+        self.lbl_clases_header = ft.Text(
+            "Clases Planificadas",
+            weight=ft.FontWeight.BOLD,
+            size=13,
+            color=tok.text_secondary,
+        )
+        self.lista_clases_col = ft.Column(spacing=SPACE_SM, tight=True)
         self._render_clases_list()
 
-        seccion_lista = ft.Column(
-            [
+        btn_cerrar = sheet_action_button(
+            "Listo / Cerrar",
+            lambda _e: self._cerrar(),
+            tokens=tok,
+            primary=False,
+            expand=True,
+        )
+
+        super().__init__(
+            page=page,
+            title="Planificación de Clases",
+            subtitle=f"{curso} · {colegio}",
+            body=[
+                self.txt_horario,
+                ft.Divider(height=1, thickness=1, color=tok.border_hairline),
+                seccion_calendario,
+                ft.Divider(height=1, thickness=1, color=tok.border_hairline),
                 self.lbl_clases_header,
                 self.lista_clases_col,
             ],
-            spacing=8,
-            tight=True,
+            actions=[btn_cerrar],
+            tokens=tok,
+            state=state,
+            on_dismiss=lambda _e: self._on_dismiss_flush(),
         )
 
-        # Contenedor con scroll vertical único
-        self.scroll_column = ft.Column(
-            [
-                self.txt_horario,
-                ft.Divider(height=1, color=tok.border_color),
-                seccion_calendario,
-                ft.Divider(height=1, color=tok.border_color),
-                seccion_lista,
-            ],
-            scroll=ft.ScrollMode.AUTO,
-            spacing=12,
-            tight=False,
-        )
-
-        # Dimensiones responsivas M3
-        pw = getattr(self.app_page, "width", None) or 390
-        ph = getattr(self.app_page, "height", None) or 844
-        calc_w = max(280, min(pw - 32, 380))
-        max_h = max(280, min(ph * 0.72, 520))
-
-        content = ft.Container(
-            content=self.scroll_column,
-            width=calc_w,
-            height=max_h,
-            padding=ft.Padding(left=0, right=0, top=4, bottom=4),
-        )
-
-        actions = [
-            ft.FilledButton(
-                "Listo",
-                style=ft.ButtonStyle(
-                    bgcolor=tok.primary,
-                    color=ft.Colors.WHITE,
-                    shape=ft.RoundedRectangleBorder(radius=8),
-                ),
-                on_click=lambda e: self._cerrar(),
-            )
-        ]
-
-        def _on_dismiss_wrapper(e=None):
-            if not getattr(self, "_closed", False):
-                self._closed = True
-                self.state.flush_auto_save()
-                if self.on_close_cb:
-                    try:
-                        self.on_close_cb()
-                    except Exception:
-                        pass
-
-        super().__init__(
-            title=title,
-            content=content,
-            actions=actions,
-            actions_alignment=ft.MainAxisAlignment.END,
-            modal=True,
-            bgcolor=tok.surface,
-            on_dismiss=_on_dismiss_wrapper,
-        )
-
-    def _focus_control(self, control):
-        """Asigna foco a un control de forma segura y compatible con Flet."""
-        if not control:
-            return
-        if self.app_page and hasattr(self.app_page, "run_task") and hasattr(control, "focus"):
-            import inspect
-            if inspect.iscoroutinefunction(control.focus):
-                self.app_page.run_task(control.focus)
+    def _safe_update(self) -> None:
+        try:
+            if self.page is not None:
+                self.update()
                 return
-        if hasattr(control, "focus"):
-            import inspect
+        except Exception:
+            pass
+        if self.app_page:
             try:
-                res = control.focus()
-                if inspect.iscoroutine(res):
-                    res.close()
+                self.app_page.update()
             except Exception:
                 pass
 
-    def _on_horario_change(self, val: str):
-        """Actualiza el horario con auto-guardado debounce."""
+    def _focus_control(self, control: ft.Control) -> None:
+        try:
+            res = control.focus()
+            if inspect.iscoroutine(res):
+                res.close()
+        except Exception:
+            pass
+
+    def _on_horario_change(self, val: str) -> None:
         self.state.set_horario_curso(val, self.colegio, self.curso, auto_save=True)
         if self.on_change_cb:
             try:
@@ -267,138 +227,137 @@ class PlanificacionCursoDialog(ft.AlertDialog):
             except Exception:
                 pass
 
-    def _cambiar_mes(self, delta: int):
-        """Navega entre meses actualizando la grilla del calendario."""
-        new_m = self.current_view_month + delta
-        new_y = self.current_view_year
-        if new_m < 1:
-            new_m = 12
-            new_y -= 1
-        elif new_m > 12:
-            new_m = 1
-            new_y += 1
-        self.current_view_month = new_m
-        self.current_view_year = new_y
+    def _cambiar_mes(self, delta: int) -> None:
+        self.current_view_month += delta
+        if self.current_view_month > 12:
+            self.current_view_month = 1
+            self.current_view_year += 1
+        elif self.current_view_month < 1:
+            self.current_view_month = 12
+            self.current_view_year -= 1
+
         self.lbl_mes_anio.value = f"{MESES[self.current_view_month - 1]} {self.current_view_year}"
         self._render_calendar()
-        if self.app_page:
-            try:
-                self.app_page.update()
-            except Exception:
-                pass
+        self._safe_update()
 
-    def _render_calendar(self):
-        """Renderiza la matriz de días del mes en curso mostrando exclusivamente días hábiles (Lunes a Viernes)."""
+    def _render_calendar(self) -> None:
         tok = self.tokens
-        clases = self.state.get_clases_curso(self.colegio, self.curso)
-        fechas_planificadas = set(clases.keys())
-
         cal = calendar.monthcalendar(self.current_view_year, self.current_view_month)
-        today = datetime.now()
+        clases = self.state.get_clases_curso(self.colegio, self.curso)
+        hoy = datetime.now()
+        self.day_cells = []
 
-        # Fila de encabezado de días hábiles (Lu - Vi) con distribución simétrica y responsiva
         header_days = ft.Row(
-            [
+            spacing=SPACE_XS,
+            controls=[
                 ft.Container(
-                    content=ft.Text(d, weight=ft.FontWeight.BOLD, size=11, color=tok.text_muted, text_align=ft.TextAlign.CENTER),
+                    content=ft.Text(
+                        d,
+                        weight=ft.FontWeight.BOLD,
+                        size=11,
+                        color=tok.text_secondary,
+                        text_align=ft.TextAlign.CENTER,
+                    ),
                     expand=True,
                     height=28,
                     alignment=ft.Alignment.CENTER,
                 )
                 for d in DIAS_SEMANA
             ],
-            spacing=4,
         )
 
-        grid_rows = [header_days]
-
+        grid_rows: list[ft.Control] = [header_days]
         for week in cal:
-            week_habiles = week[:5]  # Solo Lunes a Viernes (0 a 4)
-            # Omitir semanas sin ningún día hábil perteneciente al mes activo
-            if not any(day > 0 for day in week_habiles):
+            week_habiles = week[:5]
+            if all(day == 0 for day in week_habiles):
                 continue
 
-            week_cols = []
+            week_cols: list[ft.Control] = []
             for day in week_habiles:
                 if day == 0:
-                    week_cols.append(ft.Container(expand=True, height=36))
+                    week_cols.append(ft.Container(expand=True, height=44))
                 else:
-                    fecha_dia_iso = f"{self.current_view_year:04d}-{self.current_view_month:02d}-{day:02d}"
-                    has_class = fecha_dia_iso in fechas_planificadas
+                    fecha_iso = (
+                        f"{self.current_view_year:04d}-{self.current_view_month:02d}-{day:02d}"
+                    )
+                    is_planned = fecha_iso in clases
+                    is_selected = fecha_iso == self.selected_date_iso
                     is_today = (
-                        self.current_view_year == today.year
-                        and self.current_view_month == today.month
-                        and day == today.day
+                        day == hoy.day
+                        and self.current_view_month == hoy.month
+                        and self.current_view_year == hoy.year
                     )
 
-                    if has_class:
-                        bgcolor = tok.primary
-                        text_color = ft.Colors.WHITE
-                        font_weight = ft.FontWeight.BOLD
-                        border = None
+                    if is_selected or is_planned:
+                        bgcolor = tok.accent_primary
+                        text_color = tok.accent_on_primary
+                        border = (
+                            ft.Border.all(2, tok.accent_hover)
+                            if is_selected
+                            else ft.Border.all(1, tok.accent_primary)
+                        )
                     elif is_today:
-                        bgcolor = ft.Colors.TRANSPARENT
-                        text_color = tok.primary
-                        font_weight = ft.FontWeight.BOLD
-                        border = ft.Border.all(1.5, tok.primary)
+                        bgcolor = tok.accent_subtle
+                        text_color = tok.accent_primary
+                        border = ft.Border.all(1.5, tok.accent_primary)
                     else:
-                        bgcolor = ft.Colors.TRANSPARENT
-                        text_color = tok.text_main
-                        font_weight = ft.FontWeight.NORMAL
-                        border = None
+                        bgcolor = tok.surface_primary
+                        text_color = tok.text_primary
+                        border = ft.Border.all(1, tok.border_hairline)
 
-                    day_btn = ft.Container(
-                        content=ft.Text(
+                    day_cell = ft.Container(
+                        content=tabular_text(
                             str(day),
                             size=13,
-                            weight=font_weight,
+                            weight=(
+                                ft.FontWeight.BOLD
+                                if (is_planned or is_today or is_selected)
+                                else ft.FontWeight.W_500
+                            ),
                             color=text_color,
                             text_align=ft.TextAlign.CENTER,
                         ),
+                        expand=True,
+                        height=44,
+                        border_radius=RADIUS_SM,
                         bgcolor=bgcolor,
                         border=border,
-                        border_radius=8,
-                        expand=True,
-                        height=36,
                         alignment=ft.Alignment.CENTER,
                         ink=True,
-                        on_click=lambda e, f=fecha_dia_iso: self._on_dia_click(f),
+                        on_click=lambda _e, f=fecha_iso: self._on_dia_click(f),
                     )
-                    week_cols.append(day_btn)
+                    self.day_cells.append(day_cell)
+                    week_cols.append(day_cell)
 
-            grid_rows.append(ft.Row(week_cols, spacing=4))
+            grid_rows.append(ft.Row(week_cols, spacing=SPACE_XS))
 
-        self.calendar_body.content = ft.Column(grid_rows, spacing=4, tight=True)
+        self.calendar_body.content = ft.Column(grid_rows, spacing=SPACE_XS, tight=True)
 
-    def _on_dia_click(self, fecha_iso: str):
-        """Maneja el toque en un día del calendario según RF-11 y RF-12."""
+    def _on_dia_click(self, fecha_iso: str) -> None:
         clases = self.state.get_clases_curso(self.colegio, self.curso)
+        self.selected_date_iso = fecha_iso
+
         if fecha_iso not in clases:
-            # Nuevo día: registrar con tema vacío, resaltar y enfocar tarjeta creada
             self.state.set_clase_tema(fecha_iso, "", self.colegio, self.curso, auto_save=True)
             self._render_calendar()
             self._render_clases_list()
-            if self.app_page:
-                try:
-                    self.app_page.update()
-                except Exception:
-                    pass
+            self._safe_update()
+
+            input_control = self.tema_inputs.get(fecha_iso)
+            if input_control:
+                self._focus_control(input_control)
+
             if self.on_change_cb:
                 try:
                     self.on_change_cb()
                 except Exception:
                     pass
-            input_control = self.tema_inputs.get(fecha_iso)
-            if input_control:
-                self._focus_control(input_control)
         else:
-            # Día ya planificado: no eliminar ni borrar; enfocar tarjeta existente
             input_control = self.tema_inputs.get(fecha_iso)
             if input_control:
                 self._focus_control(input_control)
 
-    def _render_clases_list(self):
-        """Renderiza las tarjetas acumuladas de clases ordenadas cronológicamente."""
+    def _render_clases_list(self) -> None:
         tok = self.tokens
         clases = self.state.get_clases_curso(self.colegio, self.curso)
         num_clases = len(clases)
@@ -414,12 +373,11 @@ class PlanificacionCursoDialog(ft.AlertDialog):
                     content=ft.Text(
                         "No hay clases planificadas. Toca los días en el calendario para agregarlas.",
                         size=12,
-                        color=tok.text_muted,
+                        color=tok.text_secondary,
                         text_align=ft.TextAlign.CENTER,
-                        italic=True,
                     ),
                     alignment=ft.Alignment.CENTER,
-                    padding=ft.Padding(left=12, right=12, top=16, bottom=16),
+                    padding=ft.Padding.symmetric(horizontal=SPACE_MD, vertical=SPACE_MD),
                 )
             )
             return
@@ -428,26 +386,29 @@ class PlanificacionCursoDialog(ft.AlertDialog):
             tema_val = clases[fecha_iso].get(K_TEMA, "")
 
             badge = ft.Container(
-                content=ft.Text(
+                content=tabular_text(
                     format_fecha_badge(fecha_iso),
                     size=11,
                     weight=ft.FontWeight.BOLD,
-                    color=tok.primary,
+                    color=tok.accent_primary,
                 ),
-                bgcolor=tok.primary_light,
-                border_radius=6,
-                padding=ft.Padding(left=6, right=6, top=3, bottom=3),
+                bgcolor=tok.accent_subtle,
+                border=ft.Border.all(1, tok.border_hairline),
+                border_radius=RADIUS_SM,
+                padding=ft.Padding.symmetric(horizontal=SPACE_SM, vertical=4),
             )
 
             txt_tema = ft.TextField(
                 value=tema_val,
                 hint_text="Tema o actividad (opcional)",
-                dense=True,
-                text_size=12,
-                border_radius=8,
-                bgcolor=tok.bg_page,
-                border_color=tok.border_color,
-                color=tok.text_main,
+                text_size=13,
+                border_radius=RADIUS_SM,
+                bgcolor=tok.bg_canvas,
+                border_color=tok.border_hairline,
+                focused_border_color=tok.accent_primary,
+                cursor_color=tok.accent_primary,
+                color=tok.text_primary,
+                hint_style=ft.TextStyle(color=tok.text_placeholder),
                 expand=True,
                 on_change=lambda e, f=fecha_iso: self._on_tema_change(f, e.control.value),
             )
@@ -455,29 +416,30 @@ class PlanificacionCursoDialog(ft.AlertDialog):
 
             btn_del = ft.IconButton(
                 icon=ft.Icons.DELETE_OUTLINE,
-                icon_color=tok.text_muted,
+                icon_color=tok.text_secondary,
                 icon_size=18,
+                width=44,
+                height=44,
                 tooltip="Eliminar clase",
-                on_click=lambda e, f=fecha_iso: self._on_delete_clase(f),
+                on_click=lambda _e, f=fecha_iso: self._on_delete_clase(f),
             )
 
             card = ft.Container(
                 content=ft.Row(
                     [badge, txt_tema, btn_del],
                     vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                    spacing=8,
+                    spacing=SPACE_SM,
                 ),
                 key=f"card_{fecha_iso}",
-                bgcolor=tok.surface,
-                border=ft.Border.all(1, tok.border_color),
-                border_radius=10,
-                padding=ft.Padding(left=8, right=6, top=6, bottom=6),
+                bgcolor=tok.surface_primary,
+                border=ft.Border.all(1, tok.border_hairline),
+                border_radius=RADIUS_MD,
+                padding=ft.Padding(left=SPACE_SM, right=SPACE_XS, top=SPACE_XS, bottom=SPACE_XS),
             )
             self.item_containers[fecha_iso] = card
             self.lista_clases_col.controls.append(card)
 
-    def _on_tema_change(self, fecha_iso: str, nuevo_tema: str):
-        """Actualiza el tema de la clase con auto-guardado debounce."""
+    def _on_tema_change(self, fecha_iso: str, nuevo_tema: str) -> None:
         self.state.set_clase_tema(fecha_iso, nuevo_tema, self.colegio, self.curso, auto_save=True)
         if self.on_change_cb:
             try:
@@ -485,37 +447,30 @@ class PlanificacionCursoDialog(ft.AlertDialog):
             except Exception:
                 pass
 
-    def _on_delete_clase(self, fecha_iso: str):
-        """Elimina una clase y actualiza reactivamente el calendario y la lista."""
+    def _on_delete_clase(self, fecha_iso: str) -> None:
         self.state.delete_clase_planificada(fecha_iso, self.colegio, self.curso, auto_save=True)
         self._render_calendar()
         self._render_clases_list()
-        if self.app_page:
-            try:
-                self.app_page.update()
-            except Exception:
-                pass
+        self._safe_update()
         if self.on_change_cb:
             try:
                 self.on_change_cb()
             except Exception:
                 pass
 
-    def _cerrar(self):
-        """Cierre forzado con flush inmediato de auto-save y notificación de callback."""
-        if getattr(self, "_closed", False):
+    def _on_dismiss_flush(self) -> None:
+        if self._closed:
             return
         self._closed = True
         self.state.flush_auto_save()
-        self.open = False
-        if self.app_page:
-            try:
-                self.app_page.pop_dialog()
-                self.app_page.update()
-            except Exception:
-                pass
         if self.on_close_cb:
             try:
                 self.on_close_cb()
             except Exception:
                 pass
+
+    def _cerrar(self) -> None:
+        if self._closed:
+            return
+        self._on_dismiss_flush()
+        self.close()

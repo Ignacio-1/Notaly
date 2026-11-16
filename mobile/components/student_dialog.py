@@ -1,251 +1,325 @@
 """
-Modales de diálogo para la gestión de entidades: Alumnos, Cursos, Colegios y Columnas.
+Diálogos editoriales compactos para gestión de Alumnos, Cursos, Colegios y Columnas (SPEC-028).
+
+Todos los modales heredan el estilo "Crisp Editorial Ledger" (`surface_primary`,
+`radius=6` en diálogo, `radius=4` en campos y botones de `48dp`, `ScrollMode.AUTO`
+ante teclado virtual, máximo 2 botones por fila horizontal y soporte Light/Dark).
 """
 
+from __future__ import annotations
+
+from typing import Any, Callable
+
 import flet as ft
-from typing import Callable
+
+from mobile.components.notaly_sheet import (
+    build_action_rows,
+    close_dialog_safe,
+    open_dialog_safe,
+    resolve_page_dimensions,
+    sheet_action_button,
+)
 from mobile.theme import (
-    PRIMARY,
-    TEXT_MAIN,
-    TEXT_MUTED,
-    BORDER_COLOR,
-    BG_PAGE,
-    SURFACE_WHITE,
-    LIGHT_TOKENS,
+    RADIUS_MD,
+    RADIUS_SM,
+    SPACE_LG,
+    SPACE_MD,
+    SPACE_SM,
+    SPACE_XS,
     ThemeTokens,
-    get_tokens,
+    resolve_tokens,
+    tabular_text,
 )
 
 
-def _resolve_tokens(tokens: ThemeTokens | None = None, page: ft.Page | None = None) -> ThemeTokens:
-    if tokens is not None:
-        return tokens
-    if page is not None and getattr(page, "theme_mode", None) == ft.ThemeMode.DARK:
-        return get_tokens("dark")
-    return LIGHT_TOKENS
-
-
-def logo_dialog_title(texto: str, color_texto=None, icon_color=None, tokens: ThemeTokens | None = None) -> ft.Row:
-    """Crea una cabecera con el logo de la aplicación para ventanas de diálogo."""
-    tok = tokens or LIGHT_TOKENS
+def dialog_editorial_title(
+    titulo: str,
+    *,
+    tokens: ThemeTokens,
+    icon: ft.IconData | None = None,
+    color_texto: str | None = None,
+    icon_color: str | None = None,
+    on_close: Callable[[], Any] | None = None,
+) -> ft.Row:
+    """Cabecera limpia editorial para diálogos compactos (sin íconos decorativos genéricos)."""
+    row_controls: list[ft.Control] = []
+    if icon is not None:
+        row_controls.append(
+            ft.Icon(
+                icon=icon,
+                size=20,
+                color=icon_color or tokens.accent_primary,
+            )
+        )
+    row_controls.append(
+        ft.Text(
+            titulo,
+            size=16,
+            weight=ft.FontWeight.BOLD,
+            color=color_texto or tokens.text_primary,
+            max_lines=2,
+            overflow=ft.TextOverflow.ELLIPSIS,
+            expand=True,
+        )
+    )
+    if on_close is not None:
+        row_controls.append(
+            ft.IconButton(
+                icon=ft.Icons.CLOSE,
+                icon_color=tokens.text_secondary,
+                icon_size=20,
+                width=48,
+                height=48,
+                tooltip="Cerrar",
+                on_click=lambda _e: on_close(),
+            )
+        )
     return ft.Row(
-        [
-            ft.Icon(ft.Icons.SCHOOL, color=icon_color or tok.primary, size=24),
-            ft.Text(texto, weight=ft.FontWeight.BOLD, size=16, color=color_texto or tok.text_main, expand=True),
-        ],
-        spacing=8,
+        controls=row_controls,
+        spacing=SPACE_SM,
         vertical_alignment=ft.CrossAxisAlignment.CENTER,
     )
 
 
+def _editorial_textfield(
+    *,
+    label: str,
+    tokens: ThemeTokens,
+    value: str = "",
+    hint_text: str | None = None,
+    autofocus: bool = False,
+    keyboard_type: ft.KeyboardType | None = None,
+    input_filter: ft.InputFilter | None = None,
+    text_align: ft.TextAlign = ft.TextAlign.LEFT,
+    on_submit: Callable[[Any], Any] | None = None,
+    prefix_text: str | None = None,
+) -> ft.TextField:
+    return ft.TextField(
+        label=label,
+        value=value,
+        hint_text=hint_text,
+        autofocus=autofocus,
+        keyboard_type=keyboard_type,
+        input_filter=input_filter,
+        text_align=text_align,
+        prefix=(
+            tabular_text(prefix_text, size=12, color=tokens.text_secondary)
+            if prefix_text
+            else None
+        ),
+        border_radius=RADIUS_SM,
+        bgcolor=tokens.bg_canvas,
+        border_color=tokens.border_hairline,
+        focused_border_color=tokens.accent_primary,
+        cursor_color=tokens.accent_primary,
+        color=tokens.text_primary,
+        label_style=ft.TextStyle(color=tokens.text_secondary),
+        hint_style=ft.TextStyle(color=tokens.text_placeholder),
+        text_size=14,
+        on_submit=on_submit,
+    )
+
+
+def _compact_width(page: ft.Page | None) -> float:
+    pw, _ = resolve_page_dimensions(page)
+    return max(280.0, min(pw - 48.0, 380.0))
+
+
+def _dialog_actions_wrapper(actions: list[ft.Control], page: ft.Page | None) -> list[ft.Control]:
+    grid = build_action_rows(actions)
+    if grid is None:
+        return []
+    return [ft.Container(content=grid, width=_compact_width(page))]
+
+
 class StudentFormDialog(ft.AlertDialog):
-    """
-    Diálogo para agregar o renombrar un alumno separando Apellido y Nombre.
-    Permite cargar alumnos consecutivamente con el botón 'Guardar y siguiente' o tecla Enter.
-    """
+    """Modal para añadir (flujo continuo) o editar/eliminar un alumno."""
 
     def __init__(
         self,
         titulo: str,
-        on_confirm: Callable[[str, str], bool | None],  # Recibe (apellido, nombre), retorna True si exitoso
+        on_confirm: Callable[[str, str], bool | None],
         apellido_actual: str = "",
         nombre_actual: str = "",
-        modo_continuo: bool = True,
+        modo_continuo: bool = False,
         on_delete: Callable[[], None] | None = None,
         on_close: Callable[[], None] | None = None,
         page: ft.Page | None = None,
         tokens: ThemeTokens | None = None,
-    ):
+    ) -> None:
         self.on_confirm = on_confirm
         self.on_delete = on_delete
+        self.on_close = on_close
         self.modo_continuo = modo_continuo
-        self.on_close_cb = on_close
         self.app_page = page
-        self.tokens = _resolve_tokens(tokens, page)
+        self.tokens = resolve_tokens(tokens=tokens, page=page)
         tok = self.tokens
-        self.contador_cargados = 0
 
-        self.txt_apellido = ft.TextField(
-            label="Apellido(s)",
-            hint_text="Ej: Gómez",
+        self.txt_apellido = _editorial_textfield(
+            label="Apellido",
+            hint_text="Ej: Pérez",
             value=apellido_actual,
+            tokens=tok,
             autofocus=True,
-            capitalization=ft.TextCapitalization.WORDS,
-            dense=True,
-            border_radius=10,
-            bgcolor=tok.bg_page,
-            border_color=tok.border_color,
-            color=tok.text_main,
-            on_submit=lambda e: self._focus_control(self.txt_nombre),
+            on_submit=lambda _e: self._focus_control(self.txt_nombre),
         )
-
-        self.txt_nombre = ft.TextField(
+        self.txt_nombre = _editorial_textfield(
             label="Nombre(s)",
-            hint_text="Ej: Juan Carlos",
+            hint_text="Ej: Juan Martín",
             value=nombre_actual,
-            capitalization=ft.TextCapitalization.WORDS,
-            dense=True,
-            border_radius=10,
-            bgcolor=tok.bg_page,
-            border_color=tok.border_color,
-            color=tok.text_main,
-            on_submit=lambda e: self._guardar_alumno(continuar=self.modo_continuo),
+            tokens=tok,
+            on_submit=lambda _e: self._guardar_alumno(continuar=self.modo_continuo),
+        )
+        self.lbl_error = ft.Text("", color=tok.fail_fg, size=12, visible=False)
+        self.lbl_contador = ft.Text(
+            "Ingresa apellido y nombre del estudiante",
+            size=12,
+            color=tok.text_secondary,
         )
 
-        self.lbl_error = ft.Text("", color=ft.Colors.ERROR, size=12, visible=False)
-        self.lbl_info = ft.Text(
-            "Tip: Presiona Enter o 'Siguiente' para seguir cargando alumnos sin cerrar esta ventana." if modo_continuo else "",
-            color=tok.text_muted,
-            size=11,
-            italic=True,
-        )
-
-        content = ft.Column(
-            [
+        body_col = ft.Column(
+            tight=True,
+            scroll=ft.ScrollMode.AUTO,
+            spacing=SPACE_MD,
+            controls=[
+                self.lbl_contador,
                 self.txt_apellido,
                 self.txt_nombre,
                 self.lbl_error,
-                self.lbl_info,
             ],
-            tight=True,
-            width=340,
-            spacing=10,
         )
+        content = ft.Container(width=_compact_width(page), content=body_col)
 
-        actions = []
-        if self.on_delete is not None:
-            actions.append(
-                ft.TextButton(
-                    "Eliminar Alumno",
-                    icon=ft.Icons.DELETE_OUTLINE,
-                    style=ft.ButtonStyle(color=ft.Colors.RED_600, shape=ft.RoundedRectangleBorder(radius=8)),
-                    on_click=lambda e: self._ejecutar_eliminacion(),
-                )
-            )
-
-        actions.append(
-            ft.TextButton(
-                "Listo / Cerrar",
-                style=ft.ButtonStyle(color=tok.text_muted, shape=ft.RoundedRectangleBorder(radius=8)),
-                on_click=lambda e: self._cerrar(),
-            )
-        )
-
+        buttons: list[ft.Control] = []
         if modo_continuo:
-            actions.append(
-                ft.OutlinedButton(
+            buttons.append(
+                sheet_action_button(
                     "Guardar y salir",
-                    style=ft.ButtonStyle(
-                        color=tok.primary,
-                        side=ft.BorderSide(1, tok.primary),
-                        shape=ft.RoundedRectangleBorder(radius=8),
-                    ),
-                    on_click=lambda e: self._guardar_alumno(continuar=False),
+                    lambda _e: self._guardar_alumno(continuar=False),
+                    tokens=tok,
+                    primary=False,
                 )
             )
-            actions.append(
-                ft.FilledButton(
-                    "Siguiente Alumno ➔",
-                    style=ft.ButtonStyle(
-                        bgcolor=tok.primary,
-                        color=ft.Colors.WHITE,
-                        shape=ft.RoundedRectangleBorder(radius=8),
-                    ),
-                    on_click=lambda e: self._guardar_alumno(continuar=True),
+            buttons.append(
+                sheet_action_button(
+                    "Siguiente",
+                    lambda _e: self._guardar_alumno(continuar=True),
+                    tokens=tok,
+                    primary=True,
                 )
             )
         else:
-            actions.append(
-                ft.FilledButton(
+            if on_delete is not None:
+                buttons.append(
+                    sheet_action_button(
+                        "Eliminar",
+                        lambda _e: self._ejecutar_eliminacion(),
+                        tokens=tok,
+                        primary=False,
+                        destructive=True,
+                    )
+                )
+            else:
+                buttons.append(
+                    sheet_action_button(
+                        "Cancelar",
+                        lambda _e: self._cerrar(),
+                        tokens=tok,
+                        primary=False,
+                    )
+                )
+            buttons.append(
+                sheet_action_button(
                     "Guardar",
-                    style=ft.ButtonStyle(
-                        bgcolor=tok.primary,
-                        color=ft.Colors.WHITE,
-                        shape=ft.RoundedRectangleBorder(radius=8),
-                    ),
-                    on_click=lambda e: self._guardar_alumno(continuar=False),
+                    lambda _e: self._guardar_alumno(continuar=False),
+                    tokens=tok,
+                    primary=True,
                 )
             )
 
+        self.actions_buttons = buttons
+
         super().__init__(
-            title=logo_dialog_title(titulo, tokens=tok),
+            title=dialog_editorial_title(
+                titulo,
+                tokens=tok,
+                on_close=self._cerrar,
+            ),
             content=content,
-            actions=actions,
+            actions=_dialog_actions_wrapper(buttons, page),
             actions_alignment=ft.MainAxisAlignment.END,
-            bgcolor=tok.surface,
+            bgcolor=tok.surface_primary,
+            elevation=0,
+            scrollable=True,
+            shape=ft.RoundedRectangleBorder(radius=ft.BorderRadius.all(RADIUS_MD)),
+            content_padding=ft.Padding.symmetric(horizontal=SPACE_LG, vertical=SPACE_MD),
+            actions_padding=ft.Padding(left=SPACE_LG, right=SPACE_LG, bottom=SPACE_LG, top=SPACE_XS),
             modal=True,
         )
 
-    def _focus_control(self, control):
-        """Aplica foco a un control de forma compatible y asíncrona segura."""
-        if not control:
+    def _focus_control(self, control: ft.Control) -> None:
+        import inspect
+        try:
+            res = control.focus()
+            if inspect.iscoroutine(res):
+                res.close()
+        except Exception:
+            pass
+
+    def _guardar_alumno(self, continuar: bool) -> None:
+        ap = (self.txt_apellido.value or "").strip()
+        nom = (self.txt_nombre.value or "").strip()
+
+        if not ap:
+            self.lbl_error.value = "El apellido es obligatorio."
+            self.lbl_error.visible = True
+            self._focus_control(self.txt_apellido)
+            if self.app_page:
+                self.app_page.update()
             return
-        if self.app_page and hasattr(self.app_page, "run_task") and hasattr(control, "focus"):
-            import inspect
-            if inspect.iscoroutinefunction(control.focus):
-                self.app_page.run_task(control.focus)
-                return
-        if hasattr(control, "focus"):
-            import inspect
-            try:
-                res = control.focus()
-                if inspect.iscoroutine(res):
-                    res.close()
-            except Exception:
-                pass
 
-    def _guardar_alumno(self, continuar: bool = False):
-        ap = self.txt_apellido.value.strip()
-        nom = self.txt_nombre.value.strip()
+        if not nom:
+            self.lbl_error.value = "El nombre es obligatorio."
+            self.lbl_error.visible = True
+            self._focus_control(self.txt_nombre)
+            if self.app_page:
+                self.app_page.update()
+            return
 
-        if not ap and not nom:
-            self.lbl_error.value = "Debes ingresar al menos el apellido o nombre."
+        self.lbl_error.visible = False
+        res = self.on_confirm(ap, nom)
+
+        if res is False:
+            self.lbl_error.value = "Ya existe un alumno con ese apellido y nombre."
             self.lbl_error.visible = True
             if self.app_page:
                 self.app_page.update()
             return
 
-        exito = self.on_confirm(ap, nom)
-        # Si el callback no retornó explícitamente False, asumimos éxito
-        if exito is not False:
-            self.contador_cargados += 1
-            if continuar:
-                # Limpiar campos y dar foco al apellido para el próximo alumno
-                self.txt_apellido.value = ""
-                self.txt_nombre.value = ""
-                self.lbl_error.visible = False
-                self.lbl_info.value = f"✓ Alumno guardado ({self.contador_cargados} cargados). Listo para el siguiente."
-                self.lbl_info.color = ft.Colors.GREEN_700
-                self._focus_control(self.txt_apellido)
-                if self.app_page:
-                    self.app_page.update()
-            else:
-                self._cerrar()
+        if continuar:
+            self.txt_apellido.value = ""
+            self.txt_nombre.value = ""
+            self.lbl_contador.value = f"Agregado: {ap}, {nom} — Ingresa el siguiente:"
+            self.lbl_contador.color = self.tokens.pass_fg
+            self._focus_control(self.txt_apellido)
+            if self.app_page:
+                self.app_page.update()
         else:
-            self.lbl_error.value = "No se pudo agregar el alumno."
-            self.lbl_error.visible = True
-            if self.app_page:
-                self.app_page.update()
+            self._cerrar()
 
-    def _ejecutar_eliminacion(self):
+    def _ejecutar_eliminacion(self) -> None:
         self._cerrar()
         if self.on_delete:
             self.on_delete()
 
-    def _cerrar(self):
-        self.open = False
-        if self.app_page:
-            try:
-                self.app_page.pop_dialog()
-                self.app_page.update()
-            except Exception:
-                pass
-        if self.on_close_cb:
-            self.on_close_cb()
+    def _cerrar(self) -> None:
+        close_dialog_safe(self.app_page, self)
+        if self.on_close:
+            self.on_close()
 
 
 class CreateEntityDialog(ft.AlertDialog):
-    """Diálogo genérico para crear un Colegio o un Curso."""
+    """Modal compacto para crear una entidad genérica."""
 
     def __init__(
         self,
@@ -255,51 +329,53 @@ class CreateEntityDialog(ft.AlertDialog):
         hint: str = "",
         page: ft.Page | None = None,
         tokens: ThemeTokens | None = None,
-    ):
+    ) -> None:
         self.on_confirm = on_confirm
         self.app_page = page
-        self.tokens = _resolve_tokens(tokens, page)
+        self.tokens = resolve_tokens(tokens=tokens, page=page)
         tok = self.tokens
-        self.txt_nombre = ft.TextField(
+
+        self.txt_nombre = _editorial_textfield(
             label=label_campo,
-            hint_text=hint,
+            hint_text=hint or None,
+            tokens=tok,
             autofocus=True,
-            capitalization=ft.TextCapitalization.WORDS,
-            border_radius=10,
-            bgcolor=tok.bg_page,
-            border_color=tok.border_color,
-            color=tok.text_main,
+            on_submit=lambda _e: self._confirmar(),
         )
-        self.lbl_error = ft.Text("", color=ft.Colors.ERROR, size=12, visible=False)
+        self.lbl_error = ft.Text("", color=tok.fail_fg, size=12, visible=False)
+
+        content = ft.Container(
+            width=_compact_width(page),
+            content=ft.Column(
+                tight=True,
+                scroll=ft.ScrollMode.AUTO,
+                spacing=SPACE_MD,
+                controls=[self.txt_nombre, self.lbl_error],
+            ),
+        )
+        actions = [
+            sheet_action_button("Cancelar", lambda _e: self._cerrar(), tokens=tok, primary=False),
+            sheet_action_button("Crear", lambda _e: self._confirmar(), tokens=tok, primary=True),
+        ]
 
         super().__init__(
-            title=logo_dialog_title(titulo, tokens=tok),
-            content=ft.Column([self.txt_nombre, self.lbl_error], tight=True, width=320),
-            actions=[
-                ft.TextButton(
-                    "Cancelar",
-                    style=ft.ButtonStyle(color=tok.text_muted, shape=ft.RoundedRectangleBorder(radius=8)),
-                    on_click=lambda e: self._cerrar(),
-                ),
-                ft.FilledButton(
-                    "Crear",
-                    style=ft.ButtonStyle(
-                        bgcolor=tok.primary,
-                        color=ft.Colors.WHITE,
-                        shape=ft.RoundedRectangleBorder(radius=8),
-                    ),
-                    on_click=lambda e: self._confirmar(),
-                ),
-            ],
+            title=dialog_editorial_title(titulo, tokens=tok, on_close=self._cerrar),
+            content=content,
+            actions=_dialog_actions_wrapper(actions, page),
             actions_alignment=ft.MainAxisAlignment.END,
-            bgcolor=tok.surface,
+            bgcolor=tok.surface_primary,
+            elevation=0,
+            scrollable=True,
+            shape=ft.RoundedRectangleBorder(radius=ft.BorderRadius.all(RADIUS_MD)),
+            content_padding=ft.Padding.symmetric(horizontal=SPACE_LG, vertical=SPACE_MD),
+            actions_padding=ft.Padding(left=SPACE_LG, right=SPACE_LG, bottom=SPACE_LG, top=SPACE_XS),
             modal=True,
         )
 
-    def _confirmar(self):
-        val = self.txt_nombre.value.strip()
+    def _confirmar(self) -> None:
+        val = (self.txt_nombre.value or "").strip()
         if not val:
-            self.lbl_error.value = "Este campo no puede estar vacío."
+            self.lbl_error.value = "El nombre no puede estar vacío."
             self.lbl_error.visible = True
             if self.app_page:
                 self.app_page.update()
@@ -307,257 +383,203 @@ class CreateEntityDialog(ft.AlertDialog):
         self.on_confirm(val)
         self._cerrar()
 
-    def _cerrar(self):
-        self.open = False
-        if self.app_page:
-            try:
-                self.app_page.pop_dialog()
-                self.app_page.update()
-            except Exception:
-                pass
+    def _cerrar(self) -> None:
+        close_dialog_safe(self.app_page, self)
 
 
 class ColegioFormDialog(ft.AlertDialog):
-    """
-    Diálogo modal para crear o editar un Colegio con campos de Nombre, Dirección y Horarios.
-    """
+    """Modal para crear o editar un Colegio con Dirección y Horarios opcionales."""
 
     def __init__(
         self,
         titulo: str,
-        on_confirm: Callable[[str, str, str], bool | None],  # Recibe (nombre, direccion, horarios)
+        on_confirm: Callable[[str, str, str], bool | None],
         nombre_actual: str = "",
         direccion_actual: str = "",
         horarios_actual: str = "",
         modo_edicion: bool = False,
         page: ft.Page | None = None,
         tokens: ThemeTokens | None = None,
-    ):
+    ) -> None:
         self.on_confirm = on_confirm
-        self.app_page = page
         self.modo_edicion = modo_edicion
-        self.tokens = _resolve_tokens(tokens, page)
+        self.app_page = page
+        self.tokens = resolve_tokens(tokens=tokens, page=page)
         tok = self.tokens
 
-        self.txt_nombre = ft.TextField(
-            label="Nombre del Colegio *",
+        self.txt_nombre = _editorial_textfield(
+            label="Nombre de la Institución *",
+            hint_text="Ej: Colegio San Martín",
             value=nombre_actual,
-            hint_text="Ej: Escuela Técnica N° 2",
+            tokens=tok,
             autofocus=True,
-            capitalization=ft.TextCapitalization.WORDS,
-            dense=True,
-            border_radius=10,
-            bgcolor=tok.bg_page,
-            border_color=tok.border_color,
-            color=tok.text_main,
-            on_submit=lambda e: self._focus_control(self.txt_direccion),
+            on_submit=lambda _e: self._focus_control(self.txt_direccion),
         )
-
-        self.txt_direccion = ft.TextField(
+        self.txt_direccion = _editorial_textfield(
             label="Dirección (opcional)",
+            hint_text="Ej: Av. Belgrano 450",
             value=direccion_actual,
-            hint_text="Ej: Av. San Martín 1234",
-            prefix_icon=ft.Icons.LOCATION_ON_OUTLINED,
-            capitalization=ft.TextCapitalization.WORDS,
-            dense=True,
-            border_radius=10,
-            bgcolor=tok.bg_page,
-            border_color=tok.border_color,
-            color=tok.text_main,
-            on_submit=lambda e: self._focus_control(self.txt_horarios),
+            tokens=tok,
+            on_submit=lambda _e: self._focus_control(self.txt_horarios),
         )
-
-        self.txt_horarios = ft.TextField(
-            label="Días y Horarios (opcional)",
+        self.txt_horarios = _editorial_textfield(
+            label="Horarios (opcional)",
+            hint_text="Ej: Lun a Vie 08:00 - 12:30",
             value=horarios_actual,
-            hint_text="Ej: Lun y Mié 08:00 - 12:30",
-            prefix_icon=ft.Icons.ACCESS_TIME_ROUNDED,
-            dense=True,
-            border_radius=10,
-            bgcolor=tok.bg_page,
-            border_color=tok.border_color,
-            color=tok.text_main,
-            on_submit=lambda e: self._confirmar(),
+            tokens=tok,
+            on_submit=lambda _e: self._confirmar(),
         )
+        self.lbl_error = ft.Text("", color=tok.fail_fg, size=12, visible=False)
 
-        self.lbl_error = ft.Text("", color=ft.Colors.ERROR, size=12, visible=False)
-
-        texto_boton = "Guardar Cambios" if modo_edicion else "Crear Colegio"
-
-        super().__init__(
-            title=logo_dialog_title(titulo, tokens=tok),
+        content = ft.Container(
+            width=_compact_width(page),
             content=ft.Column(
-                [
+                tight=True,
+                scroll=ft.ScrollMode.AUTO,
+                spacing=SPACE_MD,
+                controls=[
                     self.txt_nombre,
                     self.txt_direccion,
                     self.txt_horarios,
                     self.lbl_error,
                 ],
-                tight=True,
-                width=340,
-                spacing=10,
             ),
-            actions=[
-                ft.TextButton(
-                    "Cancelar",
-                    style=ft.ButtonStyle(color=tok.text_muted, shape=ft.RoundedRectangleBorder(radius=8)),
-                    on_click=lambda e: self._cerrar(),
-                ),
-                ft.FilledButton(
-                    texto_boton,
-                    style=ft.ButtonStyle(
-                        bgcolor=tok.primary,
-                        color=ft.Colors.WHITE,
-                        shape=ft.RoundedRectangleBorder(radius=8),
-                    ),
-                    on_click=lambda e: self._confirmar(),
-                ),
-            ],
+        )
+        actions = [
+            sheet_action_button("Cancelar", lambda _e: self._cerrar(), tokens=tok, primary=False),
+            sheet_action_button(
+                "Guardar cambios" if modo_edicion else "Crear",
+                lambda _e: self._confirmar(),
+                tokens=tok,
+                primary=True,
+            ),
+        ]
+
+        super().__init__(
+            title=dialog_editorial_title(titulo, tokens=tok, on_close=self._cerrar),
+            content=content,
+            actions=_dialog_actions_wrapper(actions, page),
             actions_alignment=ft.MainAxisAlignment.END,
-            bgcolor=tok.surface,
+            bgcolor=tok.surface_primary,
+            elevation=0,
+            scrollable=True,
+            shape=ft.RoundedRectangleBorder(radius=ft.BorderRadius.all(RADIUS_MD)),
+            content_padding=ft.Padding.symmetric(horizontal=SPACE_LG, vertical=SPACE_MD),
+            actions_padding=ft.Padding(left=SPACE_LG, right=SPACE_LG, bottom=SPACE_LG, top=SPACE_XS),
             modal=True,
         )
 
+    def _focus_control(self, control: ft.Control) -> None:
+        import inspect
+        try:
+            res = control.focus()
+            if inspect.iscoroutine(res):
+                res.close()
+        except Exception:
+            pass
 
-    def _focus_control(self, control):
-        if not control:
-            return
-        if self.app_page and hasattr(self.app_page, "run_task") and hasattr(control, "focus"):
-            import inspect
-            if inspect.iscoroutinefunction(control.focus):
-                self.app_page.run_task(control.focus)
-                return
-        if hasattr(control, "focus"):
-            import inspect
-            try:
-                res = control.focus()
-                if inspect.iscoroutine(res):
-                    res.close()
-            except Exception:
-                pass
-
-    def _confirmar(self):
-        nom = self.txt_nombre.value.strip()
-        dir_val = (self.txt_direccion.value or "").strip()
-        hor_val = (self.txt_horarios.value or "").strip()
-
+    def _confirmar(self) -> None:
+        nom = (self.txt_nombre.value or "").strip()
         if not nom:
             self.lbl_error.value = "El nombre del colegio no puede estar vacío."
             self.lbl_error.visible = True
+            self._focus_control(self.txt_nombre)
             if self.app_page:
-                try:
-                    self.app_page.update()
-                except Exception:
-                    pass
+                self.app_page.update()
             return
 
-        res = self.on_confirm(nom, dir_val, hor_val)
-        if res is not False:
-            self._cerrar()
-        else:
-            if not self.lbl_error.value:
-                self.lbl_error.value = "No se pudo procesar la solicitud."
-            self.lbl_error.visible = True
-            if self.app_page:
-                try:
-                    self.app_page.update()
-                except Exception:
-                    pass
+        dir_val = (self.txt_direccion.value or "").strip()
+        hor_val = (self.txt_horarios.value or "").strip()
 
-    def _cerrar(self):
-        self.open = False
-        if self.app_page:
-            try:
-                self.app_page.pop_dialog()
+        res = self.on_confirm(nom, dir_val, hor_val)
+        if res is False:
+            self.lbl_error.value = "Ya existe una institución registrada con ese nombre."
+            self.lbl_error.visible = True
+            self._focus_control(self.txt_nombre)
+            if self.app_page:
                 self.app_page.update()
-            except Exception:
-                pass
+            return
+
+        self._cerrar()
+
+    def _cerrar(self) -> None:
+        close_dialog_safe(self.app_page, self)
 
 
 class CreateCursoDialog(ft.AlertDialog):
-    """Diálogo para crear un Curso con nombre y cantidad inicial de alumnos."""
+    """Modal para crear un nuevo curso con cantidad inicial opcional de alumnos y horario."""
 
     def __init__(
         self,
         titulo: str,
-        on_confirm: Callable[[str, int], None],
-        hint: str = "",
+        on_confirm: Callable[..., None],
+        hint: str = "Ej: 2do Año B",
         page: ft.Page | None = None,
         tokens: ThemeTokens | None = None,
-    ):
+    ) -> None:
         self.on_confirm = on_confirm
         self.app_page = page
-        self.tokens = _resolve_tokens(tokens, page)
+        self.tokens = resolve_tokens(tokens=tokens, page=page)
         tok = self.tokens
-        self.txt_nombre = ft.TextField(
-            label="Año y División / Nombre",
+
+        self.txt_nombre = _editorial_textfield(
+            label="Nombre del Curso",
             hint_text=hint,
+            tokens=tok,
             autofocus=True,
-            capitalization=ft.TextCapitalization.WORDS,
-            border_radius=10,
-            bgcolor=tok.bg_page,
-            border_color=tok.border_color,
-            color=tok.text_main,
+            on_submit=lambda _e: self._confirmar(),
         )
-        self.txt_cantidad = ft.TextField(
-            label="Cantidad inicial de alumnos",
-            hint_text="",
-            value="",
+        self.txt_cantidad = _editorial_textfield(
+            label="Cantidad de alumnos (opcional)",
+            hint_text="Ej: 25 (genera filas vacías listas para completar)",
+            tokens=tok,
             keyboard_type=ft.KeyboardType.NUMBER,
             input_filter=ft.NumbersOnlyInputFilter(),
-            border_radius=10,
-            bgcolor=tok.bg_page,
-            border_color=tok.border_color,
-            color=tok.text_main,
+            on_submit=lambda _e: self._confirmar(),
         )
-        self.txt_horario = ft.TextField(
-            label="Horario del curso (opcional)",
-            hint_text="Ej: lun a vie 12:00 a 12:40 última hora",
-            prefix_icon=ft.Icons.ACCESS_TIME_ROUNDED,
-            dense=True,
-            border_radius=10,
-            bgcolor=tok.bg_page,
-            border_color=tok.border_color,
-            color=tok.text_main,
+        self.txt_horario = _editorial_textfield(
+            label="Horario / Turno (opcional)",
+            hint_text="Ej: Lun y Mié 10:00 a 12:00",
+            tokens=tok,
+            on_submit=lambda _e: self._confirmar(),
         )
-        self.lbl_error = ft.Text("", color=ft.Colors.ERROR, size=12, visible=False)
+        self.lbl_error = ft.Text("", color=tok.fail_fg, size=12, visible=False)
 
-        super().__init__(
-            title=logo_dialog_title(titulo, tokens=tok),
+        content = ft.Container(
+            width=_compact_width(page),
             content=ft.Column(
-                [
+                tight=True,
+                scroll=ft.ScrollMode.AUTO,
+                spacing=SPACE_MD,
+                controls=[
                     self.txt_nombre,
                     self.txt_cantidad,
                     self.txt_horario,
                     self.lbl_error,
                 ],
-                tight=True,
-                width=320,
-                spacing=12,
             ),
-            actions=[
-                ft.TextButton(
-                    "Cancelar",
-                    style=ft.ButtonStyle(color=tok.text_muted, shape=ft.RoundedRectangleBorder(radius=8)),
-                    on_click=lambda e: self._cerrar(),
-                ),
-                ft.FilledButton(
-                    "Crear Curso",
-                    style=ft.ButtonStyle(
-                        bgcolor=tok.primary,
-                        color=ft.Colors.WHITE,
-                        shape=ft.RoundedRectangleBorder(radius=8),
-                    ),
-                    on_click=lambda e: self._confirmar(),
-                ),
-            ],
+        )
+        actions = [
+            sheet_action_button("Cancelar", lambda _e: self._cerrar(), tokens=tok, primary=False),
+            sheet_action_button("Crear Curso", lambda _e: self._confirmar(), tokens=tok, primary=True),
+        ]
+
+        super().__init__(
+            title=dialog_editorial_title(titulo, tokens=tok, on_close=self._cerrar),
+            content=content,
+            actions=_dialog_actions_wrapper(actions, page),
             actions_alignment=ft.MainAxisAlignment.END,
-            bgcolor=tok.surface,
+            bgcolor=tok.surface_primary,
+            elevation=0,
+            scrollable=True,
+            shape=ft.RoundedRectangleBorder(radius=ft.BorderRadius.all(RADIUS_MD)),
+            content_padding=ft.Padding.symmetric(horizontal=SPACE_LG, vertical=SPACE_MD),
+            actions_padding=ft.Padding(left=SPACE_LG, right=SPACE_LG, bottom=SPACE_LG, top=SPACE_XS),
             modal=True,
         )
 
-    def _confirmar(self):
-        nom = self.txt_nombre.value.strip()
+    def _confirmar(self) -> None:
+        nom = (self.txt_nombre.value or "").strip()
         if not nom:
             self.lbl_error.value = "El nombre del curso no puede estar vacío."
             self.lbl_error.visible = True
@@ -565,7 +587,7 @@ class CreateCursoDialog(ft.AlertDialog):
                 self.app_page.update()
             return
 
-        cant_str = self.txt_cantidad.value.strip()
+        cant_str = (self.txt_cantidad.value or "").strip()
         cant = 0
         if cant_str:
             if not cant_str.isdigit():
@@ -596,18 +618,12 @@ class CreateCursoDialog(ft.AlertDialog):
             self.on_confirm(nom, cant)
         self._cerrar()
 
-    def _cerrar(self):
-        self.open = False
-        if self.app_page:
-            try:
-                self.app_page.pop_dialog()
-                self.app_page.update()
-            except Exception:
-                pass
+    def _cerrar(self) -> None:
+        close_dialog_safe(self.app_page, self)
 
 
 class RenameDialog(ft.AlertDialog):
-    """Diálogo para renombrar cualquier entidad."""
+    """Modal para renombrar un Colegio o Curso."""
 
     def __init__(
         self,
@@ -616,49 +632,51 @@ class RenameDialog(ft.AlertDialog):
         on_confirm: Callable[[str], None],
         page: ft.Page | None = None,
         tokens: ThemeTokens | None = None,
-    ):
+    ) -> None:
         self.on_confirm = on_confirm
         self.app_page = page
-        self.tokens = _resolve_tokens(tokens, page)
+        self.tokens = resolve_tokens(tokens=tokens, page=page)
         tok = self.tokens
-        self.txt_nombre = ft.TextField(
+
+        self.txt_nombre = _editorial_textfield(
             label="Nuevo nombre",
             value=nombre_actual,
+            tokens=tok,
             autofocus=True,
-            capitalization=ft.TextCapitalization.WORDS,
-            border_radius=10,
-            bgcolor=tok.bg_page,
-            border_color=tok.border_color,
-            color=tok.text_main,
+            on_submit=lambda _e: self._confirmar(),
         )
-        self.lbl_error = ft.Text("", color=ft.Colors.ERROR, size=12, visible=False)
+        self.lbl_error = ft.Text("", color=tok.fail_fg, size=12, visible=False)
+
+        content = ft.Container(
+            width=_compact_width(page),
+            content=ft.Column(
+                tight=True,
+                scroll=ft.ScrollMode.AUTO,
+                spacing=SPACE_MD,
+                controls=[self.txt_nombre, self.lbl_error],
+            ),
+        )
+        actions = [
+            sheet_action_button("Cancelar", lambda _e: self._cerrar(), tokens=tok, primary=False),
+            sheet_action_button("Guardar", lambda _e: self._confirmar(), tokens=tok, primary=True),
+        ]
 
         super().__init__(
-            title=logo_dialog_title(titulo, tokens=tok),
-            content=ft.Column([self.txt_nombre, self.lbl_error], tight=True, width=320),
-            actions=[
-                ft.TextButton(
-                    "Cancelar",
-                    style=ft.ButtonStyle(color=tok.text_muted, shape=ft.RoundedRectangleBorder(radius=8)),
-                    on_click=lambda e: self._cerrar(),
-                ),
-                ft.FilledButton(
-                    "Renombrar",
-                    style=ft.ButtonStyle(
-                        bgcolor=tok.primary,
-                        color=ft.Colors.WHITE,
-                        shape=ft.RoundedRectangleBorder(radius=8),
-                    ),
-                    on_click=lambda e: self._confirmar(),
-                ),
-            ],
+            title=dialog_editorial_title(titulo, tokens=tok, on_close=self._cerrar),
+            content=content,
+            actions=_dialog_actions_wrapper(actions, page),
             actions_alignment=ft.MainAxisAlignment.END,
-            bgcolor=tok.surface,
+            bgcolor=tok.surface_primary,
+            elevation=0,
+            scrollable=True,
+            shape=ft.RoundedRectangleBorder(radius=ft.BorderRadius.all(RADIUS_MD)),
+            content_padding=ft.Padding.symmetric(horizontal=SPACE_LG, vertical=SPACE_MD),
+            actions_padding=ft.Padding(left=SPACE_LG, right=SPACE_LG, bottom=SPACE_LG, top=SPACE_XS),
             modal=True,
         )
 
-    def _confirmar(self):
-        val = self.txt_nombre.value.strip()
+    def _confirmar(self) -> None:
+        val = (self.txt_nombre.value or "").strip()
         if not val:
             self.lbl_error.value = "El nombre no puede estar vacío."
             self.lbl_error.visible = True
@@ -668,18 +686,12 @@ class RenameDialog(ft.AlertDialog):
         self.on_confirm(val)
         self._cerrar()
 
-    def _cerrar(self):
-        self.open = False
-        if self.app_page:
-            try:
-                self.app_page.pop_dialog()
-                self.app_page.update()
-            except Exception:
-                pass
+    def _cerrar(self) -> None:
+        close_dialog_safe(self.app_page, self)
 
 
 class ConfirmDeleteDialog(ft.AlertDialog):
-    """Diálogo de confirmación para eliminar elementos."""
+    """Modal de confirmación antes de borrar un Colegio, Curso o Alumno."""
 
     def __init__(
         self,
@@ -688,120 +700,123 @@ class ConfirmDeleteDialog(ft.AlertDialog):
         on_confirm: Callable[[], None],
         page: ft.Page | None = None,
         tokens: ThemeTokens | None = None,
-    ):
+    ) -> None:
         self.on_confirm = on_confirm
         self.app_page = page
-        self.tokens = _resolve_tokens(tokens, page)
+        self.tokens = resolve_tokens(tokens=tokens, page=page)
         tok = self.tokens
 
-        super().__init__(
-            title=logo_dialog_title(titulo, color_texto=ft.Colors.RED_600, icon_color=ft.Colors.RED_600, tokens=tok),
-            content=ft.Text(mensaje, size=14, color=tok.text_main),
-            actions=[
-                ft.TextButton(
-                    "Cancelar",
-                    style=ft.ButtonStyle(color=tok.text_muted, shape=ft.RoundedRectangleBorder(radius=8)),
-                    on_click=lambda e: self._cerrar(),
-                ),
-                ft.FilledButton(
-                    "Eliminar",
-                    style=ft.ButtonStyle(
-                        bgcolor=ft.Colors.RED_600,
-                        color=ft.Colors.WHITE,
-                        shape=ft.RoundedRectangleBorder(radius=8),
-                    ),
-                    on_click=lambda e: self._confirmar(),
-                ),
-            ],
-            actions_alignment=ft.MainAxisAlignment.END,
-            bgcolor=tok.surface,
-            modal=True,
+        self.message_text = ft.Text(mensaje, size=14, color=tok.text_primary)
+        content = ft.Container(
+            width=_compact_width(page),
+            content=ft.Column(
+                tight=True,
+                scroll=ft.ScrollMode.AUTO,
+                spacing=SPACE_SM,
+                controls=[self.message_text],
+            ),
         )
-
-    def _confirmar(self):
-        self.on_confirm()
-        self._cerrar()
-
-    def _cerrar(self):
-        self.open = False
-        if self.app_page:
-            try:
-                self.app_page.pop_dialog()
-                self.app_page.update()
-            except Exception:
-                pass
-
-
-class CustomizeColumnsDialog(ft.AlertDialog):
-    """Diálogo para personalizar los nombres de las 4 columnas de notas."""
-
-    def __init__(
-        self,
-        nombres_actuales: list[str],
-        on_save: Callable[[list[str]], None],
-        page: ft.Page | None = None,
-        tokens: ThemeTokens | None = None,
-    ):
-        self.on_save = on_save
-        self.app_page = page
-        self.tokens = _resolve_tokens(tokens, page)
-        tok = self.tokens
-        self.inputs = [
-            ft.TextField(
-                label=f"Columna {i+1}",
-                value=nombres_actuales[i] if i < len(nombres_actuales) else f"P{i+1}",
-                dense=True,
-                border_radius=10,
-                bgcolor=tok.bg_page,
-                border_color=tok.border_color,
-                color=tok.text_main,
-            )
-            for i in range(4)
+        actions = [
+            sheet_action_button("Cancelar", lambda _e: self._cerrar(), tokens=tok, primary=False),
+            sheet_action_button(
+                "Eliminar",
+                lambda _e: self._confirmar(),
+                tokens=tok,
+                primary=False,
+                destructive=True,
+            ),
         ]
 
         super().__init__(
-            title=logo_dialog_title("Personalizar Columnas de Notas", tokens=tok),
-            content=ft.Column(
-                [
-                    ft.Text("Define los encabezados para las notas principales y extra:", size=13, color=tok.text_muted),
-                    *self.inputs,
-                ],
-                tight=True,
-                width=320,
-                spacing=10,
+            title=dialog_editorial_title(
+                titulo,
+                tokens=tok,
+                icon=ft.Icons.WARNING_AMBER_ROUNDED,
+                color_texto=tok.fail_fg,
+                icon_color=tok.fail_fg,
+                on_close=self._cerrar,
             ),
-            actions=[
-                ft.TextButton(
-                    "Cancelar",
-                    style=ft.ButtonStyle(color=tok.text_muted, shape=ft.RoundedRectangleBorder(radius=8)),
-                    on_click=lambda e: self._cerrar(),
-                ),
-                ft.FilledButton(
-                    "Guardar",
-                    style=ft.ButtonStyle(
-                        bgcolor=tok.primary,
-                        color=ft.Colors.WHITE,
-                        shape=ft.RoundedRectangleBorder(radius=8),
-                    ),
-                    on_click=lambda e: self._guardar(),
-                ),
-            ],
+            content=content,
+            actions=_dialog_actions_wrapper(actions, page),
             actions_alignment=ft.MainAxisAlignment.END,
-            bgcolor=tok.surface,
+            bgcolor=tok.surface_primary,
+            elevation=0,
+            scrollable=True,
+            shape=ft.RoundedRectangleBorder(radius=ft.BorderRadius.all(RADIUS_MD)),
+            content_padding=ft.Padding.symmetric(horizontal=SPACE_LG, vertical=SPACE_MD),
+            actions_padding=ft.Padding(left=SPACE_LG, right=SPACE_LG, bottom=SPACE_LG, top=SPACE_XS),
             modal=True,
         )
 
+    def _confirmar(self) -> None:
+        self._cerrar()
+        self.on_confirm()
 
-    def _guardar(self):
-        nuevos_nombres = [inp.value.strip() or f"P{i+1}" for i, inp in enumerate(self.inputs)]
+    def _cerrar(self) -> None:
+        close_dialog_safe(self.app_page, self)
+
+
+class CustomizeColumnsDialog(ft.AlertDialog):
+    """Modal para personalizar nombres de hasta 5 evaluaciones parciales (P1..P5)."""
+
+    def __init__(
+        self,
+        nombres_actuales: list[str] | None = None,
+        on_save: Callable[[list[str]], None] | None = None,
+        page: ft.Page | None = None,
+        tokens: ThemeTokens | None = None,
+        *,
+        col_names: list[str] | None = None,
+    ) -> None:
+        base_nombres = nombres_actuales if nombres_actuales is not None else (col_names or ["P1", "P2", "P3", "P4", "P5"])
+        self.on_save = on_save or (lambda _v: None)
+        self.app_page = page
+        self.tokens = resolve_tokens(tokens=tokens, page=page)
+        tok = self.tokens
+
+        self.inputs: list[ft.TextField] = []
+        for i, val in enumerate(base_nombres):
+            self.inputs.append(
+                _editorial_textfield(
+                    label=f"Columna {i + 1}",
+                    value=val,
+                    prefix_text=f"#{i + 1} · ",
+                    tokens=tok,
+                )
+            )
+
+        content = ft.Container(
+            width=_compact_width(page),
+            content=ft.Column(
+                tight=True,
+                scroll=ft.ScrollMode.AUTO,
+                spacing=SPACE_MD,
+                controls=self.inputs,
+            ),
+        )
+        actions = [
+            sheet_action_button("Cancelar", lambda _e: self._cerrar(), tokens=tok, primary=False),
+            sheet_action_button("Guardar", lambda _e: self._guardar(), tokens=tok, primary=True),
+        ]
+
+        super().__init__(
+            title=dialog_editorial_title("Personalizar Columnas", tokens=tok, on_close=self._cerrar),
+            content=content,
+            actions=_dialog_actions_wrapper(actions, page),
+            actions_alignment=ft.MainAxisAlignment.END,
+            bgcolor=tok.surface_primary,
+            elevation=0,
+            scrollable=True,
+            shape=ft.RoundedRectangleBorder(radius=ft.BorderRadius.all(RADIUS_MD)),
+            content_padding=ft.Padding.symmetric(horizontal=SPACE_LG, vertical=SPACE_MD),
+            actions_padding=ft.Padding(left=SPACE_LG, right=SPACE_LG, bottom=SPACE_LG, top=SPACE_XS),
+            modal=True,
+        )
+
+    def _guardar(self) -> None:
+        nuevos_nombres = [(inp.value or "").strip() or f"P{i + 1}" for i, inp in enumerate(self.inputs)]
         self.on_save(nuevos_nombres)
         self._cerrar()
 
-    def _cerrar(self):
-        self.open = False
-        if self.app_page:
-            try:
-                self.app_page.pop_dialog()
-                self.app_page.update()
-            except Exception:
-                pass
+    def _cerrar(self) -> None:
+        close_dialog_safe(self.app_page, self)

@@ -157,16 +157,20 @@ def test_app_footer_dynamic_visibility_and_theming(sample_state):
 
 def test_planillas_view_empty_and_populated(sample_state, mock_page):
     state, exports_dir = sample_state
+    from mobile.components.ledger_primitives import EmptyStateView, NotalyListRow, NotalyListSection
+    from mobile.components.ui_header import UnderlineTabBar
 
     with patch("core.gestor_planillas.obtener_directorio_exportaciones", return_value=exports_dir):
-        # 1. Estado vacío
+        # 1. Estado vacío editorial con EmptyStateView y CTA 'Ir a Cursos'
         view = PlanillasView(state=state, page=mock_page, on_navigate=lambda v: None)
+        assert isinstance(view.filter_container.content, UnderlineTabBar)
+        assert view.list_view.padding.bottom >= 88
         assert len(view.list_view.controls) == 1
-        # Contenedor con mensaje de vacío
-        empty_container = view.list_view.controls[0]
-        assert isinstance(empty_container, ft.Container)
+        assert isinstance(view.list_view.controls[0], EmptyStateView)
+        assert view.list_view.controls[0].cta_button is not None
+        assert view.list_view.controls[0].cta_button.content.value == "Ir a Cursos"
 
-        # 2. Crear y registrar planillas físicas
+        # 2. Crear y registrar planillas físicas -> Lista plana de 2 niveles
         pdf_path = exports_dir / "Planilla 3ro B - 12-10-2026.pdf"
         pdf_path.write_text("dummy content")
 
@@ -179,14 +183,25 @@ def test_planillas_view_empty_and_populated(sample_state, mock_page):
         )
 
         view._build_ui()
-        # Con SPEC-024 colegios inician colapsados por defecto (REQ-STA-024-001)
-        assert len(view.list_view.controls) == 1  # Encabezado colegio
+        # Colegios inician colapsados con conteo pluralizado exacto ("1 archivo")
+        assert len(view.list_view.controls) == 1
+        sec = view.list_view.controls[0]
+        assert isinstance(sec, NotalyListSection)
+        hdr_row = sec.content.controls[0].content
+        trailing_hdr = hdr_row.controls[1]
+        assert trailing_hdr.controls[0].value == "1 archivo"
+        assert len(sec.rows_column.controls) == 0
+
+        # Al expandir institución, aparecen directamente los NotalyListRow de reportes (2 niveles)
         view._toggle_colegio("Colegio Belgrano")
-        assert len(view.list_view.controls) >= 2  # Encabezado colegio + Tarjeta curso
+        sec_exp = view.list_view.controls[0]
+        assert len(sec_exp.rows_column.controls) == 1
+        assert isinstance(sec_exp.rows_column.controls[0], NotalyListRow)
 
 
 def test_planillas_view_delete_and_orphan_handling(sample_state, mock_page):
     state, exports_dir = sample_state
+    from mobile.components.notaly_sheet import NotalyCompactDialog
 
     with patch("core.gestor_planillas.obtener_directorio_exportaciones", return_value=exports_dir):
         pdf_path = exports_dir / "Planilla 3ro B - 12-10-2026.pdf"
@@ -202,13 +217,16 @@ def test_planillas_view_delete_and_orphan_handling(sample_state, mock_page):
 
         view = PlanillasView(state=state, page=mock_page, on_navigate=lambda v: None)
 
-        # Confirmar eliminar abre diálogo
+        # Confirmar eliminar abre NotalyCompactDialog con fondo surface_primary
         view._confirmar_eliminar(reg["id"], reg["nombre_archivo"])
         assert mock_page.active_dialog is not None
-        assert "Eliminar" in mock_page.active_dialog.actions[1].content or getattr(mock_page.active_dialog.actions[1], "text", "") == "Eliminar"
+        assert isinstance(mock_page.active_dialog, NotalyCompactDialog)
+        assert mock_page.active_dialog.bgcolor == state.tokens.surface_primary
+        btn_eliminar = mock_page.active_dialog.actions_container.controls[0].controls[1]
+        assert btn_eliminar.content.value == "Eliminar"
 
         # Ejecutar acción de borrado
-        mock_page.active_dialog.actions[1].on_click(None)
+        btn_eliminar.on_click(None)
         assert not pdf_path.exists()
         assert len(state.get_planillas()) == 0
 

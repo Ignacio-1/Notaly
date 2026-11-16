@@ -82,7 +82,7 @@ def test_planificaciones_dialog_renderiza_todos_los_cursos(temp_state):
         page=page,
     )
 
-    assert "Colegio San Martin" in dlg.title.controls[1].controls[1].value
+    assert "Colegio San Martin" in dlg.header_row.controls[0].controls[1].value
     # Debe haber 2 tarjetas de cursos renderizadas
     cards = dlg.cursos_content_col.controls
     assert len(cards) == 2
@@ -184,9 +184,10 @@ def test_planificaciones_dialog_cerrar_y_callback(temp_state):
 
 
 def test_planificaciones_dialog_modo_oscuro_y_tokens(temp_state):
+    from mobile.components.notaly_sheet import NotalySheet
     from mobile.theme import DARK_TOKENS, LIGHT_TOKENS
     page = MockMobilePage()
-    
+
     # 1. Modo Oscuro explícito
     dlg_dark = PlanificacionesInstitucionDialog(
         state=temp_state,
@@ -194,17 +195,17 @@ def test_planificaciones_dialog_modo_oscuro_y_tokens(temp_state):
         page=page,
         tokens=DARK_TOKENS,
     )
+    assert isinstance(dlg_dark, NotalySheet)
     assert dlg_dark.tokens == DARK_TOKENS
-    assert dlg_dark.bgcolor == DARK_TOKENS.surface
-    # El título debe adoptar text_main de dark tokens
-    assert dlg_dark.title.controls[1].controls[0].color == DARK_TOKENS.text_main
-    assert dlg_dark.title.controls[1].controls[1].color == DARK_TOKENS.text_muted
+    assert dlg_dark.bgcolor == DARK_TOKENS.surface_primary
+    assert dlg_dark.header_row.controls[0].controls[0].color == DARK_TOKENS.text_primary
+    assert dlg_dark.header_row.controls[0].controls[1].color == DARK_TOKENS.text_secondary
     # Las tarjetas de cursos deben tener superficie oscura
     card_dark = dlg_dark.cursos_content_col.controls[0]
-    assert card_dark.bgcolor == DARK_TOKENS.surface
-    # El botón Añadir planificación debe usar el primary de dark tokens
+    assert card_dark.bgcolor == DARK_TOKENS.surface_primary
+    # El botón Añadir planificación debe usar el accent_primary de dark tokens
     btn_dark = card_dark.content.controls[-1].controls[0]
-    assert btn_dark.style.color == DARK_TOKENS.primary
+    assert btn_dark.style.color == DARK_TOKENS.accent_primary
 
     # 2. Modo Claro por defecto
     dlg_light = PlanificacionesInstitucionDialog(
@@ -214,8 +215,8 @@ def test_planificaciones_dialog_modo_oscuro_y_tokens(temp_state):
         tokens=LIGHT_TOKENS,
     )
     assert dlg_light.tokens == LIGHT_TOKENS
-    assert dlg_light.bgcolor == LIGHT_TOKENS.surface
-    assert dlg_light.title.controls[1].controls[0].color == LIGHT_TOKENS.text_main
+    assert dlg_light.bgcolor == LIGHT_TOKENS.surface_primary
+    assert dlg_light.header_row.controls[0].controls[0].color == LIGHT_TOKENS.text_primary
 
 
 def test_planificaciones_dialog_actualizacion_en_tiempo_real(temp_state):

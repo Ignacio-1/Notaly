@@ -65,8 +65,12 @@ def test_global_search_inicializacion(sample_state):
     page = MockPage()
     search_bar = GlobalSearchBar(state=sample_state, page=page)
 
-    assert search_bar.view_elevation == 4
-    assert search_bar.divider_color == ft.Colors.OUTLINE_VARIANT
+    assert search_bar.left == 0
+    assert search_bar.top == 0
+    assert search_bar.right == 0
+    assert search_bar.bottom == 0
+    assert isinstance(search_bar.content, ft.SafeArea)
+    assert search_bar.is_open is False
     assert len(search_bar.controls) == 1
     assert "Escribe para buscar" in search_bar.controls[0].title.value
 
@@ -152,7 +156,8 @@ async def test_global_search_navegacion_profunda_alumno(sample_state):
     assert sample_state.selected_colegio == "Colegio San Martín"
     assert sample_state.selected_curso == "3° A"
     assert sample_state.selected_alumno_id == "2"
-    assert sample_state.current_screen == "notas"
+    # B4: seleccionar_resultado_busqueda delega en on_navigate sin pisar current_screen prematuramente
+    assert sample_state.current_screen == "colegios"
     mock_navigate.assert_called_with("notas")
 
 
@@ -170,7 +175,7 @@ async def test_global_search_navegacion_colegio_y_curso(sample_state):
         "colegio": "Colegio San Martín"
     })
     assert sample_state.selected_colegio == "Colegio San Martín"
-    assert sample_state.current_screen == "cursos"
+    assert sample_state.current_screen == "colegios"
     mock_navigate.assert_called_with("cursos")
 
     # Clic en Curso
@@ -182,7 +187,7 @@ async def test_global_search_navegacion_colegio_y_curso(sample_state):
     })
     assert sample_state.selected_colegio == "Colegio San Martín"
     assert sample_state.selected_curso == "3° A"
-    assert sample_state.current_screen == "notas"
+    assert sample_state.current_screen == "colegios"
     mock_navigate.assert_called_with("notas")
 
 
@@ -205,7 +210,7 @@ async def test_global_search_tile_on_click_invocacion_real(sample_state):
     assert sample_state.selected_colegio == "Colegio San Martín"
     assert sample_state.selected_curso == "5° B"
     assert sample_state.selected_alumno_id == "1"
-    assert sample_state.current_screen == "notas"
+    assert sample_state.current_screen == "colegios"
     mock_navigate.assert_called_with("notas")
 
 

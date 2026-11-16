@@ -9,10 +9,8 @@ from unittest.mock import MagicMock
 from mobile.state import AppState
 from mobile.components.comportamiento_dialog import (
     ComportamientoDialog,
-    COLOR_POS_SOLID,
-    COLOR_REG_SOLID,
-    COLOR_NEG_SOLID,
 )
+from mobile.components.notaly_sheet import NotalySheet
 from core.constants import (
     COMPORTAMIENTO_POSITIVO,
     COMPORTAMIENTO_REGULAR,
@@ -48,8 +46,11 @@ def test_dialog_inicializacion_sin_placeholders(tmp_path):
 
     # Requisito mandatorio del usuario: sin placeholder de ejemplo
     assert dialog.txt_observacion.hint_text == ""
-    # Cero botones manuales en actions
-    assert len(dialog.actions) == 0
+    # NotalySheet sin botones manuales de guardado
+    assert isinstance(dialog, NotalySheet)
+    assert dialog.actions_container is None
+    assert dialog.btn_positivo.height >= 44
+    assert dialog.btn_positivo.border_radius == 4
     # Inicialmente no muestra subtipos ni input
     assert dialog.subtipos_container.visible is False
     assert dialog.observacion_input_container.visible is False

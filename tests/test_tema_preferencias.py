@@ -308,41 +308,61 @@ def test_app_state_toggle_theme_y_flush(tmp_path, monkeypatch):
 
 def test_ui_header_tokens_light_and_dark():
     """
-    RF-06, RF-07, RF-10: Verifica que build_app_header, build_module_tabs y
-    SaveStatusIndicator consuman correctamente tokens oscuros y claros.
+    RF-06, RF-07, RF-08, RF-09, B1: Verifica que NotalyTopHeader, UnderlineTabBar,
+    build_app_header, build_module_tabs y SaveStatusIndicator consuman correctamente
+    tokens oscuros y claros sin cápsulas ni mutaciones `.name`.
     """
     from mobile.components.ui_header import (
+        NotalyTopHeader,
         SaveStatusIndicator,
+        UnderlineTabBar,
         build_app_header,
         build_module_tabs,
     )
-    from mobile.theme import LIGHT_TOKENS, DARK_TOKENS
+    from mobile.theme import DARK_TOKENS, LIGHT_TOKENS
 
-    # SaveStatusIndicator con DARK_TOKENS
+    # SaveStatusIndicator con DARK_TOKENS: sin cápsula y mutando `.icon` (Flet 0.86+)
     ind_saved_dark = SaveStatusIndicator(status="saved", tokens=DARK_TOKENS)
-    assert ind_saved_dark.bgcolor == DARK_TOKENS.save_status_bg
-    assert ind_saved_dark.text_widget.color == DARK_TOKENS.save_status_text
+    assert ind_saved_dark.bgcolor is None
+    assert ind_saved_dark.border_radius == 0
+    assert ind_saved_dark.text_widget.color == DARK_TOKENS.pass_fg
+    saved_icon = ind_saved_dark.icon_widget.icon
+
+    ind_saved_dark.set_status("saving")
+    assert ind_saved_dark.text_widget.color == DARK_TOKENS.warn_fg
+    assert ind_saved_dark.icon_widget.icon != saved_icon
 
     ind_saving_dark = SaveStatusIndicator(status="saving", tokens=DARK_TOKENS)
-    assert ind_saving_dark.bgcolor == DARK_TOKENS.save_pending_bg
-    assert ind_saving_dark.text_widget.color == DARK_TOKENS.save_pending_text
+    assert ind_saving_dark.bgcolor is None
+    assert ind_saving_dark.text_widget.color == DARK_TOKENS.warn_fg
 
-    # build_app_header con DARK_TOKENS
+    # build_app_header / NotalyTopHeader con DARK_TOKENS y LIGHT_TOKENS
     header_dark = build_app_header(
         eyebrow="Colegio Nacional",
         title="1° A - Turno Tarde",
         tokens=DARK_TOKENS,
     )
-    assert header_dark.bgcolor == DARK_TOKENS.surface
-    assert header_dark.border.bottom.color == DARK_TOKENS.border_color
+    assert isinstance(header_dark, NotalyTopHeader)
+    assert header_dark.bgcolor == DARK_TOKENS.surface_primary
+    assert header_dark.border.bottom.color == DARK_TOKENS.border_hairline
 
-    # build_module_tabs con DARK_TOKENS
+    header_light = build_app_header(
+        eyebrow="",
+        title="Inicio",
+        tokens=LIGHT_TOKENS,
+    )
+    assert header_light.bgcolor == LIGHT_TOKENS.surface_primary
+
+    # build_module_tabs / UnderlineTabBar plano (0px) con indicador inferior 2px
     tabs_dark = build_module_tabs(
         active_tab="notas",
         on_change=lambda _: None,
         tokens=DARK_TOKENS,
     )
-    assert tabs_dark.bgcolor == DARK_TOKENS.surface_variant
+    assert isinstance(tabs_dark, UnderlineTabBar)
+    assert tabs_dark.bgcolor == DARK_TOKENS.surface_primary
+    assert tabs_dark.border_radius == 0
+    assert tabs_dark.border.bottom.color == DARK_TOKENS.border_hairline
 
 
 def test_dialogs_resolve_tokens_and_theme_mode():
@@ -373,8 +393,9 @@ def test_dialogs_resolve_tokens_and_theme_mode():
         on_confirm=lambda: None,
         tokens=DARK_TOKENS,
     )
-    assert dlg_delete_dark.bgcolor == DARK_TOKENS.surface
-    assert dlg_delete_dark.content.color == DARK_TOKENS.text_main
+    assert dlg_delete_dark.bgcolor == DARK_TOKENS.surface_primary
+    assert dlg_delete_dark.message_text.color == DARK_TOKENS.text_primary
+    assert dlg_delete_dark.shape.radius == ft.BorderRadius.all(6)
 
     # 3. ExportDialog con tokens explícitos
     dlg_export_dark = ExportDialog(
@@ -397,37 +418,34 @@ def test_dialogs_resolve_tokens_and_theme_mode():
     assert dlg_auto_dark.txt_apellido.bgcolor == DARK_TOKENS.bg_page
 
 
-def test_notas_view_tokens_and_grade_pill(tmp_path, monkeypatch):
+def test_notas_view_tokens_and_grade_summary(tmp_path, monkeypatch):
     """
-    RF-06, RF-07, RF-08, RF-13: Verifica que build_grade_pill, build_key_button
-    y NotasView consuman correctamente los tokens en modo claro y modo oscuro.
+    RF-03, RF-04, RF-07, B2: Verifica que format_tabular_trimester_summary,
+    build_key_button y NotasView consuman correctamente los tokens duales en modo claro y oscuro.
     """
     import flet as ft
     from unittest.mock import MagicMock
     from mobile.state import AppState
-    from mobile.theme import LIGHT_TOKENS, DARK_TOKENS
-    from mobile.views.notas_view import build_grade_pill, build_key_button, NotasView
+    from mobile.theme import LIGHT_TOKENS, DARK_TOKENS, RADIUS_NONE, RADIUS_SM
+    from mobile.views.notas_view import (
+        format_tabular_trimester_summary,
+        build_key_button,
+        NotasView,
+    )
 
-    # 1. Píldora de notas en modo claro y oscuro
-    pill_light = build_grade_pill("1°T", 8, is_dark=False)
-    assert pill_light.bgcolor == LIGHT_TOKENS.grade_pass_bg
-    assert pill_light.content.controls[0].color == LIGHT_TOKENS.text_muted
+    # 1. Resumen tabular continuo de trimestres (sin cápsulas/píldoras)
+    resumen = format_tabular_trimester_summary([8, None, 6])
+    assert resumen == "1°T 8 · 2°T -- · 3°T 6"
 
-    pill_dark = build_grade_pill("1°T", 8, is_dark=True)
-    assert pill_dark.bgcolor == DARK_TOKENS.grade_pass_bg
-    assert pill_dark.content.controls[0].color == DARK_TOKENS.text_muted
-
-    pill_tokens_explicit = build_grade_pill("2°T", 3, tokens=DARK_TOKENS)
-    assert pill_tokens_explicit.bgcolor == DARK_TOKENS.grade_fail_bg
-    assert pill_tokens_explicit.content.controls[0].color == DARK_TOKENS.text_muted
-
-    # 2. Botón numérico con tokens oscuros
+    # 2. Botón numérico con tokens oscuros y radio editorial <= 4px
     key_dark = build_key_button(text="5", tokens=DARK_TOKENS)
-    assert key_dark.bgcolor == DARK_TOKENS.surface_variant
-    assert key_dark.content.color == DARK_TOKENS.text_main
+    assert key_dark.bgcolor == DARK_TOKENS.surface_subtle
+    assert key_dark.content.color == DARK_TOKENS.text_primary
+    assert key_dark.border_radius == RADIUS_SM
 
     key_primary_dark = build_key_button(text="Sig.", is_primary=True, tokens=DARK_TOKENS)
-    assert key_primary_dark.bgcolor == DARK_TOKENS.primary
+    assert key_primary_dark.bgcolor == DARK_TOKENS.accent_primary
+    assert key_primary_dark.content.color == DARK_TOKENS.accent_on_primary
 
     # 3. NotasView montada en modo oscuro
     mock_data = {
@@ -457,14 +475,16 @@ def test_notas_view_tokens_and_grade_pill(tmp_path, monkeypatch):
     state.selected_curso = "3A"
 
     mock_page = MagicMock()
+    mock_page.width = 390
     mock_page.theme_mode = ft.ThemeMode.DARK
     view = NotasView(state=state, page=mock_page, on_navigate=lambda _: None)
 
-    assert view.bgcolor == DARK_TOKENS.bg_page
-    assert view.dock_container.bgcolor == DARK_TOKENS.surface
+    assert view.bgcolor == DARK_TOKENS.bg_canvas
+    assert view.dock_container.bgcolor == DARK_TOKENS.surface_primary
     assert "1" in view.tarjetas_alumnos
     card = view.tarjetas_alumnos["1"]
-    assert card.bgcolor == DARK_TOKENS.surface
+    assert card.bgcolor == DARK_TOKENS.surface_primary
+    assert card.border_radius == RADIUS_NONE
 
 
 def test_asistencias_view_tokens_dark_and_light():
@@ -497,11 +517,12 @@ def test_asistencias_view_tokens_dark_and_light():
     state_dark.selected_curso = "3A"
 
     page_mock = MagicMock()
+    page_mock.width = 390
     view_dark = AsistenciasView(state=state_dark, page=page_mock, on_navigate=lambda _: None)
-    assert view_dark.bgcolor == DARK_TOKENS.bg_page
+    assert view_dark.bgcolor == DARK_TOKENS.bg_canvas
     assert "1" in view_dark.tarjetas_alumnos
     card_dark = view_dark.tarjetas_alumnos["1"]
-    assert card_dark.bgcolor == DARK_TOKENS.surface
+    assert card_dark.bgcolor == DARK_TOKENS.surface_primary
 
     # Modo claro
     state_light = AppState()
@@ -511,9 +532,9 @@ def test_asistencias_view_tokens_dark_and_light():
     state_light.selected_curso = "3A"
 
     view_light = AsistenciasView(state=state_light, page=page_mock, on_navigate=lambda _: None)
-    assert view_light.bgcolor == LIGHT_TOKENS.bg_page
+    assert view_light.bgcolor == LIGHT_TOKENS.bg_canvas
     card_light = view_light.tarjetas_alumnos["1"]
-    assert card_light.bgcolor == LIGHT_TOKENS.surface
+    assert card_light.bgcolor == LIGHT_TOKENS.surface_primary
 
 
 def test_grupos_view_tokens_dark_and_light():
@@ -546,8 +567,9 @@ def test_grupos_view_tokens_dark_and_light():
     state_dark.selected_curso = "3A"
 
     page_mock = MagicMock()
+    page_mock.width = 390
     view_dark = GruposView(state=state_dark, page=page_mock, on_navigate=lambda _: None)
-    assert view_dark.bgcolor == DARK_TOKENS.bg_page
+    assert view_dark.bgcolor == DARK_TOKENS.bg_canvas
 
     # Modo claro
     state_light = AppState()
@@ -557,7 +579,7 @@ def test_grupos_view_tokens_dark_and_light():
     state_light.selected_curso = "3A"
 
     view_light = GruposView(state=state_light, page=page_mock, on_navigate=lambda _: None)
-    assert view_light.bgcolor == LIGHT_TOKENS.bg_page
+    assert view_light.bgcolor == LIGHT_TOKENS.bg_canvas
 
 
 def test_estadisticas_view_tokens_dark_and_light():
@@ -596,8 +618,9 @@ def test_estadisticas_view_tokens_dark_and_light():
     state_dark.selected_curso = "3A"
 
     page_mock = MagicMock()
+    page_mock.width = 390
     view_dark = EstadisticasView(state=state_dark, page=page_mock, on_navigate=lambda _: None)
-    assert view_dark.bgcolor == DARK_TOKENS.bg_page
+    assert view_dark.bgcolor == DARK_TOKENS.bg_canvas
 
     # Modo claro
     state_light = AppState()
@@ -607,7 +630,7 @@ def test_estadisticas_view_tokens_dark_and_light():
     state_light.selected_curso = "3A"
 
     view_light = EstadisticasView(state=state_light, page=page_mock, on_navigate=lambda _: None)
-    assert view_light.bgcolor == LIGHT_TOKENS.bg_page
+    assert view_light.bgcolor == LIGHT_TOKENS.bg_canvas
 
 
 

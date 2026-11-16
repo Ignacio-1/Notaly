@@ -318,15 +318,21 @@ def test_estadisticas_view_conmutar_seccion_asistencias(populated_app_state):
 def test_estadisticas_view_donut_asistencias_canvas(populated_app_state):
     """
     Verifica que el donut de asistencias se renderice con flet.canvas.Canvas
-    y contenga arcos con los colores de la paleta oficial (#10B981, #EF4444, #F59E0B, #3B82F6).
+    y contenga arcos con los tokens semánticos chart_* (chart_pass, chart_fail, chart_warn, chart_justif).
     """
     import flet.canvas as cv
     from mobile.views.estadisticas_view import EstadisticasView
+    from mobile.theme import LIGHT_TOKENS
 
     state = populated_app_state
     page = MockMobilePage()
     view = EstadisticasView(state=state, page=page, on_navigate=lambda _: None)
     view._conmutar_seccion("asistencias")
+
+    # Al tener 'Todas las fechas' activo, los selectores Desde/Hasta permanecen ocultos
+    filtro_col = view.asistencia_filtro_container.content.content
+    rango_row = filtro_col.controls[1]
+    assert rango_row.visible is False
 
     donut_content = view.asistencia_donut_container.content
     assert donut_content is not None
@@ -348,7 +354,12 @@ def test_estadisticas_view_donut_asistencias_canvas(populated_app_state):
     assert canvas.width == 140
     assert canvas.height == 140
 
-    colores_esperados = {"#10B981", "#EF4444", "#F59E0B", "#3B82F6"}
+    colores_esperados = {
+        LIGHT_TOKENS.chart_pass,
+        LIGHT_TOKENS.chart_fail,
+        LIGHT_TOKENS.chart_warn,
+        LIGHT_TOKENS.chart_justif,
+    }
     colores_encontrados = {arc.paint.color for arc in canvas.shapes if isinstance(arc, cv.Arc) and arc.paint}
     assert colores_esperados.issubset(colores_encontrados)
 
@@ -408,10 +419,11 @@ def test_export_estadisticas_dialog_asistencias_interfaz():
         page=page,
     )
 
-    # Verificar título
-    assert isinstance(dlg.title, ft.Row)
-    textos_titulo = [c.value for c in dlg.title.controls if isinstance(c, ft.Text)]
-    assert "Exportar Estadísticas de Asistencia" in textos_titulo
+    # Verificar cabecera de NotalySheet
+    from mobile.components.notaly_sheet import NotalySheet
+    assert isinstance(dlg, NotalySheet)
+    titulo_ctrl = dlg.header_row.controls[0].controls[0]
+    assert titulo_ctrl.value == "Exportar Estadísticas de Asistencia"
 
     # Botón exportar debe estar habilitado directamente
     assert dlg.btn_exportar.disabled is False or dlg.btn_exportar.disabled is None

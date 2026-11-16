@@ -1,52 +1,65 @@
 """
-Selector de fecha interactivo con calendario visual y búsqueda personalizada para la toma de asistencias.
-Permite navegar por meses/años, seleccionar días en el calendario, ingresar fecha manual (DD/MM/AAAA)
-y acceder rápidamente a fechas con asistencias ya registradas.
+Selector de fecha editorial en hoja modal inferior para Asistencias (SPEC-028).
+
+Migra `DatePickerDialog` a `NotalySheet` adaptativo sin cápsulas ni constantes
+claras heredadas, con celdas de calendario >= 44dp (`radius=4`, `LedgerMono`),
+accesos rápidos rectangulares (`Hoy`, `Ayer`, `Última`) y entrada manual segura.
 """
 
-from datetime import datetime, date, timedelta
+from __future__ import annotations
+
 import calendar
-from typing import Callable
+from datetime import datetime, timedelta
+from typing import Any, Callable
+
 import flet as ft
+
+from mobile.components.notaly_sheet import NotalySheet, sheet_action_button
 from mobile.theme import (
-    PRIMARY,
-    PRIMARY_LIGHT,
-    TEXT_MAIN,
-    TEXT_MUTED,
-    BORDER_COLOR,
-    BG_PAGE,
-    ATTENDANCE_P_BG,
-    ATTENDANCE_P_TEXT,
-    ATTENDANCE_P_SOLID,
-    LIGHT_TOKENS,
+    FONT_MONO,
+    RADIUS_SM,
+    SPACE_SM,
+    SPACE_XS,
     ThemeTokens,
-    get_tokens,
+    resolve_tokens,
+    tabular_text,
 )
 
 MESES = [
-    "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
-    "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
+    "Enero",
+    "Febrero",
+    "Marzo",
+    "Abril",
+    "Mayo",
+    "Junio",
+    "Julio",
+    "Agosto",
+    "Septiembre",
+    "Octubre",
+    "Noviembre",
+    "Diciembre",
 ]
 
 DIAS_SEMANA = ["Lu", "Ma", "Mi", "Ju", "Vi"]
 
 
-class DatePickerDialog(ft.AlertDialog):
+class DatePickerDialog(NotalySheet):
+    """Hoja modal editorial para elegir fechas de asistencia (lunes a viernes)."""
+
     def __init__(
         self,
         fecha_actual_iso: str,
-        fechas_con_asistencia: list[str],
+        fechas_con_asistencia: set[str],
         on_date_selected: Callable[[str], None],
         page: ft.Page | None = None,
         tokens: ThemeTokens | None = None,
-    ):
-        self.on_date_selected = on_date_selected
-        self.fechas_con_asistencia = set(fechas_con_asistencia)
+    ) -> None:
         self.app_page = page
-        self.tokens = tokens or (get_tokens("dark") if getattr(page, "theme_mode", None) == ft.ThemeMode.DARK else LIGHT_TOKENS)
+        self.fechas_con_asistencia = set(fechas_con_asistencia or ())
+        self.on_date_selected = on_date_selected
+        self.tokens = resolve_tokens(tokens=tokens, page=page)
         tok = self.tokens
 
-        # Parsear fecha inicial
         try:
             dt = datetime.strptime(fecha_actual_iso, "%Y-%m-%d")
         except Exception:
@@ -58,215 +71,238 @@ class DatePickerDialog(ft.AlertDialog):
         self.current_view_year = dt.year
         self.current_view_month = dt.month
 
-        # Contenedor del cuerpo del calendario
+        self.day_cells: list[ft.Container] = []
         self.calendar_body = ft.Container()
         self.txt_manual = ft.TextField(
-            label="O ingresar fecha (DD-MM-AAAA)",
+            label="Ingresar fecha (DD-MM-AAAA)",
             hint_text=dt.strftime("%d-%m-%Y"),
             text_size=14,
             keyboard_type=ft.KeyboardType.DATETIME,
-            dense=True,
             expand=True,
-            border_radius=10,
-            bgcolor=tok.bg_page,
-            border_color=tok.border_color,
-            color=tok.text_main,
-            on_submit=lambda e: self._confirmar_manual(),
+            border_radius=RADIUS_SM,
+            bgcolor=tok.bg_canvas,
+            border_color=tok.border_hairline,
+            focused_border_color=tok.accent_primary,
+            cursor_color=tok.accent_primary,
+            color=tok.text_primary,
+            label_style=ft.TextStyle(color=tok.text_secondary),
+            hint_style=ft.TextStyle(color=tok.text_placeholder),
+            text_style=ft.TextStyle(font_family=FONT_MONO),
+            on_submit=lambda _e: self._confirmar_manual(),
         )
-        self.lbl_error = ft.Text("", color=ft.Colors.ERROR, size=12, visible=False)
+        self.lbl_error = ft.Text("", color=tok.fail_fg, size=12, visible=False)
 
-        # Renderizar calendario
         self._render_calendar()
 
-        pw = getattr(self.app_page, "width", None) or 360
-        calc_w = max(280, min(pw - 32, 340))
-
-        content = ft.Container(
-            content=ft.Column(
-                [
-                    self._build_header_controls(),
-                    self.calendar_body,
-                    ft.Divider(height=1, color=tok.border_color),
-                    ft.Row(
-                        [
-                            self.txt_manual,
-                            ft.IconButton(
-                                icon=ft.Icons.CHECK,
-                                icon_color=tok.primary,
-                                tooltip="Aplicar fecha escrita",
-                                on_click=lambda e: self._confirmar_manual(),
-                            ),
-                        ],
-                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        body_controls: list[ft.Control] = [
+            self._build_header_controls(),
+            self.calendar_body,
+            ft.Divider(height=1, thickness=1, color=tok.border_hairline),
+            ft.Row(
+                spacing=SPACE_SM,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                controls=[
+                    self.txt_manual,
+                    ft.IconButton(
+                        icon=ft.Icons.CHECK,
+                        icon_color=tok.accent_primary,
+                        width=48,
+                        height=48,
+                        tooltip="Aplicar fecha escrita",
+                        on_click=lambda _e: self._confirmar_manual(),
                     ),
-                    self.lbl_error,
-                    self._build_quick_chips(),
                 ],
-                tight=True,
-                spacing=10,
-                width=calc_w,
             ),
-            width=calc_w,
-            padding=ft.Padding(left=0, right=0, top=0, bottom=0),
+            self.lbl_error,
+            self._build_quick_actions(),
+        ]
+
+        btn_cancelar = sheet_action_button(
+            "Cancelar",
+            lambda _e: self._cerrar(),
+            tokens=tok,
+            primary=False,
+            expand=True,
         )
 
         super().__init__(
-            bgcolor=tok.surface,
-            title=ft.Row(
-                [
-                    ft.Icon(ft.Icons.EVENT, color=tok.primary),
-                    ft.Text("Seleccionar Fecha", weight=ft.FontWeight.BOLD, size=18, color=tok.text_main, expand=True),
-                ],
-                spacing=8,
-            ),
-            content=content,
-            actions=[
-                ft.TextButton(
-                    "Cancelar",
-                    style=ft.ButtonStyle(color=tok.text_muted, shape=ft.RoundedRectangleBorder(radius=8)),
-                    on_click=lambda e: self._cerrar(),
-                ),
-            ],
-            actions_alignment=ft.MainAxisAlignment.END,
-            modal=True,
+            page=page,
+            title="Seleccionar Fecha",
+            subtitle="Días hábiles de clase · Formato dd-mm-aaaa",
+            body=body_controls,
+            actions=[btn_cancelar],
+            tokens=tok,
         )
 
     def _build_header_controls(self) -> ft.Row:
+        tok = self.tokens
         mes_nombre = MESES[self.current_view_month - 1]
         self.lbl_mes_anio = ft.Text(
             f"{mes_nombre} {self.current_view_year}",
             weight=ft.FontWeight.BOLD,
             size=15,
+            color=tok.text_primary,
             expand=True,
             text_align=ft.TextAlign.CENTER,
         )
-
         return ft.Row(
-            [
+            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            controls=[
                 ft.IconButton(
                     icon=ft.Icons.CHEVRON_LEFT,
+                    icon_color=tok.text_secondary,
+                    width=48,
+                    height=48,
                     tooltip="Mes anterior",
-                    on_click=lambda e: self._cambiar_mes(-1),
+                    on_click=lambda _e: self._cambiar_mes(-1),
                 ),
                 self.lbl_mes_anio,
                 ft.IconButton(
                     icon=ft.Icons.CHEVRON_RIGHT,
+                    icon_color=tok.text_secondary,
+                    width=48,
+                    height=48,
                     tooltip="Mes siguiente",
-                    on_click=lambda e: self._cambiar_mes(1),
+                    on_click=lambda _e: self._cambiar_mes(1),
                 ),
             ],
-            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-            vertical_alignment=ft.CrossAxisAlignment.CENTER,
         )
 
-    def _render_calendar(self):
+    def _render_calendar(self) -> None:
+        tok = self.tokens
         cal = calendar.monthcalendar(self.current_view_year, self.current_view_month)
         today = datetime.now()
+        self.day_cells = []
 
-        # Fila de días de la semana hábiles (Lu - Vi) con distribución simétrica
         header_days = ft.Row(
-            [
+            spacing=SPACE_XS,
+            controls=[
                 ft.Container(
-                    content=ft.Text(d, weight=ft.FontWeight.BOLD, size=11, color=ft.Colors.SECONDARY, text_align=ft.TextAlign.CENTER),
+                    content=ft.Text(
+                        d,
+                        weight=ft.FontWeight.BOLD,
+                        size=11,
+                        color=tok.text_secondary,
+                        text_align=ft.TextAlign.CENTER,
+                    ),
                     expand=True,
                     height=28,
                     alignment=ft.Alignment.CENTER,
                 )
                 for d in DIAS_SEMANA
             ],
-            spacing=4,
         )
-
-        grid_rows = [header_days]
+        grid_rows: list[ft.Control] = [header_days]
 
         for week in cal:
-            week_habiles = week[:5]  # Solo Lunes a Viernes (0 a 4)
-            if not any(day > 0 for day in week_habiles):
+            week_habiles = week[:5]
+            if all(day == 0 for day in week_habiles):
                 continue
 
-            week_cols = []
+            week_cols: list[ft.Control] = []
             for day in week_habiles:
                 if day == 0:
-                    week_cols.append(ft.Container(expand=True, height=36))
+                    week_cols.append(ft.Container(expand=True, height=44))
                 else:
-                    fecha_dia_iso = f"{self.current_view_year:04d}-{self.current_view_month:02d}-{day:02d}"
+                    fecha_iso = f"{self.current_view_year:04d}-{self.current_view_month:02d}-{day:02d}"
                     is_selected = (
-                        self.current_view_year == self.selected_year
+                        day == self.selected_day
                         and self.current_view_month == self.selected_month
-                        and day == self.selected_day
+                        and self.current_view_year == self.selected_year
                     )
                     is_today = (
-                        self.current_view_year == today.year
+                        day == today.day
                         and self.current_view_month == today.month
-                        and day == today.day
+                        and self.current_view_year == today.year
                     )
-                    has_attendance = fecha_dia_iso in self.fechas_con_asistencia
+                    has_attendance = fecha_iso in self.fechas_con_asistencia
 
-                    # Estilos visuales
-                    bgcolor = PRIMARY if is_selected else (ATTENDANCE_P_BG if has_attendance else ft.Colors.TRANSPARENT)
-                    text_color = ft.Colors.WHITE if is_selected else (ATTENDANCE_P_TEXT if has_attendance else (PRIMARY if is_today else TEXT_MAIN))
-                    border = ft.Border.all(1.5, PRIMARY) if is_today and not is_selected else None
+                    if is_selected:
+                        bgcolor = tok.accent_primary
+                        text_color = tok.accent_on_primary
+                        border = ft.Border.all(1, tok.accent_primary)
+                    elif has_attendance:
+                        bgcolor = tok.pass_bg
+                        text_color = tok.pass_fg
+                        border = ft.Border.all(1, tok.pass_border)
+                    elif is_today:
+                        bgcolor = tok.surface_subtle
+                        text_color = tok.accent_primary
+                        border = ft.Border.all(1.5, tok.accent_primary)
+                    else:
+                        bgcolor = tok.surface_primary
+                        text_color = tok.text_primary
+                        border = ft.Border.all(1, tok.border_hairline)
 
-                    day_btn = ft.Container(
-                        content=ft.Column(
-                            [
-                                ft.Text(str(day), weight=ft.FontWeight.BOLD if (is_selected or is_today) else ft.FontWeight.NORMAL, size=13, color=text_color),
-                            ],
-                            alignment=ft.MainAxisAlignment.CENTER,
-                            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                    day_cell = ft.Container(
+                        content=tabular_text(
+                            str(day),
+                            size=13,
+                            weight=ft.FontWeight.BOLD if (is_selected or is_today or has_attendance) else ft.FontWeight.W_500,
+                            color=text_color,
+                            text_align=ft.TextAlign.CENTER,
                         ),
+                        expand=True,
+                        height=44,
+                        border_radius=RADIUS_SM,
                         bgcolor=bgcolor,
                         border=border,
-                        border_radius=8,
-                        expand=True,
-                        height=36,
                         alignment=ft.Alignment.CENTER,
                         ink=True,
-                        on_click=lambda e, f=fecha_dia_iso: self._seleccionar_fecha(f),
+                        on_click=lambda _e, f=fecha_iso: self._seleccionar_fecha(f),
                     )
-                    week_cols.append(day_btn)
+                    self.day_cells.append(day_cell)
+                    week_cols.append(day_cell)
 
-            grid_rows.append(ft.Row(week_cols, spacing=4))
+            grid_rows.append(ft.Row(week_cols, spacing=SPACE_XS))
 
-        self.calendar_body.content = ft.Column(grid_rows, spacing=4)
+        self.calendar_body.content = ft.Column(grid_rows, spacing=SPACE_XS, tight=True)
 
-    def _build_quick_chips(self) -> ft.Row:
+    def _build_quick_actions(self) -> ft.Row:
+        tok = self.tokens
         today_iso = datetime.now().strftime("%Y-%m-%d")
         yesterday_iso = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
 
-        chips = [
-            ft.Chip(
-                label=ft.Text("Hoy"),
-                leading=ft.Icon(ft.Icons.TODAY, size=16),
-                on_click=lambda e: self._seleccionar_fecha(today_iso),
-            ),
-            ft.Chip(
-                label=ft.Text("Ayer"),
-                leading=ft.Icon(ft.Icons.HISTORY, size=16),
-                on_click=lambda e: self._seleccionar_fecha(yesterday_iso),
-            ),
+        def _quick_btn(label: str, icon: ft.IconData, target_iso: str) -> ft.Container:
+            return ft.Container(
+                height=44,
+                padding=ft.Padding.symmetric(horizontal=SPACE_SM, vertical=0),
+                border_radius=RADIUS_SM,
+                bgcolor=tok.surface_subtle,
+                border=ft.Border.all(1, tok.border_hairline),
+                ink=True,
+                alignment=ft.Alignment.CENTER,
+                on_click=lambda _e, f=target_iso: self._seleccionar_fecha(f),
+                content=ft.Row(
+                    spacing=SPACE_XS,
+                    tight=True,
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                    controls=[
+                        ft.Icon(icon=icon, size=16, color=tok.accent_primary),
+                        tabular_text(label, size=12, weight=ft.FontWeight.W_600, color=tok.text_primary),
+                    ],
+                ),
+            )
+
+        botones: list[ft.Control] = [
+            _quick_btn("Hoy", ft.Icons.TODAY, today_iso),
+            _quick_btn("Ayer", ft.Icons.HISTORY, yesterday_iso),
         ]
 
-        # Si hay fechas con asistencia registradas, agregar chip a la última
         fechas_reg = sorted(list(self.fechas_con_asistencia), reverse=True)
         if fechas_reg:
             ultima_fecha = fechas_reg[0]
             try:
                 ult_dt = datetime.strptime(ultima_fecha, "%Y-%m-%d")
                 ult_txt = ult_dt.strftime("%d-%m-%Y")
-                chips.append(
-                    ft.Chip(
-                        label=ft.Text(f"Última: {ult_txt}"),
-                        leading=ft.Icon(ft.Icons.CHECKLIST, size=16),
-                        on_click=lambda e, uf=ultima_fecha: self._seleccionar_fecha(uf),
-                    )
-                )
+                botones.append(_quick_btn(f"Última: {ult_txt}", ft.Icons.CHECKLIST, ultima_fecha))
             except Exception:
                 pass
 
-        return ft.Row(chips, wrap=True, spacing=6)
+        return ft.Row(botones, wrap=True, spacing=SPACE_XS)
 
-    def _cambiar_mes(self, offset: int):
+    def _cambiar_mes(self, offset: int) -> None:
         self.current_view_month += offset
         if self.current_view_month > 12:
             self.current_view_month = 1
@@ -278,18 +314,20 @@ class DatePickerDialog(ft.AlertDialog):
         self.lbl_mes_anio.value = f"{MESES[self.current_view_month - 1]} {self.current_view_year}"
         self._render_calendar()
         if self.app_page:
-            self.app_page.update()
+            try:
+                self.app_page.update()
+            except Exception:
+                pass
 
-    def _seleccionar_fecha(self, fecha_iso: str):
+    def _seleccionar_fecha(self, fecha_iso: str) -> None:
         self.on_date_selected(fecha_iso)
         self._cerrar()
 
-    def _confirmar_manual(self):
-        txt = self.txt_manual.value.strip()
+    def _confirmar_manual(self) -> None:
+        txt = (self.txt_manual.value or "").strip()
         if not txt:
             return
 
-        # Intentar parsear formato DD/MM/AAAA o DD-MM-AAAA
         txt_norm = txt.replace("-", "/").replace(".", "/")
         partes = txt_norm.split("/")
         if len(partes) == 3:
@@ -306,16 +344,13 @@ class DatePickerDialog(ft.AlertDialog):
             except Exception:
                 pass
 
-        self.lbl_error.value = "Fecha inválida. Usa el formato DD-MM-AAAA (ej: 25-08-2026)."
+        self.lbl_error.value = "Fecha inválida. Usa DD-MM-AAAA (ej: 25-08-2026)."
         self.lbl_error.visible = True
         if self.app_page:
-            self.app_page.update()
-
-    def _cerrar(self):
-        self.open = False
-        if self.app_page:
             try:
-                self.app_page.pop_dialog()
                 self.app_page.update()
             except Exception:
                 pass
+
+    def _cerrar(self) -> None:
+        self.close()
