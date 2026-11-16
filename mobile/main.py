@@ -377,7 +377,7 @@ def main(page: ft.Page):
                         color=t.text_primary,
                     ),
                     ft.Text(
-                        "Versión 2.0 (Multiplataforma)",
+                        "Versión 2.1.0 (Multiplataforma)",
                         size=13,
                         color=t.text_secondary,
                     ),

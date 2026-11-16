@@ -106,7 +106,8 @@ jobs:
             --project notaly \
             --product "Notaly" \
             --org com.notaly.app \
-            --build-version 2.0.0 \
+            --build-version 2.1.0 \
+            --build-number 2 \
             --compile-app \
             --cleanup-app \
             --yes \
@@ -128,7 +129,8 @@ jobs:
             --project notaly \
             --product "Notaly" \
             --org com.notaly.app \
-            --build-version 2.0.0 \
+            --build-version 2.1.0 \
+            --build-number 2 \
             --compile-app \
             --cleanup-app \
             --yes \
