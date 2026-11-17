@@ -23,7 +23,9 @@ from mobile.components.notaly_sheet import (
 )
 from mobile.components.share_helper import abrir_archivo_planilla, compartir_archivo
 from mobile.theme import (
+    RADIUS_NONE,
     RADIUS_SM,
+    SPACE_SM,
     SPACE_XS,
     ThemeTokens,
     resolve_tokens,
@@ -117,7 +119,7 @@ class PlanillasCursoDialog(NotalySheet):
         tok: ThemeTokens,
         *,
         show_divider: bool = True,
-    ) -> NotalyListRow:
+    ) -> ft.Container:
         nombre = planilla.get("nombre_archivo", "Sin nombre")
         ruta = planilla.get("ruta", "")
         formato = str(planilla.get("formato", "")).lower()
@@ -157,7 +159,8 @@ class PlanillasCursoDialog(NotalySheet):
             lambda _e, r=ruta: self._abrir(r),
             tokens=tok,
             primary=True,
-            expand=False,
+            icon=ft.Icons.OPEN_IN_NEW,
+            expand=True,
             disabled=not existe,
         )
 
@@ -182,13 +185,40 @@ class PlanillasCursoDialog(NotalySheet):
             on_click=lambda _e, i=pid, n=nombre: self._confirmar_eliminar(i, n),
         )
 
-        return NotalyListRow(
+        info_row = NotalyListRow(
             title=nombre,
             tabular_summary=subtitulo,
             leading=leading_box,
-            trailing=[btn_abrir, btn_compartir, btn_eliminar],
-            show_divider=show_divider,
+            trailing=None,
+            horizontal_padding=SPACE_XS,
+            vertical_padding=SPACE_SM,
+            show_divider=False,
             tokens=tok,
+            on_click=(lambda _e, r=ruta: self._abrir(r)) if existe else None,
+        )
+
+        actions_row = ft.Container(
+            padding=ft.Padding(left=SPACE_XS, right=SPACE_XS, top=0, bottom=SPACE_SM),
+            content=ft.Row(
+                spacing=SPACE_SM,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                controls=[btn_abrir, btn_compartir, btn_eliminar],
+            ),
+        )
+
+        return ft.Container(
+            bgcolor=tok.surface_primary,
+            border_radius=RADIUS_NONE,
+            border=(
+                ft.Border.only(bottom=ft.BorderSide(1, tok.border_hairline))
+                if show_divider
+                else None
+            ),
+            content=ft.Column(
+                spacing=0,
+                tight=True,
+                controls=[info_row, actions_row],
+            ),
         )
 
     def _compartir(self, ruta: str, nombre: str) -> None:

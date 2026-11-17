@@ -186,17 +186,18 @@ class AsistenciasView(ft.Container):
         fecha_str = self._formatear_fecha(fecha_actual)
         btn_fecha_central = ft.Container(
             height=44,
+            expand=True,
             bgcolor=tok.surface_subtle,
             border=ft.Border.all(1, tok.border_hairline),
             border_radius=RADIUS_SM,
-            padding=ft.Padding.symmetric(horizontal=SPACE_MD, vertical=0),
+            padding=ft.Padding.symmetric(horizontal=SPACE_SM, vertical=0),
             alignment=ft.Alignment.CENTER,
             ink=True,
             tooltip="Elegir fecha en calendario",
             on_click=lambda _e: self._abrir_selector_fecha(),
             content=ft.Row(
                 spacing=SPACE_XS,
-                tight=True,
+                alignment=ft.MainAxisAlignment.CENTER,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
                 controls=[
                     ft.Icon(ft.Icons.CALENDAR_TODAY_OUTLINED, color=tok.accent_primary, size=16),
@@ -205,6 +206,11 @@ class AsistenciasView(ft.Container):
                         size=14,
                         weight=ft.FontWeight.BOLD,
                         color=tok.text_primary,
+                        expand=True,
+                        expand_loose=True,
+                        text_align=ft.TextAlign.CENTER,
+                        max_lines=1,
+                        overflow=ft.TextOverflow.ELLIPSIS,
                     ),
                     ft.Icon(ft.Icons.ARROW_DROP_DOWN, color=tok.accent_primary, size=18),
                 ],
@@ -212,13 +218,19 @@ class AsistenciasView(ft.Container):
         )
 
         btn_hoy = ft.OutlinedButton(
-            content=ft.Text("Hoy", size=12, weight=ft.FontWeight.W_600),
+            content=ft.Text(
+                "Hoy",
+                size=12,
+                weight=ft.FontWeight.W_600,
+                max_lines=1,
+                overflow=ft.TextOverflow.ELLIPSIS,
+            ),
             height=44,
             style=ft.ButtonStyle(
                 color=tok.accent_primary,
                 side=ft.BorderSide(1, tok.border_hairline),
                 shape=ft.RoundedRectangleBorder(radius=RADIUS_SM),
-                padding=ft.Padding.symmetric(horizontal=SPACE_MD, vertical=0),
+                padding=ft.Padding.symmetric(horizontal=SPACE_SM, vertical=0),
             ),
             on_click=lambda _e: self._ir_a_hoy(),
         )
@@ -231,7 +243,7 @@ class AsistenciasView(ft.Container):
                 ft.IconButton(
                     icon=ft.Icons.CHEVRON_LEFT,
                     icon_size=22,
-                    width=48,
+                    width=44,
                     height=48,
                     icon_color=tok.text_secondary,
                     tooltip="Día Anterior",
@@ -241,7 +253,7 @@ class AsistenciasView(ft.Container):
                 ft.IconButton(
                     icon=ft.Icons.CHEVRON_RIGHT,
                     icon_size=22,
-                    width=48,
+                    width=44,
                     height=48,
                     icon_color=tok.text_secondary,
                     tooltip="Día Siguiente",
@@ -317,7 +329,13 @@ class AsistenciasView(ft.Container):
 
         # Barra de acciones de asistencia (Todos Presentes 48dp + Historial/Exportar 48x48dp)
         self.btn_todos_presentes = ft.OutlinedButton(
-            content=ft.Text("Todos Presentes", size=13, weight=ft.FontWeight.W_600),
+            content=ft.Text(
+                "Todos Presentes",
+                size=13,
+                weight=ft.FontWeight.W_600,
+                max_lines=1,
+                overflow=ft.TextOverflow.ELLIPSIS,
+            ),
             icon=ft.Icons.DONE_ALL,
             height=48,
             style=ft.ButtonStyle(
@@ -336,8 +354,13 @@ class AsistenciasView(ft.Container):
             content=ft.Row(
                 alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                spacing=SPACE_SM,
                 controls=[
-                    self.btn_todos_presentes,
+                    ft.Container(
+                        expand=True,
+                        alignment=ft.Alignment.CENTER_LEFT,
+                        content=self.btn_todos_presentes,
+                    ),
                     ft.Row(
                         spacing=0,
                         tight=True,

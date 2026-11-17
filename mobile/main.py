@@ -1,11 +1,11 @@
 """
 Punto de entrada principal para la versión móvil de Notaly (Gestor Educativo).
 
-Implementa la shell editorial única "Crisp Editorial Ledger" (SPEC-028):
-registro de fuentes offline (`LedgerSans` y `LedgerMono`), temas duales (`Light`
-y `Dark`), búsqueda global overlay a pantalla completa en `page.overlay`, cabecera
-consolidada sin `page.appbar` redundante, menú contextual en `NotalySheet` y
-sincronización reactiva de caché e historial (`B3`, `B4`, `B5`, `B6`).
+Implementa la shell editorial única "Crisp Editorial Ledger" (SPEC-028 / SPEC-029):
+tipografía base estándar (`Roboto`), temas duales (`Light` y `Dark`), búsqueda
+global overlay a pantalla completa en `page.overlay`, cabecera consolidada sin
+`page.appbar` redundante, menú contextual en `NotalySheet` y sincronización
+reactiva de caché e historial (`B3`, `B4`, `B5`, `B6`).
 """
 
 from __future__ import annotations
@@ -79,7 +79,7 @@ def _verificar_integridad_app() -> bool:
 
 
 def _build_flet_themes() -> tuple[ft.Theme, ft.Theme]:
-    """Construye los objetos `ft.Theme` Light y Dark con fuente base `LedgerSans`."""
+    """Construye los objetos `ft.Theme` Light y Dark con fuente base `Roboto`."""
     light_theme = ft.Theme(
         color_scheme_seed=LIGHT_TOKENS.accent_primary,
         font_family=FONT_SANS,
@@ -110,7 +110,7 @@ def main(page: ft.Page):
     state = AppState(on_change=lambda: page.update())
     tokens = state.tokens
 
-    # Tipografía offline y tema dual
+    # Tipografía estándar Roboto y tema dual
     page.title = "Notaly - Gestor Educativo"
     page.fonts = dict(FONT_ASSETS)
     light_theme, dark_theme = _build_flet_themes()

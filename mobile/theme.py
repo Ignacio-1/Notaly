@@ -15,21 +15,13 @@ import flet as ft
 
 
 # ---------------------------------------------------------------------------
-# Tipografía offline y escala geométrica estricta (RF-02, RF-03, RF-07)
+# Tipografía base ("Roboto") y escala geométrica estricta (SPEC-029 RF-09..10)
 # ---------------------------------------------------------------------------
 
-FONT_SANS = "LedgerSans"
-FONT_MONO = "LedgerMono"
+FONT_SANS = "Roboto"
+FONT_MONO = "Roboto"
 
-FONT_ASSETS: dict[str, str] = {
-    "LedgerSans": "fonts/PlusJakartaSans-Regular.ttf",
-    "LedgerSans-Medium": "fonts/PlusJakartaSans-Medium.ttf",
-    "LedgerSans-SemiBold": "fonts/PlusJakartaSans-SemiBold.ttf",
-    "LedgerSans-Bold": "fonts/PlusJakartaSans-Bold.ttf",
-    "LedgerMono": "fonts/JetBrainsMono-Regular.ttf",
-    "LedgerMono-Medium": "fonts/JetBrainsMono-Medium.ttf",
-    "LedgerMono-Bold": "fonts/JetBrainsMono-Bold.ttf",
-}
+FONT_ASSETS: dict[str, str] = {}
 
 SPACE_XS = 4
 SPACE_SM = 8
@@ -442,8 +434,8 @@ def tabular_text(
     **kwargs: Any,
 ) -> ft.Text:
     """
-    Crea un control `ft.Text` configurado con tipografía monoespaciada tabular
-    offline (`LedgerMono`), aplicando guardia defensiva para `ft.FontFeature` en Flet 0.86.5.
+    Crea un control `ft.Text` configurado con tipografía `Roboto` y alineación
+    numérica tabular segura, aplicando guardia defensiva para `ft.FontFeature` en Flet 0.86.5.
     """
     text_kwargs: dict[str, Any] = {
         "value": value,

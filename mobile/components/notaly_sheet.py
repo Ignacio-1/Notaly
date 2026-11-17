@@ -317,6 +317,8 @@ class NotalySheet(ft.BottomSheet):
             spacing=SPACE_MD,
             tight=True,
             scroll=ft.ScrollMode.AUTO,
+            expand=True,
+            expand_loose=True,
         )
 
         self.actions_container = build_action_rows(actions)
@@ -356,6 +358,7 @@ class NotalySheet(ft.BottomSheet):
             scrollable=True,
             maintain_bottom_view_insets_padding=True,
             size_constraints=constraints,
+            clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
             shape=ft.RoundedRectangleBorder(
                 radius=ft.BorderRadius.only(
                     top_left=RADIUS_SHEET_TOP,
@@ -381,7 +384,8 @@ class NotalyCompactDialog(ft.AlertDialog):
     Diálogo compacto editorial para confirmaciones breves y formularios cortos.
 
     Respeta el radio máximo de `6px`, superficie explícita `surface_primary`,
-    scroll interno ante teclado virtual y botones de acción de `48dp`.
+    desplazamiento único nativo mediante `AlertDialog(scrollable=True)` ante teclado virtual
+    y botones de acción de `48dp`.
     """
 
     def __init__(
@@ -419,7 +423,6 @@ class NotalyCompactDialog(ft.AlertDialog):
             body_controls,
             spacing=SPACE_MD,
             tight=True,
-            scroll=ft.ScrollMode.AUTO,
         )
         content_box = ft.Container(
             content=self.body_column,

@@ -1,9 +1,9 @@
 """
-Pruebas del sistema de diseño editorial "Crisp Editorial Ledger" (SPEC-028).
+Pruebas del sistema de diseño editorial móvil y regresión (SPEC-028 / SPEC-029).
 
-Tarea T1 (TDD): Verifica la presencia física, tamaño no vacío, licencia SIL OFL 1.1
-y encabezado sfnt TrueType válido de las tipografías offline empaquetadas en
-./assets/fonts/ (RF-02, RF-03, RNF-03).
+Verifica la restauración tipográfica a `"Roboto"` sin fuentes externas `.ttf`,
+tokens duales, primitivos editoriales, scroll acotado en `NotalySheet`, ausencia
+de doble scroll en diálogos compactos y prevención de overflows horizontales.
 """
 
 from pathlib import Path
@@ -13,7 +13,7 @@ import pytest
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 FONTS_DIR = PROJECT_ROOT / "assets" / "fonts"
 
-EXPECTED_TTF_FILES = (
+REMOVED_SPEC028_FONT_FILES = (
     "PlusJakartaSans-Regular.ttf",
     "PlusJakartaSans-Medium.ttf",
     "PlusJakartaSans-SemiBold.ttf",
@@ -21,60 +21,63 @@ EXPECTED_TTF_FILES = (
     "JetBrainsMono-Regular.ttf",
     "JetBrainsMono-Medium.ttf",
     "JetBrainsMono-Bold.ttf",
+    "OFL.txt",
 )
 
-EXPECTED_LICENSE_FILE = "OFL.txt"
-VALID_TTF_SFNT_HEADERS = (b"\x00\x01\x00\x00", b"true")
 
-
-def test_assets_fonts_directory_exists() -> None:
-    """Verifica que exista el directorio ./assets/fonts/ en la raíz del proyecto."""
-    assert FONTS_DIR.is_dir(), f"Falta el directorio de fuentes offline: {FONTS_DIR}"
-
-
-@pytest.mark.parametrize("font_filename", EXPECTED_TTF_FILES)
-def test_offline_ttf_fonts_exist_non_empty_with_valid_sfnt_header(
-    font_filename: str,
-) -> None:
+@pytest.mark.parametrize("font_filename", REMOVED_SPEC028_FONT_FILES)
+def test_spec029_sin_fuentes_ttf_externas_en_assets(font_filename: str) -> None:
     """
-    RF-02 / RF-03 / RNF-03: Cada archivo .ttf esperado debe existir bajo
-    ./assets/fonts/, no estar vacío y comenzar con un encabezado sfnt TrueType válido.
+    SPEC-029 RF-09: Tras restaurar la tipografía anterior `"Roboto"`, los archivos
+    tipográficos personalizados de Plus Jakarta Sans / JetBrains Mono no deben
+    permanecer en `./assets/fonts/`.
     """
-    font_path = FONTS_DIR / font_filename
-    assert font_path.is_file(), f"No existe el archivo tipográfico esperado: {font_path}"
-
-    file_size = font_path.stat().st_size
-    assert file_size > 0, f"El archivo tipográfico está vacío: {font_path}"
-
-    with font_path.open("rb") as font_file:
-        header = font_file.read(4)
-
-    assert len(header) == 4, (
-        f"Archivo tipográfico demasiado corto ({len(header)} bytes): {font_path}"
-    )
-    assert header in VALID_TTF_SFNT_HEADERS, (
-        f"Encabezado sfnt TrueType inválido en {font_filename}: {header!r} "
-        f"(esperado uno de {VALID_TTF_SFNT_HEADERS!r})"
+    assert not (FONTS_DIR / font_filename).exists(), (
+        f"Archivo tipográfico obsoleto aún presente en assets/fonts: {font_filename}"
     )
 
 
-def test_offline_fonts_license_ofl_exists_and_non_empty() -> None:
-    """
-    RF-02 / RNF-03: Verifica que ./assets/fonts/OFL.txt exista, no esté vacío
-    y contenga la licencia SIL OFL 1.1 para Plus Jakarta Sans y JetBrains Mono.
-    """
-    ofl_path = FONTS_DIR / EXPECTED_LICENSE_FILE
-    assert ofl_path.is_file(), f"Falta el archivo de licencia tipográfica: {ofl_path}"
-    assert ofl_path.stat().st_size > 0, f"El archivo de licencia está vacío: {ofl_path}"
+def test_spec029_tipografia_roboto_en_theme_y_main(monkeypatch) -> None:
+    """SPEC-029 RF-09, RF-10: `FONT_SANS` y `FONT_MONO` usan `'Roboto'` y guardia segura en `tabular_text`."""
+    from types import SimpleNamespace
+    import flet as ft
+    import mobile.theme as theme_mod
+    from mobile.main import _build_flet_themes
+    from mobile.theme import FONT_ASSETS, FONT_MONO, FONT_SANS, tabular_text
 
-    license_text = ofl_path.read_text(encoding="utf-8")
-    assert "SIL OPEN FONT LICENSE Version 1.1" in license_text
-    assert "Plus Jakarta Sans" in license_text
-    assert "JetBrains Mono" in license_text
+    assert FONT_SANS == "Roboto"
+    assert FONT_MONO == "Roboto"
+    assert FONT_ASSETS == {}
+
+    light_theme, dark_theme = _build_flet_themes()
+    assert light_theme.font_family == "Roboto"
+    assert dark_theme.font_family == "Roboto"
+
+    # Rama 1 (Flet 0.86.5 actual sin FontFeature): omisión limpia sin font_features
+    txt = tabular_text("9.50", size=17)
+    assert txt.font_family == "Roboto"
+    assert not hasattr(txt, "font_features") or getattr(txt, "font_features", None) is None
+
+    # Rama 2 (entorno con FontFeature disponible): inyecta tabular_figures()
+    captured: list[dict] = []
+    monkeypatch.setattr(
+        ft,
+        "FontFeature",
+        SimpleNamespace(tabular_figures=lambda: "tnum_stub"),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        theme_mod.ft,
+        "Text",
+        lambda **kwargs: (captured.append(kwargs), SimpleNamespace(**kwargs))[1],
+    )
+    stub_txt = tabular_text("8.75", size=15)
+    assert stub_txt.font_family == "Roboto"
+    assert captured and captured[0].get("font_features") == ["tnum_stub"]
 
 
 # ---------------------------------------------------------------------------
-# T2 (TDD): Sistema dual de tokens editoriales, tabular_text y helpers WCAG
+# T2: Sistema dual de tokens editoriales, tabular_text y helpers WCAG
 # ---------------------------------------------------------------------------
 
 def test_theme_tokens_canonicos_light_and_dark() -> None:
@@ -92,20 +95,10 @@ def test_theme_tokens_canonicos_light_and_dark() -> None:
         get_tokens,
     )
 
-    assert FONT_SANS == "LedgerSans"
-    assert FONT_MONO == "LedgerMono"
+    assert FONT_SANS == "Roboto"
+    assert FONT_MONO == "Roboto"
+    assert FONT_ASSETS == {}
     assert (RADIUS_NONE, RADIUS_SM, RADIUS_MD, RADIUS_SHEET_TOP) == (0, 4, 6, 8)
-    for alias in (
-        "LedgerSans",
-        "LedgerSans-Medium",
-        "LedgerSans-SemiBold",
-        "LedgerSans-Bold",
-        "LedgerMono",
-        "LedgerMono-Medium",
-        "LedgerMono-Bold",
-    ):
-        assert alias in FONT_ASSETS
-        assert (PROJECT_ROOT / "assets" / FONT_ASSETS[alias]).is_file()
 
     light = get_tokens("light")
     dark = get_tokens("dark")
@@ -1256,6 +1249,264 @@ def test_t23_auditoria_estatica_anti_ai_slop_mobile() -> None:
                     violations.append(f"{rel}:{node.lineno}: emoji en UI {node.value!r}")
 
     assert not violations, "Violaciones editoriales detectadas:\n" + "\n".join(violations)
+
+
+# ---------------------------------------------------------------------------
+# SPEC-029 (TDD): Scroll acotado en NotalySheet, cero doble scroll y 360dp
+# ---------------------------------------------------------------------------
+
+def test_spec029_notaly_sheet_scroll_acotado_y_selector_estadisticas(tmp_path) -> None:
+    """RF-01..RF-03: NotalySheet usa expand+expand_loose en body_column y selector multi-colegio."""
+    from types import SimpleNamespace
+    import flet as ft
+    from mobile.components.notaly_sheet import NotalySheet, sheet_action_button
+    from mobile.state import AppState
+    from mobile.theme import DARK_TOKENS
+    from mobile.views.estadisticas_view import EstadisticasView
+
+    sheet = NotalySheet(
+        page=SimpleNamespace(width=390, height=844, theme_mode=ft.ThemeMode.DARK),
+        title="Selector",
+        body=[ft.Text(f"Colegio {i}") for i in range(10)],
+        actions=[sheet_action_button("Cerrar", lambda _e: None, tokens=DARK_TOKENS, primary=False)],
+        tokens=DARK_TOKENS,
+    )
+    assert sheet.scrollable is True
+    assert sheet.clip_behavior == ft.ClipBehavior.ANTI_ALIAS
+    assert sheet.size_constraints.max_height == int(844 * 0.85)
+    assert sheet.body_column.expand is True
+    assert sheet.body_column.expand_loose is True
+    assert sheet.body_column.tight is True
+    assert sheet.body_column.scroll == ft.ScrollMode.AUTO
+
+    state = AppState(data_path=str(tmp_path / "stats_multi.json"))
+    for i in range(1, 6):
+        col_name = f"Colegio {i}"
+        state.add_colegio(col_name)
+        state.add_curso(col_name, f"{i}° A", 1)
+    state.selected_colegio = "Colegio 3"
+    state.selected_curso = "3° A"
+    state.estadisticas_nivel = "curso"
+
+    shown: list[ft.Control] = []
+    fake_page = SimpleNamespace(
+        width=390,
+        height=844,
+        theme_mode=ft.ThemeMode.DARK,
+        show_dialog=lambda dlg: shown.append(dlg),
+        pop_dialog=lambda: shown.pop() if shown else None,
+        update=lambda: None,
+        overlay=[],
+    )
+    ev = EstadisticasView(state=state, page=fake_page, on_navigate=lambda _d: None)
+    ev._abrir_selector_contexto()
+
+    assert len(shown) == 1
+    selector_sheet = shown[0]
+    assert isinstance(selector_sheet, NotalySheet)
+    assert selector_sheet.body_column.expand is True
+    assert selector_sheet.body_column.expand_loose is True
+    assert len(selector_sheet.body_column.controls) == 5
+
+
+def test_spec029_cero_doble_scroll_en_dialogos_compactos(tmp_path) -> None:
+    """RF-04: AlertDialog(scrollable=True) no anida Column(scroll=AUTO) internamente."""
+    from types import SimpleNamespace
+    import flet as ft
+    from mobile.components.grade_editor import GradeEditorDialog
+    from mobile.components.local_backup_dialog import LocalBackupDialog
+    from mobile.components.notaly_sheet import NotalyCompactDialog, sheet_action_button
+    from mobile.components.student_dialog import (
+        ColegioFormDialog,
+        ConfirmDeleteDialog,
+        CreateCursoDialog,
+        CreateEntityDialog,
+        CustomizeColumnsDialog,
+        RenameDialog,
+        StudentFormDialog,
+    )
+    from mobile.state import AppState
+    from mobile.theme import LIGHT_TOKENS
+
+    def _collect_columns_with_scroll(ctrl: ft.Control | None) -> list[ft.Column]:
+        found: list[ft.Column] = []
+        if ctrl is None:
+            return found
+        if isinstance(ctrl, ft.Column) and getattr(ctrl, "scroll", None) is not None:
+            found.append(ctrl)
+        content = getattr(ctrl, "content", None)
+        if isinstance(content, ft.Control):
+            found.extend(_collect_columns_with_scroll(content))
+        for child in getattr(ctrl, "controls", None) or []:
+            found.extend(_collect_columns_with_scroll(child))
+        return found
+
+    page = SimpleNamespace(
+        width=390,
+        height=844,
+        theme_mode=ft.ThemeMode.LIGHT,
+        overlay=[],
+        show_dialog=lambda _d: None,
+        pop_dialog=lambda: None,
+        update=lambda: None,
+    )
+    compact = NotalyCompactDialog(
+        page=page,
+        title="Confirmar",
+        body=ft.Text("Texto"),
+        actions=[sheet_action_button("Ok", lambda _e: None, tokens=LIGHT_TOKENS)],
+        tokens=LIGHT_TOKENS,
+    )
+    assert hasattr(compact, "body_column")
+    assert compact.scrollable is True
+    assert _collect_columns_with_scroll(compact.content) == []
+
+    dialogs = [
+        StudentFormDialog("Alumno", lambda _a, _n: None, page=page, tokens=LIGHT_TOKENS),
+        CreateEntityDialog("Entidad", "Nombre", lambda _n: None, page=page, tokens=LIGHT_TOKENS),
+        ColegioFormDialog("Colegio", lambda _n, _d, _h: True, page=page, tokens=LIGHT_TOKENS),
+        CreateCursoDialog("Curso", lambda _n, _c, _h="": None, page=page, tokens=LIGHT_TOKENS),
+        RenameDialog("Renombrar", "Act", lambda _n: None, page=page, tokens=LIGHT_TOKENS),
+        ConfirmDeleteDialog("Eliminar", "¿Seguro?", lambda: None, page=page, tokens=LIGHT_TOKENS),
+        CustomizeColumnsDialog(["P1", "P2"], lambda _v: None, page=page, tokens=LIGHT_TOKENS),
+        GradeEditorDialog("Ana", "P1", "8", lambda _v: None, page=page, tokens=LIGHT_TOKENS),
+    ]
+    for dlg in dialogs:
+        assert dlg.scrollable is True
+        assert _collect_columns_with_scroll(dlg.content) == [], f"Doble scroll en {type(dlg).__name__}"
+
+    shown_confirm: list[ft.Control] = []
+    page_bkp = SimpleNamespace(
+        width=390,
+        height=844,
+        theme_mode=ft.ThemeMode.LIGHT,
+        overlay=[],
+        show_dialog=lambda d: shown_confirm.append(d),
+        pop_dialog=lambda: None,
+        update=lambda: None,
+    )
+    st = AppState(data_path=str(tmp_path / "bkp.json"))
+    bkp = LocalBackupDialog(st, page=page_bkp, tokens=LIGHT_TOKENS)
+    bkp._mostrar_opciones_restauracion({"colegios": {}})
+    assert len(shown_confirm) == 1
+    confirm_dlg = shown_confirm[0]
+    assert confirm_dlg.scrollable is True
+    assert _collect_columns_with_scroll(confirm_dlg.content) == []
+
+
+def test_spec029_planillas_curso_dialog_fila_separada_360dp(tmp_path) -> None:
+    """RF-05: PlanillasCursoDialog separa título/resumen de la fila de botones en 360dp."""
+    import flet as ft
+    from mobile.components.ledger_primitives import NotalyListRow
+    from mobile.components.planillas_curso_dialog import PlanillasCursoDialog
+    from mobile.state import AppState
+    from mobile.theme import LIGHT_TOKENS
+
+    st = AppState(data_path=str(tmp_path / "pl_cur.json"))
+    pl = PlanillasCursoDialog(
+        colegio_nombre="Colegio",
+        curso_nombre="3ro B",
+        state=st,
+        page=None,
+        tokens=LIGHT_TOKENS,
+    )
+    pdf_file = tmp_path / "Planilla Super Larga 3ro B 2026.pdf"
+    pdf_file.write_text("dummy", encoding="utf-8")
+
+    row_item = pl._build_item_row(
+        {
+            "id": "p1",
+            "nombre_archivo": pdf_file.name,
+            "ruta": str(pdf_file),
+            "formato": "pdf",
+            "tipo": "notas",
+            "fecha": "17-11-2026",
+            "hora": "10:00",
+            "tamano_kb": 12.4,
+        },
+        LIGHT_TOKENS,
+    )
+    assert isinstance(row_item, ft.Container)
+    assert isinstance(row_item.content, ft.Column)
+    assert len(row_item.content.controls) == 2
+    info_row = row_item.content.controls[0]
+    actions_wrapper = row_item.content.controls[1]
+    assert isinstance(info_row, NotalyListRow)
+    # Solo leading + columna de texto (sin los 3 botones apretando el título)
+    assert len(info_row.row_widget.controls) == 2
+    assert isinstance(actions_wrapper, ft.Container)
+    assert isinstance(actions_wrapper.content, ft.Row)
+    action_buttons = actions_wrapper.content.controls
+    assert len(action_buttons) == 3
+    assert action_buttons[0].expand is True
+    assert action_buttons[0].height == 48
+    assert action_buttons[1].width == 48 and action_buttons[1].height == 48
+    assert action_buttons[2].width == 48 and action_buttons[2].height == 48
+
+
+def test_spec029_prevencion_overflow_360dp_vistas(tmp_path) -> None:
+    """RF-06..RF-08, RNF-01: Elementos flexibles y truncado elíptico en Asistencias, Notas y Estadísticas."""
+    from types import SimpleNamespace
+    import flet as ft
+    from mobile.state import AppState
+    from mobile.theme import LIGHT_TOKENS
+    from mobile.views.asistencias_view import AsistenciasView
+    from mobile.views.estadisticas_view import EstadisticasView
+    from mobile.views.notas_view import NotasView, build_key_button
+
+    st = AppState(data_path=str(tmp_path / "vw_360.json"))
+    st.add_colegio("Colegio Muy Largo De Prueba")
+    st.add_curso("Colegio Muy Largo De Prueba", "3ro B Comision Especial", 1)
+    st.selected_colegio = "Colegio Muy Largo De Prueba"
+    st.selected_curso = "3ro B Comision Especial"
+
+    page_360 = SimpleNamespace(
+        width=360,
+        height=740,
+        theme_mode=ft.ThemeMode.LIGHT,
+        overlay=[],
+        update=lambda: None,
+    )
+
+    # 1. AsistenciasView date_bar_row
+    av = AsistenciasView(state=st, page=page_360, on_navigate=lambda _d: None)
+    assert len(av.date_bar_row.controls) == 4
+    btn_fecha_central = av.date_bar_row.controls[1]
+    assert btn_fecha_central.expand is True
+    fecha_txt = next(
+        c for c in btn_fecha_central.content.controls if isinstance(c, ft.Text)
+    )
+    assert fecha_txt.expand is True
+    assert fecha_txt.expand_loose is True
+    assert fecha_txt.overflow == ft.TextOverflow.ELLIPSIS
+    assert fecha_txt.max_lines == 1
+    assert av.btn_todos_presentes.content.overflow == ft.TextOverflow.ELLIPSIS
+
+    # 2. NotasView actions_bar, fila_comportamiento y teclado dock
+    nv = NotasView(state=st, page=page_360, on_navigate=lambda _d: None)
+    assert nv.edit_tools_row is not None and nv.edit_tools_row.expand is True
+    assert nv.anual_readonly_label.expand is True
+    assert nv.anual_readonly_label.overflow == ft.TextOverflow.ELLIPSIS
+    lbl_comp = next(iter(nv.alumnos_celdas.values()))["lbl_resumen_comp"]
+    assert lbl_comp.expand is True
+    assert lbl_comp.overflow == ft.TextOverflow.ELLIPSIS
+    key_sig = build_key_button(text="Sig.", is_primary=True, tokens=LIGHT_TOKENS)
+    assert key_sig.content.max_lines == 1
+    assert key_sig.content.no_wrap is True
+    assert key_sig.content.overflow == ft.TextOverflow.ELLIPSIS
+    assert key_sig.content.size == 12
+
+    # 3. EstadisticasView filtro de fechas en 360dp
+    ev = EstadisticasView(state=st, page=page_360, on_navigate=lambda _d: None)
+    filtro_box = ev._build_asistencia_filtro_section()
+    header_row = filtro_box.content.controls[0]
+    left_title_row = header_row.controls[0]
+    assert left_title_row.expand is True
+    lbl_rango = left_title_row.controls[1]
+    assert lbl_rango.expand is True
+    assert lbl_rango.max_lines == 1
+    assert lbl_rango.overflow == ft.TextOverflow.ELLIPSIS
+
 
 
 

@@ -2,8 +2,8 @@
 Diálogos editoriales compactos para gestión de Alumnos, Cursos, Colegios y Columnas (SPEC-028).
 
 Todos los modales heredan el estilo "Crisp Editorial Ledger" (`surface_primary`,
-`radius=6` en diálogo, `radius=4` en campos y botones de `48dp`, `ScrollMode.AUTO`
-ante teclado virtual, máximo 2 botones por fila horizontal y soporte Light/Dark).
+`radius=6` en diálogo, `radius=4` en campos y botones de `48dp`, `scrollable=True`
+único en el diálogo ante teclado virtual, máximo 2 botones por fila horizontal y soporte Light/Dark).
 """
 
 from __future__ import annotations
@@ -179,7 +179,6 @@ class StudentFormDialog(ft.AlertDialog):
 
         body_col = ft.Column(
             tight=True,
-            scroll=ft.ScrollMode.AUTO,
             spacing=SPACE_MD,
             controls=[
                 self.lbl_contador,
@@ -348,7 +347,6 @@ class CreateEntityDialog(ft.AlertDialog):
             width=_compact_width(page),
             content=ft.Column(
                 tight=True,
-                scroll=ft.ScrollMode.AUTO,
                 spacing=SPACE_MD,
                 controls=[self.txt_nombre, self.lbl_error],
             ),
@@ -435,7 +433,6 @@ class ColegioFormDialog(ft.AlertDialog):
             width=_compact_width(page),
             content=ft.Column(
                 tight=True,
-                scroll=ft.ScrollMode.AUTO,
                 spacing=SPACE_MD,
                 controls=[
                     self.txt_nombre,
@@ -549,7 +546,6 @@ class CreateCursoDialog(ft.AlertDialog):
             width=_compact_width(page),
             content=ft.Column(
                 tight=True,
-                scroll=ft.ScrollMode.AUTO,
                 spacing=SPACE_MD,
                 controls=[
                     self.txt_nombre,
@@ -651,7 +647,6 @@ class RenameDialog(ft.AlertDialog):
             width=_compact_width(page),
             content=ft.Column(
                 tight=True,
-                scroll=ft.ScrollMode.AUTO,
                 spacing=SPACE_MD,
                 controls=[self.txt_nombre, self.lbl_error],
             ),
@@ -711,7 +706,6 @@ class ConfirmDeleteDialog(ft.AlertDialog):
             width=_compact_width(page),
             content=ft.Column(
                 tight=True,
-                scroll=ft.ScrollMode.AUTO,
                 spacing=SPACE_SM,
                 controls=[self.message_text],
             ),
@@ -789,7 +783,6 @@ class CustomizeColumnsDialog(ft.AlertDialog):
             width=_compact_width(page),
             content=ft.Column(
                 tight=True,
-                scroll=ft.ScrollMode.AUTO,
                 spacing=SPACE_MD,
                 controls=self.inputs,
             ),

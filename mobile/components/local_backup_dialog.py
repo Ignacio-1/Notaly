@@ -486,7 +486,6 @@ class LocalBackupDialog(NotalySheet):
 
         body = ft.Column(
             tight=True,
-            scroll=ft.ScrollMode.AUTO,
             spacing=SPACE_SM,
             controls=[
                 ft.Text(

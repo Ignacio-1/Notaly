@@ -32,7 +32,7 @@ from mobile.theme import (
 class GradeEditorDialog(ft.AlertDialog):
     """
     Diálogo editorial para ingreso/edición de una calificación (`1` a `10`)
-    con teclado rápido `44dp` y campo `LedgerMono`.
+    con teclado rápido `44dp`, campo numérico tabular `Roboto` y `scrollable=True` único.
     """
 
     def __init__(
@@ -108,7 +108,6 @@ class GradeEditorDialog(ft.AlertDialog):
 
         body = ft.Column(
             tight=True,
-            scroll=ft.ScrollMode.AUTO,
             spacing=SPACE_MD,
             controls=[
                 ft.Text(

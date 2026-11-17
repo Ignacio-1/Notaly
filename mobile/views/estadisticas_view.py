@@ -1851,9 +1851,13 @@ class EstadisticasView(ft.Container):
                 controls=[
                     ft.Row(
                         alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                        spacing=SPACE_SM,
                         controls=[
                             ft.Row(
                                 spacing=SPACE_XS,
+                                expand=True,
+                                vertical_alignment=ft.CrossAxisAlignment.CENTER,
                                 controls=[
                                     ft.Icon(
                                         ft.Icons.DATE_RANGE, size=16, color=tok.accent_primary
@@ -1863,6 +1867,9 @@ class EstadisticasView(ft.Container):
                                         size=12,
                                         weight=ft.FontWeight.W_600,
                                         color=tok.text_primary,
+                                        expand=True,
+                                        max_lines=1,
+                                        overflow=ft.TextOverflow.ELLIPSIS,
                                     ),
                                 ],
                             ),

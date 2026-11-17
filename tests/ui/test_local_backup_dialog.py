@@ -322,17 +322,18 @@ def test_local_backup_dialog_file_picker_bytes_handling(populated_state, mock_pa
 
 
 def test_main_shell_options_sheet_and_no_appbar():
-    """Verifica T22: eliminación de page.appbar global y menú Más en NotalySheet con Backup y Acerca de."""
+    """Verifica T22/SPEC-029: sin page.appbar, fuente 'Roboto' sin TTF externos y menú Más en NotalySheet."""
     from mobile.main import main
     from mobile.components.notaly_sheet import NotalySheet
-    from mobile.theme import FONT_ASSETS
 
     test_page = MockMobilePage()
     main(test_page)
 
     assert test_page.appbar is None
-    assert test_page.fonts == FONT_ASSETS
+    assert test_page.fonts == {}
     assert test_page.theme is not None and test_page.dark_theme is not None
+    assert test_page.theme.font_family == "Roboto"
+    assert test_page.dark_theme.font_family == "Roboto"
     assert hasattr(test_page, "_shell_actions")
     assert callable(test_page._shell_actions.get("on_more"))
 

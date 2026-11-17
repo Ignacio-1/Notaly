@@ -113,15 +113,20 @@ def build_key_button(
     else:
         content = tabular_text(
             text or "",
-            size=15 if len(text or "") <= 2 else 13,
+            size=15 if len(text or "") <= 2 else 12,
             weight=ft.FontWeight.BOLD,
             color=fg,
+            max_lines=1,
+            no_wrap=True,
+            overflow=ft.TextOverflow.ELLIPSIS,
+            text_align=ft.TextAlign.CENTER,
         )
 
     return ft.Container(
         data="key-button",
         expand=expand,
         height=height,
+        padding=ft.Padding.symmetric(horizontal=2, vertical=0),
         bgcolor=bg,
         border=border,
         border_radius=RADIUS_SM,
@@ -347,14 +352,20 @@ class NotasView(ft.Container):
         )
 
         btn_agregar_alumno = ft.OutlinedButton(
-            content=ft.Text("Alumno", size=13, weight=ft.FontWeight.W_600),
+            content=ft.Text(
+                "Alumno",
+                size=13,
+                weight=ft.FontWeight.W_600,
+                max_lines=1,
+                overflow=ft.TextOverflow.ELLIPSIS,
+            ),
             icon=ft.Icons.PERSON_ADD_OUTLINED,
             height=44,
             style=ft.ButtonStyle(
                 color=tok.accent_primary,
                 side=ft.BorderSide(1, tok.accent_primary),
                 shape=ft.RoundedRectangleBorder(radius=RADIUS_SM),
-                padding=ft.Padding.symmetric(horizontal=SPACE_MD, vertical=0),
+                padding=ft.Padding.symmetric(horizontal=SPACE_SM, vertical=0),
             ),
             on_click=lambda _e: self._abrir_modal_agregar_alumno(),
         )
@@ -379,15 +390,27 @@ class NotasView(ft.Container):
 
         self.edit_tools_row = ft.Row(
             spacing=SPACE_XS,
-            tight=True,
+            expand=True,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
             visible=(not es_anual),
-            controls=[btn_agregar_alumno, btn_columnas, btn_ordenar_az],
+            controls=[
+                ft.Container(
+                    expand=True,
+                    expand_loose=True,
+                    content=btn_agregar_alumno,
+                ),
+                btn_columnas,
+                btn_ordenar_az,
+            ],
         )
         self.anual_readonly_label = ft.Text(
             "Resumen anual (solo lectura)",
             size=12,
             weight=ft.FontWeight.W_600,
             color=tok.text_secondary,
+            expand=True,
+            max_lines=1,
+            overflow=ft.TextOverflow.ELLIPSIS,
             visible=es_anual,
         )
         self.export_tools_row = ft.Row(
@@ -422,10 +445,12 @@ class NotasView(ft.Container):
             content=ft.Row(
                 alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                spacing=SPACE_XS,
                 controls=[
                     ft.Row(
                         spacing=0,
-                        tight=True,
+                        expand=True,
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
                         controls=[self.edit_tools_row, self.anual_readonly_label],
                     ),
                     self.export_tools_row,
@@ -1032,17 +1057,31 @@ class NotasView(ft.Container):
                 if cant_comps > 0
                 else "Sin observaciones"
             )
-            lbl_resumen_comp = ft.Text(texto_resumen_comp, size=12, color=tok.text_secondary)
+            lbl_resumen_comp = ft.Text(
+                texto_resumen_comp,
+                size=12,
+                color=tok.text_secondary,
+                expand=True,
+                text_align=ft.TextAlign.RIGHT,
+                max_lines=1,
+                overflow=ft.TextOverflow.ELLIPSIS,
+            )
 
             btn_comportamiento = ft.OutlinedButton(
                 icon=ft.Icons.RULE,
                 height=44,
-                content=ft.Text("Comportamiento", size=12, weight=ft.FontWeight.W_600),
+                content=ft.Text(
+                    "Comportamiento",
+                    size=12,
+                    weight=ft.FontWeight.W_600,
+                    max_lines=1,
+                    overflow=ft.TextOverflow.ELLIPSIS,
+                ),
                 style=ft.ButtonStyle(
                     color=tok.accent_primary,
                     side=ft.BorderSide(1, tok.border_hairline),
                     shape=ft.RoundedRectangleBorder(radius=RADIUS_SM),
-                    padding=ft.Padding.symmetric(horizontal=SPACE_MD, vertical=0),
+                    padding=ft.Padding.symmetric(horizontal=SPACE_SM, vertical=0),
                 ),
                 on_click=lambda _, sid=id_str, nom=nombre_al: self._abrir_modal_comportamiento(
                     sid, nom
@@ -1057,6 +1096,7 @@ class NotasView(ft.Container):
                 content=ft.Row(
                     alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                     vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                    spacing=SPACE_SM,
                     controls=[btn_comportamiento, lbl_resumen_comp],
                 ),
             )
