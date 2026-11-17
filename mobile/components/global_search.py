@@ -16,6 +16,7 @@ from typing import Any, Callable
 import flet as ft
 
 from mobile.components.ledger_primitives import NotalyListRow
+from mobile.components.notaly_sheet import focus_control_safe
 from mobile.state import AppState
 from mobile.theme import (
     RADIUS_NONE,
@@ -203,10 +204,7 @@ class GlobalSearchOverlay(ft.Container):
                 self.app_page.update()
         except Exception:
             pass
-        try:
-            self.query_field.focus()
-        except Exception:
-            pass
+        focus_control_safe(self.app_page, self.query_field)
 
     async def open_view(self, _e: Any = None) -> None:
         """Equivalente asíncrono para compatibilidad de apertura de búsqueda."""
@@ -319,8 +317,8 @@ class GlobalSearchOverlay(ft.Container):
         if not query_limpia:
             self.results_list.controls = [
                 self._build_info_row(
-                    "Escribe para buscar colegios, cursos o alumnos",
-                    "Acceso directo sin navegar menús",
+                    "Escribe para buscar",
+                    "Busca colegios, cursos o alumnos",
                     ft.Icons.SEARCH,
                 )
             ]

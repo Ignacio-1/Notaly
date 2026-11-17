@@ -9,14 +9,13 @@ insignias tabulares de fecha (`radius=4`) y autoguardado reactivo.
 from __future__ import annotations
 
 import calendar
-import inspect
 from datetime import date, datetime
 from typing import Any, Callable
 
 import flet as ft
 
 from core.constants import K_TEMA
-from mobile.components.notaly_sheet import NotalySheet, sheet_action_button
+from mobile.components.notaly_sheet import NotalySheet, focus_control_safe, sheet_action_button
 from mobile.state import AppState
 from mobile.theme import (
     FONT_MONO,
@@ -212,12 +211,7 @@ class PlanificacionCursoDialog(NotalySheet):
                 pass
 
     def _focus_control(self, control: ft.Control) -> None:
-        try:
-            res = control.focus()
-            if inspect.iscoroutine(res):
-                res.close()
-        except Exception:
-            pass
+        focus_control_safe(self.app_page, control)
 
     def _on_horario_change(self, val: str) -> None:
         self.state.set_horario_curso(val, self.colegio, self.curso, auto_save=True)

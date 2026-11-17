@@ -15,6 +15,7 @@ import flet as ft
 from mobile.components.notaly_sheet import (
     build_action_rows,
     close_dialog_safe,
+    focus_control_safe,
     open_dialog_safe,
     resolve_page_dimensions,
     sheet_action_button,
@@ -257,13 +258,7 @@ class StudentFormDialog(ft.AlertDialog):
         )
 
     def _focus_control(self, control: ft.Control) -> None:
-        import inspect
-        try:
-            res = control.focus()
-            if inspect.iscoroutine(res):
-                res.close()
-        except Exception:
-            pass
+        focus_control_safe(self.app_page, control)
 
     def _guardar_alumno(self, continuar: bool) -> None:
         ap = (self.txt_apellido.value or "").strip()
@@ -272,17 +267,17 @@ class StudentFormDialog(ft.AlertDialog):
         if not ap:
             self.lbl_error.value = "El apellido es obligatorio."
             self.lbl_error.visible = True
-            self._focus_control(self.txt_apellido)
             if self.app_page:
                 self.app_page.update()
+            self._focus_control(self.txt_apellido)
             return
 
         if not nom:
             self.lbl_error.value = "El nombre es obligatorio."
             self.lbl_error.visible = True
-            self._focus_control(self.txt_nombre)
             if self.app_page:
                 self.app_page.update()
+            self._focus_control(self.txt_nombre)
             return
 
         self.lbl_error.visible = False
@@ -300,9 +295,9 @@ class StudentFormDialog(ft.AlertDialog):
             self.txt_nombre.value = ""
             self.lbl_contador.value = f"Agregado: {ap}, {nom} — Ingresa el siguiente:"
             self.lbl_contador.color = self.tokens.pass_fg
-            self._focus_control(self.txt_apellido)
             if self.app_page:
                 self.app_page.update()
+            self._focus_control(self.txt_apellido)
         else:
             self._cerrar()
 
@@ -467,22 +462,16 @@ class ColegioFormDialog(ft.AlertDialog):
         )
 
     def _focus_control(self, control: ft.Control) -> None:
-        import inspect
-        try:
-            res = control.focus()
-            if inspect.iscoroutine(res):
-                res.close()
-        except Exception:
-            pass
+        focus_control_safe(self.app_page, control)
 
     def _confirmar(self) -> None:
         nom = (self.txt_nombre.value or "").strip()
         if not nom:
             self.lbl_error.value = "El nombre del colegio no puede estar vacío."
             self.lbl_error.visible = True
-            self._focus_control(self.txt_nombre)
             if self.app_page:
                 self.app_page.update()
+            self._focus_control(self.txt_nombre)
             return
 
         dir_val = (self.txt_direccion.value or "").strip()
@@ -492,9 +481,9 @@ class ColegioFormDialog(ft.AlertDialog):
         if res is False:
             self.lbl_error.value = "Ya existe una institución registrada con ese nombre."
             self.lbl_error.visible = True
-            self._focus_control(self.txt_nombre)
             if self.app_page:
                 self.app_page.update()
+            self._focus_control(self.txt_nombre)
             return
 
         self._cerrar()

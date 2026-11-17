@@ -6,11 +6,12 @@ Incluye:
   área segura, scroll automático y barra de acciones de máximo 2 botones de 48dp).
 - `NotalyCompactDialog(ft.AlertDialog)`: diálogo compacto editorial (radio 6dp,
   superficie tokenizada y desplazamiento seguro).
-- Helpers `sheet_action_button`, `sheet_menu_item`, `open_sheet` y `close_dialog_safe`.
+- Helpers `sheet_action_button`, `sheet_menu_item`, `open_sheet`, `close_dialog_safe` y `focus_control_safe`.
 """
 
 from __future__ import annotations
 
+import inspect
 from typing import Any, Callable, Iterable
 
 import flet as ft
@@ -63,18 +64,68 @@ def open_dialog_safe(page: ft.Page | None, dialog: ft.DialogControl) -> None:
 
 def close_dialog_safe(page: ft.Page | None, dialog: ft.DialogControl | None = None) -> None:
     """Cierra el diálogo o hoja activa sin lanzar errores si `page` es `None`."""
+    popped = None
+    # Llamar pop_dialog() ANTES de poner dialog.open = False: en Flet 0.86+,
+    # Page.pop_dialog() busca el diálogo superior con `dlg.open == True`.
+    dialogs_container = getattr(page, "_dialogs", None) if page is not None else None
+    has_real_dialog_stack = (
+        dialogs_container is not None and hasattr(dialogs_container, "controls")
+    )
+    should_pop = True
+    if has_real_dialog_stack and dialog is not None:
+        in_stack = dialog in dialogs_container.controls
+        if in_stack and not getattr(dialog, "open", False):
+            should_pop = False
+
+    if page is not None and should_pop and hasattr(page, "pop_dialog"):
+        try:
+            popped = page.pop_dialog()
+        except Exception:
+            popped = None
+
     if dialog is not None:
         dialog.open = False
-    if page is None:
-        return
-    if hasattr(page, "pop_dialog"):
+        if popped is not dialog:
+            try:
+                if dialog.page is not None:
+                    dialog.update()
+            except Exception:
+                pass
+
+    if page is not None and hasattr(page, "update"):
         try:
-            page.pop_dialog()
-            return
+            page.update()
         except Exception:
             pass
-    if hasattr(page, "update"):
-        page.update()
+
+
+def focus_control_safe(page: ft.Page | None, control: ft.Control | None) -> None:
+    """Enfoca un control manejando corrutinas `focus()` de Flet 0.86+ y mocks síncronos."""
+    if control is None:
+        return
+    try:
+        focus_fn = getattr(control, "focus", None)
+        if not callable(focus_fn):
+            return
+        if inspect.iscoroutinefunction(focus_fn):
+            if page is not None and hasattr(page, "run_task"):
+                async def _do_focus() -> None:
+                    try:
+                        await focus_fn()
+                    except Exception:
+                        pass
+
+                try:
+                    page.run_task(_do_focus)
+                except Exception:
+                    pass
+            return
+
+        res = focus_fn()
+        if inspect.iscoroutine(res):
+            res.close()
+    except Exception:
+        pass
 
 
 def sheet_action_button(

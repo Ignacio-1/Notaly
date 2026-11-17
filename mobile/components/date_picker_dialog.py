@@ -272,11 +272,11 @@ class DatePickerDialog(NotalySheet):
                 bgcolor=tok.surface_subtle,
                 border=ft.Border.all(1, tok.border_hairline),
                 ink=True,
-                alignment=ft.Alignment.CENTER,
                 on_click=lambda _e, f=target_iso: self._seleccionar_fecha(f),
                 content=ft.Row(
                     spacing=SPACE_XS,
                     tight=True,
+                    alignment=ft.MainAxisAlignment.CENTER,
                     vertical_alignment=ft.CrossAxisAlignment.CENTER,
                     controls=[
                         ft.Icon(icon=icon, size=16, color=tok.accent_primary),

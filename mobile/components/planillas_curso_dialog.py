@@ -14,10 +14,12 @@ from typing import Any, Callable
 
 import flet as ft
 
+from core.gestor_planillas import formatear_tamano
 from mobile.components.ledger_primitives import EmptyStateView, NotalyListRow
 from mobile.components.notaly_sheet import (
     NotalyCompactDialog,
     NotalySheet,
+    close_dialog_safe,
     open_dialog_safe,
     sheet_action_button,
 )
@@ -126,9 +128,10 @@ class PlanillasCursoDialog(NotalySheet):
         tipo = str(planilla.get("tipo", "")).capitalize()
         fecha = planilla.get("fecha", "")
         hora = planilla.get("hora", "")
-        size_kb = planilla.get("tamano_kb", 0.0)
         pid = planilla.get("id", "")
         existe = bool(ruta and Path(ruta).is_file())
+
+        tamano_str = self._resolver_tamano_legible(planilla, ruta, existe)
 
         if formato == "pdf":
             badge_bg, badge_fg, badge_brd = tok.justif_bg, tok.justif_fg, tok.justif_border
@@ -150,7 +153,7 @@ class PlanillasCursoDialog(NotalySheet):
             content=ft.Icon(icon=icono, color=badge_fg, size=20),
         )
 
-        subtitulo = f"{tipo} · {fecha} {hora} · {size_kb} KB"
+        subtitulo = f"{tipo} · {fecha} {hora} · {tamano_str}"
         if not existe:
             subtitulo += " · No encontrado"
 
@@ -247,26 +250,39 @@ class PlanillasCursoDialog(NotalySheet):
             else:
                 self._mostrar_snackbar(f"No se pudo abrir el archivo ({err}).", error=True)
 
+    @staticmethod
+    def _resolver_tamano_legible(planilla: dict, ruta: str, existe: bool) -> str:
+        """Resuelve el tamaño legible de una planilla soportando claves actuales y heredadas."""
+        tamano_str = str(planilla.get("tamano_legible") or "").strip()
+        if tamano_str:
+            return tamano_str
+        tamano_bytes = planilla.get("tamano_bytes")
+        if isinstance(tamano_bytes, (int, float)):
+            return formatear_tamano(int(tamano_bytes))
+        tamano_kb = planilla.get("tamano_kb")
+        if isinstance(tamano_kb, (int, float)):
+            return f"{tamano_kb} KB"
+        if existe:
+            try:
+                return formatear_tamano(Path(ruta).stat().st_size)
+            except OSError:
+                pass
+        return "0.0 KB"
+
     def _confirmar_eliminar(self, pid: str, nombre: str) -> None:
         tok = resolve_tokens(tokens=self.tokens, page=self.app_page, state=self.state)
 
         def confirmar(_e: Any) -> None:
-            self.state.eliminar_planilla_y_archivo(pid)
-            if self.app_page and hasattr(self.app_page, "pop_dialog"):
-                try:
-                    self.app_page.pop_dialog()
-                except Exception:
-                    pass
-            self._cargar_planillas()
-            self._mostrar_snackbar("Planilla eliminada del historial.")
+            exito, msg = self.state.eliminar_planilla_exportada(pid)
+            close_dialog_safe(self.app_page, dlg)
+            if exito:
+                self._cargar_planillas()
+                self._mostrar_snackbar("Planilla eliminada del historial.")
+            else:
+                self._mostrar_snackbar(msg or "No se pudo eliminar la planilla.", error=True)
 
         def cancelar(_e: Any) -> None:
-            if self.app_page and hasattr(self.app_page, "pop_dialog"):
-                try:
-                    self.app_page.pop_dialog()
-                    self.app_page.update()
-                except Exception:
-                    pass
+            close_dialog_safe(self.app_page, dlg)
 
         dlg = NotalyCompactDialog(
             page=self.app_page,
