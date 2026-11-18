@@ -265,7 +265,7 @@ class GruposView(ft.Container):
 
         return ft.Container(
             bgcolor=tok.surface_primary,
-            border=ft.Border.only(bottom=ft.BorderSide(1, tok.border_hairline)),
+            border=None,
             content=ft.Row(
                 spacing=0,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,

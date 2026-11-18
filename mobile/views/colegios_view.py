@@ -174,7 +174,7 @@ class ColegiosView(ft.Container):
 
         summary_bar = ft.Container(
             bgcolor=tok.surface_primary,
-            border=ft.Border.only(bottom=ft.BorderSide(1, tok.border_hairline)),
+            border=None,
             padding=ft.Padding.symmetric(horizontal=gutter, vertical=SPACE_MD),
             content=ft.Row(
                 spacing=SPACE_SM,
@@ -202,6 +202,7 @@ class ColegiosView(ft.Container):
                 ],
             ),
         )
+        self.summary_bar = summary_bar
 
         self.list_view.controls.clear()
         self.list_view.controls.append(summary_bar)
@@ -256,7 +257,7 @@ class ColegiosView(ft.Container):
                     monogram_fg=av_fg,
                     trailing=btn_menu,
                     horizontal_padding=gutter,
-                    show_divider=True,
+                    show_divider=False,
                     tokens=tok,
                     on_click=lambda _e, col=nombre: self._abrir_colegio(col),
                 )

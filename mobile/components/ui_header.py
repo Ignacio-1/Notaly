@@ -224,7 +224,7 @@ class NotalyTopHeader(ft.Container):
         super().__init__(
             bgcolor=self.tokens.surface_primary,
             border_radius=RADIUS_NONE,
-            border=ft.Border.only(bottom=ft.BorderSide(1, self.tokens.border_hairline)),
+            border=None,
             padding=ft.Padding(0, 0, 0, 0),
             content=content,
         )
@@ -295,7 +295,7 @@ class UnderlineTabBar(ft.Container):
         super().__init__(
             bgcolor=self.tokens.surface_primary,
             border_radius=RADIUS_NONE,
-            border=ft.Border.only(bottom=ft.BorderSide(1, self.tokens.border_hairline)),
+            border=None,
             padding=ft.Padding(0, 0, 0, 0),
             content=row,
         )

@@ -344,7 +344,7 @@ def test_ui_header_tokens_light_and_dark():
     )
     assert isinstance(header_dark, NotalyTopHeader)
     assert header_dark.bgcolor == DARK_TOKENS.surface_primary
-    assert header_dark.border.bottom.color == DARK_TOKENS.border_hairline
+    assert header_dark.border is None
 
     header_light = build_app_header(
         eyebrow="",
@@ -352,6 +352,7 @@ def test_ui_header_tokens_light_and_dark():
         tokens=LIGHT_TOKENS,
     )
     assert header_light.bgcolor == LIGHT_TOKENS.surface_primary
+    assert header_light.border is None
 
     # build_module_tabs / UnderlineTabBar plano (0px) con indicador inferior 2px
     tabs_dark = build_module_tabs(
@@ -362,7 +363,7 @@ def test_ui_header_tokens_light_and_dark():
     assert isinstance(tabs_dark, UnderlineTabBar)
     assert tabs_dark.bgcolor == DARK_TOKENS.surface_primary
     assert tabs_dark.border_radius == 0
-    assert tabs_dark.border.bottom.color == DARK_TOKENS.border_hairline
+    assert tabs_dark.border is None
 
 
 def test_dialogs_resolve_tokens_and_theme_mode():

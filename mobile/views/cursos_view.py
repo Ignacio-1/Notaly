@@ -193,10 +193,11 @@ class CursosView(ft.Container):
 
         header_section = ft.Container(
             bgcolor=tok.surface_primary,
-            border=ft.Border.only(bottom=ft.BorderSide(1, tok.border_hairline)),
+            border=None,
             padding=ft.Padding.symmetric(horizontal=gutter, vertical=SPACE_MD),
             content=self.summary_header,
         )
+        self.header_section = header_section
 
         self.list_view.controls.clear()
         self.list_view.controls.append(header_section)

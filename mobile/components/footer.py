@@ -1,10 +1,9 @@
 """
-Barra de Navegación Inferior Móvil Editorial ("Crisp Editorial Ledger") (SPEC-028).
+Barra de Navegación Inferior Móvil Editorial ("Crisp Editorial Ledger") (SPEC-028 / SPEC-030).
 
 Mantiene `height=None` para absorber intrusiones inferiores nativas, `elevation=0`,
 `indicator_shape` rectangular (`4px`), `label_behavior=ALWAYS_SHOW`, tokens duales
-y `border` superior hairline para paridad Cupertino/iOS (complementado en Android
-por el borde inferior del contenedor principal en `mobile/main.py`).
+y `border=None` sin línea divisoria superior para fusión continua con el lienzo principal.
 """
 
 from __future__ import annotations
@@ -65,7 +64,7 @@ class AppFooter(ft.NavigationBar):
             bgcolor=self.tokens.surface_primary,
             indicator_color=self.tokens.accent_subtle,
             indicator_shape=ft.RoundedRectangleBorder(radius=RADIUS_SM),
-            border=ft.Border.only(top=ft.BorderSide(1, self.tokens.border_hairline)),
+            border=None,
         )
 
     def _calcular_indice_activo(self) -> int:
@@ -94,13 +93,11 @@ class AppFooter(ft.NavigationBar):
             self.visible = False
 
     def actualizar_tema(self, tokens: ThemeTokens) -> None:
-        """Actualiza colores y divisor del footer tras cambiar entre claro y oscuro."""
+        """Actualiza colores del footer tras cambiar entre claro y oscuro."""
         self.tokens = resolve_tokens(tokens=tokens, state=self.state)
         self.bgcolor = self.tokens.surface_primary
         self.indicator_color = self.tokens.accent_subtle
-        self.border = ft.Border.only(
-            top=ft.BorderSide(1, self.tokens.border_hairline)
-        )
+        self.border = None
 
     def _al_cambiar_pestana(self, e: Any = None) -> None:
         if e is not None and hasattr(e, "control") and hasattr(e.control, "selected_index"):

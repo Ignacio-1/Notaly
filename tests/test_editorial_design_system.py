@@ -381,7 +381,7 @@ def test_notaly_top_header_y_safe_area_raiz_y_subvista() -> None:
     assert raiz.content.avoid_intrusions_top is True
     assert raiz.content.avoid_intrusions_bottom is False
     assert raiz.bgcolor == LIGHT_TOKENS.surface_primary
-    assert raiz.border.bottom.color == LIGHT_TOKENS.border_hairline
+    assert raiz.border is None
 
     subvista = NotalyTopHeader(
         title="1° Año A - Matemática",
@@ -412,6 +412,7 @@ def test_underline_tab_bar_sin_pildoras_y_cambio_in_place() -> None:
         tokens=DARK_TOKENS,
     )
     assert bar.border_radius == 0
+    assert bar.border is None
     row = bar.content
     assert isinstance(row, ft.Row)
     assert len(row.controls) == 4
@@ -424,8 +425,12 @@ def test_underline_tab_bar_sin_pildoras_y_cambio_in_place() -> None:
     assert selected == ["t3"]
 
     bar.set_active("anual")
+    assert bar.border is None
     assert row.controls[0].border is None
+    assert row.controls[1].border is None
+    assert row.controls[2].border is None
     assert row.controls[3].border.bottom.color == DARK_TOKENS.accent_primary
+    assert row.controls[3].border.bottom.width == 2
 
 
 def test_ui_header_sin_constantes_claras_ni_icon_name() -> None:
@@ -975,7 +980,7 @@ def test_planificaciones_dialogs_en_notaly_sheet_sin_chips_ni_alturas_fijas() ->
 # ---------------------------------------------------------------------------
 
 def test_app_footer_editorial_tokens_y_geometria() -> None:
-    """RF-07, RF-11, RF-24, B6: NavigationBar sin altura fija, elevation=0, indicador 4px y border."""
+    """RF-07, RF-11, RF-24, SPEC-030: NavigationBar sin altura fija, elevation=0, indicador 4px y sin border."""
     from types import SimpleNamespace
     import flet as ft
     from mobile.components.footer import AppFooter
@@ -990,14 +995,13 @@ def test_app_footer_editorial_tokens_y_geometria() -> None:
     assert footer.indicator_color == LIGHT_TOKENS.accent_subtle
     assert isinstance(footer.indicator_shape, ft.RoundedRectangleBorder)
     assert footer.indicator_shape.radius == RADIUS_SM
-    assert footer.border is not None
-    assert footer.border.top.color == LIGHT_TOKENS.border_hairline
+    assert footer.border is None
     assert footer.label_behavior == ft.NavigationBarLabelBehavior.ALWAYS_SHOW
 
     footer.actualizar_tema(DARK_TOKENS)
     assert footer.bgcolor == DARK_TOKENS.surface_primary
     assert footer.indicator_color == DARK_TOKENS.accent_subtle
-    assert footer.border.top.color == DARK_TOKENS.border_hairline
+    assert footer.border is None
 
 
 # ---------------------------------------------------------------------------
@@ -1506,6 +1510,313 @@ def test_spec029_prevencion_overflow_360dp_vistas(tmp_path) -> None:
     assert lbl_rango.expand is True
     assert lbl_rango.max_lines == 1
     assert lbl_rango.overflow == ft.TextOverflow.ELLIPSIS
+
+
+# ---------------------------------------------------------------------------
+# SPEC-030 (TDD): Limpieza visual de divisores, cabeceras, pestañas y footer
+# ---------------------------------------------------------------------------
+
+
+from typing import Any
+
+
+def _find_container_wrapping(root: Any, target: Any) -> Any:
+    import flet as ft
+
+    if root is None:
+        return None
+    if isinstance(root, ft.Container) and isinstance(root.content, ft.Row):
+        if any(c is target for c in (root.content.controls or [])):
+            return root
+    children: list[Any] = []
+    if hasattr(root, "content") and root.content is not None:
+        children.append(root.content)
+    if hasattr(root, "controls") and root.controls:
+        children.extend(root.controls)
+    for child in children:
+        found = _find_container_wrapping(child, target)
+        if found is not None:
+            return found
+    return None
+
+
+def _collect_controls_of_type(root: Any, cls: type) -> list[Any]:
+    out: list[Any] = []
+    if root is None:
+        return out
+    if isinstance(root, cls):
+        out.append(root)
+    if hasattr(root, "content") and root.content is not None:
+        out.extend(_collect_controls_of_type(root.content, cls))
+    if hasattr(root, "controls") and root.controls:
+        for c in root.controls:
+            out.extend(_collect_controls_of_type(c, cls))
+    return out
+
+
+def test_spec030_colegios_y_cursos_sin_bordes_ni_divisores_instituciones() -> None:
+    """RF-01, RF-02, RF-04, RF-09: ColegiosView y CursosView con listas pobladas y vacías sin bordes."""
+    from types import SimpleNamespace
+    import flet as ft
+    from mobile.components.ledger_primitives import EmptyStateView, NotalyListRow
+    from mobile.components.ui_header import NotalyTopHeader
+    from mobile.theme import DARK_TOKENS, LIGHT_TOKENS, RADIUS_SM
+    from mobile.views.colegios_view import ColegiosView
+    from mobile.views.cursos_view import CursosView
+
+    for tok, mode in ((LIGHT_TOKENS, ft.ThemeMode.LIGHT), (DARK_TOKENS, ft.ThemeMode.DARK)):
+        page = SimpleNamespace(
+            width=390,
+            height=844,
+            theme_mode=mode,
+            overlay=[],
+            update=lambda: None,
+        )
+        state = SimpleNamespace(
+            tokens=tok,
+            theme_mode="dark" if mode == ft.ThemeMode.DARK else "light",
+            current_screen="colegios",
+            selected_colegio="Colegio 1",
+            selected_curso=None,
+            search_query_colegios="",
+            get_colegios=lambda: ["Colegio 1", "Mariano Gomez"],
+            get_cursos=lambda _c: ["1ro A", "2do B"],
+            get_colegio_data=lambda _c: {},
+            get_curso_data=lambda _c, _cur: {"alumnos": []},
+            get_alumnos=lambda _c, _cur: {},
+            get_horario_curso=lambda _c, _cur: "",
+            get_clases_curso=lambda _c, _cur: {},
+        )
+
+        cv = ColegiosView(state=state, page=page, on_navigate=lambda _d: None)
+        assert isinstance(cv.content.controls[0], NotalyTopHeader)
+        assert cv.content.controls[0].border is None
+        summary_bar = cv.list_view.controls[0]
+        assert summary_bar is cv.summary_bar
+        assert isinstance(summary_bar, ft.Container)
+        assert summary_bar.border is None
+        assert cv.list_view.spacing == 0
+
+        inst_rows = [c for c in cv.list_view.controls if isinstance(c, NotalyListRow)]
+        assert len(inst_rows) == 2
+        for row in inst_rows:
+            assert row.border is None
+            assert row.bgcolor == tok.surface_primary
+            assert row.monogram_box is not None
+            assert row.monogram_box.border_radius == RADIUS_SM
+
+        cur_v = CursosView(state=state, page=page, on_navigate=lambda _d: None)
+        assert isinstance(cur_v.content.controls[0], NotalyTopHeader)
+        assert cur_v.content.controls[0].border is None
+        header_section = cur_v.list_view.controls[0]
+        assert header_section is cur_v.header_section
+        assert isinstance(header_section, ft.Container)
+        assert header_section.border is None
+
+        curso_rows = [c for c in cur_v.list_view.controls if isinstance(c, NotalyListRow)]
+        assert len(curso_rows) == 2
+        for row in curso_rows:
+            assert row.border is not None
+            assert row.border.bottom is not None
+            assert row.border.bottom.color == tok.border_hairline
+
+        # RF-09: Continuidad sin líneas divisorias en estados vacíos (claro/oscuro)
+        empty_state = SimpleNamespace(
+            tokens=tok,
+            theme_mode="dark" if mode == ft.ThemeMode.DARK else "light",
+            current_screen="colegios",
+            selected_colegio="Colegio 1",
+            selected_curso=None,
+            search_query_colegios="",
+            get_colegios=lambda: [],
+            get_cursos=lambda _c: [],
+            get_colegio_data=lambda _c: {},
+            get_curso_data=lambda _c, _cur: {"alumnos": []},
+            get_alumnos=lambda _c, _cur: {},
+            get_horario_curso=lambda _c, _cur: "",
+            get_clases_curso=lambda _c, _cur: {},
+        )
+        cv_empty = ColegiosView(state=empty_state, page=page, on_navigate=lambda _d: None)
+        assert cv_empty.content.controls[0].border is None
+        assert cv_empty.summary_bar.border is None
+        assert any(isinstance(c, EmptyStateView) for c in cv_empty.list_view.controls)
+
+        cur_empty = CursosView(state=empty_state, page=page, on_navigate=lambda _d: None)
+        assert cur_empty.content.controls[0].border is None
+        assert cur_empty.header_section.border is None
+        assert any(isinstance(c, EmptyStateView) for c in cur_empty.list_view.controls)
+
+
+def test_spec030_tabs_subrayadas_sin_linea_gris_en_notas_y_grupos(tmp_path) -> None:
+    """RF-02, RF-05, RF-06: NotasView y GruposView sin línea gris horizontal continua inicial ni tras cambiar tab."""
+    from types import SimpleNamespace
+    import flet as ft
+    from mobile.state import AppState
+    from mobile.theme import DARK_TOKENS, LIGHT_TOKENS
+    from mobile.views.grupos_view import GruposView
+    from mobile.views.notas_view import NotasView
+
+    st = AppState(data_path=str(tmp_path / "spec030_tabs.json"))
+    st.add_colegio("Colegio 1")
+    st.add_curso("Colegio 1", "1ro A", 2)
+    st.selected_colegio = "Colegio 1"
+    st.selected_curso = "1ro A"
+    ok1, _, tp1 = st.create_trabajo_grupo(
+        "TP 1",
+        [{"numero": 1, "integrantes": ["1", "2"], "nota": None}],
+        auto_save=False,
+    )
+    ok2, _, tp2 = st.create_trabajo_grupo(
+        "TP 2",
+        [{"numero": 1, "integrantes": ["1", "2"], "nota": None}],
+        auto_save=False,
+    )
+    assert ok1 and ok2 and tp1 is not None and tp2 is not None
+
+    for tok, mode, mode_str in (
+        (LIGHT_TOKENS, ft.ThemeMode.LIGHT, "light"),
+        (DARK_TOKENS, ft.ThemeMode.DARK, "dark"),
+    ):
+        st.theme_mode = mode_str
+        st.active_trimestre = 0
+        page = SimpleNamespace(
+            width=390,
+            height=844,
+            theme_mode=mode,
+            overlay=[],
+            update=lambda: None,
+        )
+
+        nv = NotasView(state=st, page=page, on_navigate=lambda _d: None)
+        trim_bar = _find_container_wrapping(nv.content, nv.top_trimester_tabs[0])
+        assert trim_bar is not None
+        assert trim_bar is nv.trim_selector_bar
+        assert trim_bar.border is None
+
+        active_tab = nv.top_trimester_tabs[0]
+        assert active_tab.border is not None
+        assert active_tab.border.bottom.width == 2
+        assert active_tab.border.bottom.color == tok.accent_primary
+        for inactive_tab in nv.top_trimester_tabs[1:]:
+            assert inactive_tab.border is None
+
+        # RF-06: Conmutar trimestre in-place y Anual mantiene trim_selector_bar sin línea gris
+        for target_idx in (2, 3):
+            nv._seleccionar_trimestre(target_idx)
+            assert nv.trim_selector_bar.border is None
+            for idx, tab in enumerate(nv.top_trimester_tabs):
+                if idx == target_idx:
+                    assert tab.border is not None
+                    assert tab.border.bottom.width == 2
+                    assert tab.border.bottom.color == tok.accent_primary
+                else:
+                    assert tab.border is None
+
+        # Regresión: los divisores entre filas de alumnos en Notas siguen intactos
+        assert len(nv.tarjetas_alumnos) == 2
+        for card in nv.tarjetas_alumnos.values():
+            assert card.border is not None
+            assert card.border.bottom is not None
+            assert card.border.bottom.color == tok.border_hairline
+
+        gv = GruposView(state=st, page=page, on_navigate=lambda _d: None)
+        gv._seleccionar_trabajo(str(tp1["id"]))
+        assert gv.body_container.content.controls[0].border is None
+        assert gv.trabajos_tabs is not None
+        assert gv.trabajos_tabs.border is None
+        tabs_row = gv.trabajos_tabs.content.controls
+        assert tabs_row[0].border is not None
+        assert tabs_row[0].border.bottom.width == 2
+        assert tabs_row[0].border.bottom.color == tok.accent_primary
+        assert tabs_row[1].border is None
+
+        # RF-06: Cambiar al segundo trabajo mantiene selector sin borde gris y mueve 2px al nuevo tab
+        gv._seleccionar_trabajo(str(tp2["id"]))
+        assert gv.body_container.content.controls[0].border is None
+        assert gv.trabajos_tabs.border is None
+        tabs_row_after = gv.trabajos_tabs.content.controls
+        assert tabs_row_after[0].border is None
+        assert tabs_row_after[1].border is not None
+        assert tabs_row_after[1].border.bottom.width == 2
+        assert tabs_row_after[1].border.bottom.color == tok.accent_primary
+
+
+def test_spec030_regresion_divisores_asistencias_y_planillas(tmp_path) -> None:
+    """RF-02, RF-09: AsistenciasView y PlanillasView preservan divisores hairline entre ítems."""
+    from types import SimpleNamespace
+    import flet as ft
+    from mobile.components.ledger_primitives import NotalyListRow
+    from mobile.state import AppState
+    from mobile.theme import LIGHT_TOKENS
+    from mobile.views.asistencias_view import AsistenciasView
+    from mobile.views.planillas_view import PlanillasView
+
+    st = AppState(data_path=str(tmp_path / "spec030_reg.json"))
+    st.add_colegio("Colegio 1")
+    st.add_curso("Colegio 1", "1ro A", 2)
+    st.selected_colegio = "Colegio 1"
+    st.selected_curso = "1ro A"
+
+    page = SimpleNamespace(
+        width=390,
+        height=844,
+        theme_mode=ft.ThemeMode.LIGHT,
+        overlay=[],
+        update=lambda: None,
+    )
+
+    av = AsistenciasView(state=st, page=page, on_navigate=lambda _d: None)
+    assert len(av.tarjetas_alumnos) == 2
+    for row_container in av.tarjetas_alumnos.values():
+        assert row_container.border is not None
+        assert row_container.border.left is not None
+        assert row_container.border.left.width == 3
+        assert row_container.border.bottom is not None
+        assert row_container.border.bottom.color == LIGHT_TOKENS.border_hairline
+
+    fake_state = SimpleNamespace(
+        tokens=LIGHT_TOKENS,
+        theme_mode="light",
+        depurar_planillas_huerfanas=lambda: None,
+        get_planillas=lambda: [
+            {
+                "id": "p1",
+                "colegio": "Colegio 1",
+                "curso": "1ro A",
+                "tipo": "notas",
+                "nombre_archivo": "notas_1a.pdf",
+                "formato": "pdf",
+                "fecha": "2026-11-18",
+                "hora": "10:00",
+                "tamano_legible": "120 KB",
+                "ruta": str(tmp_path / "notas_1a.pdf"),
+            },
+            {
+                "id": "p2",
+                "colegio": "Colegio 1",
+                "curso": "2do B",
+                "tipo": "notas",
+                "nombre_archivo": "notas_2b.pdf",
+                "formato": "pdf",
+                "fecha": "2026-11-18",
+                "hora": "10:05",
+                "tamano_legible": "98 KB",
+                "ruta": str(tmp_path / "notas_2b.pdf"),
+            },
+        ],
+    )
+    pv = PlanillasView(state=fake_state, page=page, on_navigate=lambda _d: None, tokens=LIGHT_TOKENS)
+    pv.colegios_expandidos.add("Colegio 1")
+    pv._actualizar_lista()
+
+    rows = _collect_controls_of_type(pv.list_view, NotalyListRow)
+    assert len(rows) == 2
+    assert rows[0].border is not None
+    assert rows[0].border.bottom is not None
+    assert rows[0].border.bottom.color == LIGHT_TOKENS.border_hairline
+    assert rows[1].border is not None
+    assert rows[1].border.bottom is None or rows[1].border.bottom.width == 0
+
 
 
 

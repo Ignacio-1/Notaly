@@ -124,7 +124,7 @@ def test_prioridad_absoluta_busqueda_omnibox(mock_app_environment):
     p, state, on_navigate = mock_app_environment
 
     assert p.appbar is None
-    assert p.controls[0].border.bottom.width == 1  # Divisor sobre Footer en raíz
+    assert p.controls[0].border is None  # Sin divisor sobre Footer en raíz (SPEC-030)
 
     # Navegar a cursos
     on_navigate("cursos")
@@ -146,6 +146,32 @@ def test_prioridad_absoluta_busqueda_omnibox(mock_app_environment):
     assert state.current_screen == "cursos"
     assert state.can_pop() is True
     assert p.window.closed is False
+
+    # RF-08 (SPEC-030): Post-cierre de búsqueda y conmutación claro/oscuro sin divisores reintroducidos
+    from mobile.components.ui_header import NotalyTopHeader, UnderlineTabBar
+
+    def _check_shell_borderless() -> None:
+        assert p.controls[0].border is None
+        assert p.controls[0].bgcolor == state.tokens.bg_canvas
+        assert p.navigation_bar.border is None
+        assert p.navigation_bar.bgcolor == state.tokens.surface_primary
+
+        def _walk_check(ctrl) -> None:
+            if isinstance(ctrl, (NotalyTopHeader, UnderlineTabBar)):
+                assert ctrl.border is None
+            if hasattr(ctrl, "content") and ctrl.content is not None:
+                _walk_check(ctrl.content)
+            if hasattr(ctrl, "controls") and ctrl.controls:
+                for sub in ctrl.controls:
+                    _walk_check(sub)
+
+        _walk_check(p.controls[0].content)
+
+    _check_shell_borderless()
+    p._shell_actions["on_toggle_theme"]()
+    _check_shell_borderless()
+    p._shell_actions["on_toggle_theme"]()
+    _check_shell_borderless()
 
 
 def test_prioridad_absoluta_modales_y_on_dismiss(mock_app_environment):

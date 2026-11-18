@@ -137,12 +137,8 @@ def main(page: ft.Page):
     def _sync_container_footer_divider(t: ThemeTokens | None = None) -> None:
         tok = t or resolve_tokens(page=page, state=state)
         main_container.bgcolor = tok.bg_canvas
-        # Divisor hairline superior para Material 3 en Android cuando Footer está visible
-        main_container.border = (
-            ft.Border.only(bottom=ft.BorderSide(1, tok.border_hairline))
-            if getattr(footer, "visible", False)
-            else None
-        )
+        # Fusión visual continua con el footer sin línea divisoria horizontal (SPEC-030)
+        main_container.border = None
 
     def _mostrar_snackbar_doble_back() -> None:
         t = resolve_tokens(page=page, state=state)

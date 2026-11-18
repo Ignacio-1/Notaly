@@ -346,10 +346,11 @@ class NotasView(ft.Container):
 
         trim_selector_bar = ft.Container(
             bgcolor=tok.surface_primary,
-            border=ft.Border.only(bottom=ft.BorderSide(1, tok.border_hairline)),
+            border=None,
             padding=0,
             content=ft.Row(spacing=0, controls=self.top_trimester_tabs),
         )
+        self.trim_selector_bar = trim_selector_bar
 
         btn_agregar_alumno = ft.OutlinedButton(
             content=ft.Text(
