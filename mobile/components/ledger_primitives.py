@@ -95,6 +95,7 @@ class NotalyListRow(ft.Container):
         initials: str | None = None,
         monogram_bg: str | None = None,
         monogram_fg: str | None = None,
+        title_size: int = 15,
         leading: ft.Control | None = None,
         trailing: ft.Control | Sequence[ft.Control] | None = None,
         stripe_color: str | None = None,
@@ -145,7 +146,7 @@ class NotalyListRow(ft.Container):
             if isinstance(title, ft.Control)
             else ft.Text(
                 title,
-                size=15,
+                size=title_size,
                 weight=ft.FontWeight.W_600,
                 color=self.tokens.text_primary,
                 max_lines=1,

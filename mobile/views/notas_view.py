@@ -54,10 +54,7 @@ from mobile.theme import (
     SPACE_XS,
     ThemeTokens,
     constrain_tablet_content,
-    extract_initials,
-    get_avatar_palette,
     get_grade_triad,
-    is_dark_tokens,
     pluralizar,
     resolve_tokens,
     responsive_gutter,
@@ -840,7 +837,6 @@ class NotasView(ft.Container):
         tok = self.tokens
         colegio = self.state.selected_colegio or ""
         curso = self.state.selected_curso or ""
-        is_dark = is_dark_tokens(tok)
         pw = getattr(self.app_page, "width", None) if self.app_page else None
         gutter = responsive_gutter(pw if isinstance(pw, (int, float)) else None)
 
@@ -892,7 +888,6 @@ class NotasView(ft.Container):
 
             trimestres = al_data.get("trimestres", {})
             calcs = procesar_calificaciones_alumno(trimestres)
-            t1, t2, t3 = calcs["notas_finales_redondeadas"][:3]
             total = calcs["nota_final_total_redondeada"]
             prom_crudo_red = (
                 calcs["promedios_crudos_redondeados"][trim_idx] if trim_idx < 3 else None
@@ -905,20 +900,6 @@ class NotasView(ft.Container):
             self.paneles_anuales[id_str] = ref_anual
 
             is_open = str(self.expanded_student_id) == id_str
-
-            num_id = int(id_str) if id_str.isdigit() else 0
-            avatar_bg, avatar_fg = get_avatar_palette(num_id, is_dark=is_dark)
-            iniciales = extract_initials(nombre_al)
-
-            # Resumen tabular continuo (B2: reemplaza cápsulas/píldoras)
-            resumen_trim_lbl = tabular_text(
-                format_tabular_trimester_summary([t1, t2, t3]),
-                size=11,
-                color=tok.text_secondary,
-                max_lines=1,
-                overflow=ft.TextOverflow.ELLIPSIS,
-            )
-            self.resumen_trimestres_labels[id_str] = resumen_trim_lbl
 
             prom_anual_txt = tabular_text(
                 f"Promedio anual: {total if total is not None else '--'}",
@@ -1172,34 +1153,14 @@ class NotasView(ft.Container):
                                 spacing=SPACE_MD,
                                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
                                 controls=[
-                                    ft.Container(
-                                        width=40,
-                                        height=40,
-                                        bgcolor=avatar_bg,
-                                        border_radius=RADIUS_SM,
-                                        alignment=ft.Alignment.CENTER,
-                                        content=ft.Text(
-                                            iniciales,
-                                            size=13,
-                                            weight=ft.FontWeight.BOLD,
-                                            color=avatar_fg,
-                                        ),
-                                    ),
-                                    ft.Column(
+                                    ft.Text(
+                                        nombre_al,
+                                        size=16,
+                                        weight=ft.FontWeight.W_600,
+                                        color=tok.text_primary,
+                                        max_lines=1,
+                                        overflow=ft.TextOverflow.ELLIPSIS,
                                         expand=True,
-                                        spacing=2,
-                                        tight=True,
-                                        controls=[
-                                            ft.Text(
-                                                f"#{id_str} {nombre_al}",
-                                                size=15,
-                                                weight=ft.FontWeight.W_600,
-                                                color=tok.text_primary,
-                                                max_lines=1,
-                                                overflow=ft.TextOverflow.ELLIPSIS,
-                                            ),
-                                            resumen_trim_lbl,
-                                        ],
                                     ),
                                     row_fin_cell,
                                     chevron_icon,
@@ -1667,12 +1628,6 @@ class NotasView(ft.Container):
                 value=str(row_val) if row_val is not None else "--",
                 elevated_empty=es_anual,
                 tokens=tok,
-            )
-
-        if id_str in self.resumen_trimestres_labels:
-            t1, t2, t3 = calcs["notas_finales_redondeadas"][:3]
-            self.resumen_trimestres_labels[id_str].value = format_tabular_trimester_summary(
-                [t1, t2, t3]
             )
 
         if id_str in self.promedio_anual_labels:

@@ -768,10 +768,11 @@ class TestScrollPreservationAndInPlaceUpdates:
         assert view.expanded_student_id == '1'
         assert view.active_grade_index == 0
 
-        resumen_lbl = view.resumen_trimestres_labels['1']
-        assert "1°T" in resumen_lbl.value
-        assert "2°T" in resumen_lbl.value
-        assert "3°T" in resumen_lbl.value
+        assert not hasattr(view, "resumen_trimestres_labels") or len(view.resumen_trimestres_labels) == 0
+        header_row = view.tarjetas_alumnos['1'].content.controls[0].content
+        assert isinstance(header_row.controls[0], ft.Text)
+        assert header_row.controls[0].value == "Gomez Juan"
+        assert "#1" not in header_row.controls[0].value
         assert not hasattr(view, "pills_alumnos") or len(view.pills_alumnos) == 0
 
         view._aplicar_nota_dock(9.0)
@@ -1571,7 +1572,7 @@ def test_notas_view_dock_retractil_y_header_colapsable_y_lapiz_edicion(isolated_
     1. El dock numérico inicia oculto (padding.bottom >= 88) y al activarse ajusta padding.bottom >= 176.
     2. El dock se puede cerrar mediante cerrar_dock_si_abierto() deseleccionando la nota.
     3. Sub-header integrado dentro del ListView para scroll nativo; máx 2 niveles fijos arriba.
-    4. La fila plegada muestra nombre completo + resumen tabular continuo + GradeCell dominante sin píldoras.
+    4. La fila plegada muestra nombre limpio (`16sp` Semi-Bold) + GradeCell dominante sin monograma ni píldoras.
     5. Chevrons e íconos mutan `.icon` (Flet 0.86+) y el lápiz abre edición/eliminación.
     """
     from mobile.views.notas_view import NotasView
@@ -1621,15 +1622,20 @@ def test_notas_view_dock_retractil_y_header_colapsable_y_lapiz_edicion(isolated_
     mock_page_mobile.pop_dialog()
     assert view.dock_container.visible is False
 
-    # 5. Fila plegada editorial: Monograma 4px, Columna (nombre + resumen tabular), GradeCell dominante, Chevron
+    # 5. Fila plegada editorial simplificada (SPEC-031): Nombre 16sp Semi-Bold, GradeCell dominante, Chevron
     card_col = view.tarjetas_alumnos['1'].content
     header_row = card_col.controls[0].content
-    assert header_row.controls[0].border_radius == 4
-    center_col = header_row.controls[1]
-    assert isinstance(center_col, ft.Column)
-    text_nombre = center_col.controls[0]
+    text_nombre = header_row.controls[0]
     assert isinstance(text_nombre, ft.Text)
-    assert "#1" in text_nombre.value
+    assert text_nombre.value == "Gomez Juan"
+    assert "#1" not in text_nombre.value
+    assert text_nombre.size == 16
+    assert text_nombre.weight == ft.FontWeight.W_600
+    assert text_nombre.max_lines == 1
+    assert text_nombre.overflow == ft.TextOverflow.ELLIPSIS
+    assert text_nombre.expand is True
+    assert isinstance(header_row.controls[1], GradeCell)
+    assert header_row.controls[2] is view.chevron_icons['1']
     assert not any(isinstance(c, ft.PopupMenuButton) for c in header_row.controls)
     assert not any(getattr(c, "data", None) == "grade-pill" for c in header_row.controls)
     assert any(isinstance(c, GradeCell) for c in header_row.controls)

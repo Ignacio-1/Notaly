@@ -39,7 +39,6 @@ from mobile.components.notaly_sheet import NotalySheet, open_dialog_safe
 from mobile.components.ui_header import NotalyTopHeader, UnderlineTabBar
 from mobile.state import AppState
 from mobile.theme import (
-    DARK_TOKENS,
     RADIUS_MD,
     RADIUS_NONE,
     RADIUS_SM,
@@ -49,8 +48,6 @@ from mobile.theme import (
     SPACE_XS,
     ThemeTokens,
     constrain_tablet_content,
-    extract_initials,
-    get_avatar_palette,
     pluralizar,
     resolve_tokens,
     responsive_gutter,
@@ -1250,7 +1247,6 @@ class EstadisticasView(ft.Container):
     def _build_curso_alumnos_section(self, stats: dict) -> ft.Container:
         """Prioriza alumnos en riesgo con filete 3px rojo arriba, luego aprobados y sin calificar."""
         tok = self.tokens
-        is_dark = tok == DARK_TOKENS
         alumnos = stats.get("alumnos_detalle", [])
         if not alumnos:
             return ft.Container(
@@ -1280,16 +1276,14 @@ class EstadisticasView(ft.Container):
         ) -> NotalyListSection:
             rows: list[ft.Control] = []
             for idx, al in enumerate(lista_grupo):
-                bg_av, fg_av = get_avatar_palette(idx, is_dark=is_dark)
                 nota = al.get("nota_final")
                 nota_str = str(nota) if nota is not None else "--"
                 rows.append(
                     NotalyListRow(
                         title=al["nombre"],
                         subtitle=subtitle_tag,
-                        initials=extract_initials(al["nombre"]),
-                        monogram_bg=bg_av,
-                        monogram_fg=fg_av,
+                        initials=None,
+                        title_size=16,
                         stripe_color=stripe_color,
                         show_divider=(idx < len(lista_grupo) - 1),
                         trailing=GradeCell(
@@ -1569,17 +1563,13 @@ class EstadisticasView(ft.Container):
 
     def _build_alumno_comportamiento_card(self, al: dict) -> ft.Container:
         tok = self.tokens
-        is_dark = tok == DARK_TOKENS
         al_id = str(al.get("id", ""))
-        nombre = al.get("nombre", "")
+        nombre = (al.get("nombre", "") or "").strip() or "Sin nombre"
         observaciones = al.get("observaciones", [])
         total_obs = al.get("total", len(observaciones))
         conteo = al.get("conteo_tipo", {})
 
         is_open = al_id in self.alumnos_expandidos_comp
-        num_id = int(al_id) if str(al_id).isdigit() else 0
-        avatar_bg, avatar_fg = get_avatar_palette(num_id, is_dark=is_dark)
-        iniciales = extract_initials(nombre)
 
         badges_conteo: list[ft.Control] = []
         if conteo.get(COMPORTAMIENTO_POSITIVO, 0) > 0:
@@ -1638,44 +1628,27 @@ class EstadisticasView(ft.Container):
             content=ft.Row(
                 alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                spacing=SPACE_SM,
                 controls=[
-                    ft.Row(
-                        spacing=SPACE_SM,
+                    ft.Column(
+                        spacing=1,
                         expand=True,
-                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                        tight=True,
                         controls=[
-                            ft.Container(
-                                width=36,
-                                height=36,
-                                bgcolor=avatar_bg,
-                                border_radius=RADIUS_SM,
-                                alignment=ft.Alignment.CENTER,
-                                content=ft.Text(
-                                    iniciales,
-                                    size=11,
-                                    weight=ft.FontWeight.BOLD,
-                                    color=avatar_fg,
-                                ),
+                            ft.Text(
+                                nombre,
+                                size=15,
+                                weight=ft.FontWeight.W_600,
+                                color=tok.text_primary,
+                                max_lines=1,
+                                overflow=ft.TextOverflow.ELLIPSIS,
                             ),
-                            ft.Column(
-                                spacing=1,
-                                expand=True,
-                                tight=True,
-                                controls=[
-                                    ft.Text(
-                                        f"#{al_id} {nombre}",
-                                        size=13,
-                                        weight=ft.FontWeight.W_600,
-                                        color=tok.text_primary,
-                                        max_lines=1,
-                                        overflow=ft.TextOverflow.ELLIPSIS,
-                                    ),
-                                    ft.Text(
-                                        pluralizar(total_obs, "observación", "observaciones"),
-                                        size=11,
-                                        color=tok.text_secondary,
-                                    ),
-                                ],
+                            ft.Text(
+                                pluralizar(total_obs, "observación", "observaciones"),
+                                size=11,
+                                color=tok.text_secondary,
+                                max_lines=1,
+                                overflow=ft.TextOverflow.ELLIPSIS,
                             ),
                         ],
                     ),
@@ -2082,7 +2055,6 @@ class EstadisticasView(ft.Container):
 
     def _build_asistencia_detalle_section(self, stats: dict, nivel: str) -> ft.Container:
         tok = self.tokens
-        is_dark = tok == DARK_TOKENS
 
         if nivel == "curso":
             alumnos = stats.get("alumnos_detalle", [])
@@ -2106,7 +2078,6 @@ class EstadisticasView(ft.Container):
             # Priorizar alumnos en riesgo (< 75%)
             alumnos_ord = sorted(alumnos, key=lambda a: (not bool(a.get("alerta")), a.get("nombre", "")))
             for idx, al in enumerate(alumnos_ord):
-                bg_av, fg_av = get_avatar_palette(idx, is_dark=is_dark)
                 pct = al.get("porcentaje")
                 pct_str = f"{pct:.1f}%" if pct is not None else "--"
                 alerta = bool(al.get("alerta", False))
@@ -2151,9 +2122,8 @@ class EstadisticasView(ft.Container):
                     NotalyListRow(
                         title=al["nombre"],
                         tabular_summary=metricas_resumen,
-                        initials=extract_initials(al["nombre"]),
-                        monogram_bg=bg_av,
-                        monogram_fg=fg_av,
+                        initials=None,
+                        title_size=16,
                         stripe_color=stripe,
                         show_divider=(idx < len(alumnos_ord) - 1),
                         trailing=trailing_controls,

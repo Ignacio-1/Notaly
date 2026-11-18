@@ -41,9 +41,6 @@ from mobile.theme import (
     SPACE_XS,
     ThemeTokens,
     constrain_tablet_content,
-    extract_initials,
-    get_avatar_palette,
-    is_dark_tokens,
     pluralizar,
     resolve_tokens,
     responsive_gutter,
@@ -342,7 +339,6 @@ class GruposView(ft.Container):
         colegio = self.state.selected_colegio or ""
         curso = self.state.selected_curso or ""
         tok = self.tokens
-        is_dark = is_dark_tokens(tok)
         alumnos_dict = self.state.get_alumnos(colegio, curso)
         grupos = trabajo.get("grupos") or []
         trabajo_id = str(trabajo.get("id"))
@@ -420,9 +416,7 @@ class GruposView(ft.Container):
             else:
                 for idx_al, al_id in enumerate(integrantes):
                     al_data = alumnos_dict.get(str(al_id), {})
-                    nom_al = al_data.get("nombre") or f"Alumno #{al_id}"
-                    bg_av, fg_av = get_avatar_palette(str(al_id), is_dark=is_dark)
-                    initials = extract_initials(nom_al)
+                    nom_al = (al_data.get("nombre") or "").strip() or "Sin nombre"
                     has_div = idx_al < len(integrantes) - 1
 
                     filas_alumnos.append(
@@ -438,23 +432,10 @@ class GruposView(ft.Container):
                                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
                                 spacing=SPACE_SM,
                                 controls=[
-                                    ft.Container(
-                                        width=32,
-                                        height=32,
-                                        border_radius=RADIUS_SM,
-                                        bgcolor=bg_av,
-                                        alignment=ft.Alignment.CENTER,
-                                        content=ft.Text(
-                                            initials,
-                                            size=11,
-                                            weight=ft.FontWeight.BOLD,
-                                            color=fg_av,
-                                        ),
-                                    ),
                                     ft.Text(
                                         nom_al,
-                                        size=13,
-                                        weight=ft.FontWeight.W_500,
+                                        size=15,
+                                        weight=ft.FontWeight.W_600,
                                         color=tok.text_primary,
                                         expand=True,
                                         max_lines=1,

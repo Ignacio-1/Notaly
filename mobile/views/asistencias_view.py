@@ -46,9 +46,6 @@ from mobile.theme import (
     SPACE_XS,
     ThemeTokens,
     constrain_tablet_content,
-    extract_initials,
-    get_avatar_palette,
-    is_dark_tokens,
     resolve_tokens,
     responsive_gutter,
     tabular_text,
@@ -433,7 +430,6 @@ class AsistenciasView(ft.Container):
         gutter: int,
     ) -> ft.ListView:
         tok = self.tokens
-        is_dark = is_dark_tokens(tok)
         self.alumnos_botones = {}
         self.attendance_groups = {}
         self.tarjetas_alumnos = {}
@@ -458,12 +454,10 @@ class AsistenciasView(ft.Container):
         items: list[ft.Control] = [sub_header]
         es_pantalla_angosta = pw_num < 360
 
-        for idx, (id_al, al_data) in enumerate(alumnos.items()):
+        for id_al, al_data in alumnos.items():
             sid = str(id_al)
             nombre_al = (al_data.get("nombre") or "").strip() or "Sin nombre"
             estado_actual = asistencias_dia.get(sid)
-            bg_avatar, txt_avatar = get_avatar_palette(idx, is_dark=is_dark)
-            initials = extract_initials(nombre_al)
 
             cell_group = AttendanceCellGroup(
                 active_state=estado_actual,
@@ -498,50 +492,36 @@ class AsistenciasView(ft.Container):
                 ),
             }
 
-            monogram = ft.Container(
-                width=36,
-                height=36,
-                bgcolor=bg_avatar,
-                border_radius=RADIUS_SM,
-                alignment=ft.Alignment.CENTER,
-                content=ft.Text(initials, size=12, weight=ft.FontWeight.BOLD, color=txt_avatar),
-            )
-            info_col = ft.Column(
-                expand=True,
-                spacing=1,
-                tight=True,
-                controls=[
-                    ft.Text(
-                        nombre_al,
-                        size=14,
-                        weight=ft.FontWeight.W_600,
-                        color=tok.text_primary,
-                        max_lines=1,
-                        overflow=ft.TextOverflow.ELLIPSIS,
-                    ),
-                    tabular_text(f"N° {sid}", size=11, color=tok.text_secondary),
-                ],
-            )
-
             if es_pantalla_angosta:
                 row_content: ft.Control = ft.Column(
                     spacing=SPACE_SM,
+                    tight=True,
                     controls=[
-                        ft.Row(
-                            spacing=SPACE_SM,
-                            vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                            controls=[monogram, info_col],
+                        ft.Text(
+                            nombre_al,
+                            size=16,
+                            weight=ft.FontWeight.W_600,
+                            color=tok.text_primary,
+                            max_lines=1,
+                            overflow=ft.TextOverflow.ELLIPSIS,
                         ),
                         cell_group,
                     ],
                 )
             else:
-                lead_controls = [monogram, info_col] if pw_num >= 380 else [info_col]
                 row_content = ft.Row(
                     spacing=SPACE_SM,
                     vertical_alignment=ft.CrossAxisAlignment.CENTER,
                     controls=[
-                        *lead_controls,
+                        ft.Text(
+                            nombre_al,
+                            size=16,
+                            weight=ft.FontWeight.W_600,
+                            color=tok.text_primary,
+                            max_lines=1,
+                            overflow=ft.TextOverflow.ELLIPSIS,
+                            expand=True,
+                        ),
                         ft.Container(width=188, content=cell_group),
                     ],
                 )

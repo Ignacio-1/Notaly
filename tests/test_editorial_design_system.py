@@ -1818,6 +1818,459 @@ def test_spec030_regresion_divisores_asistencias_y_planillas(tmp_path) -> None:
     assert rows[1].border.bottom is None or rows[1].border.bottom.width == 0
 
 
+# ---------------------------------------------------------------------------
+# SPEC-031 (TDD): Simplificación editorial de listados de alumnos
+# ---------------------------------------------------------------------------
+
+
+def test_spec031_notaly_list_row_title_size_y_sin_monograma() -> None:
+    """RF-01, RF-07, RF-09: NotalyListRow soporta title_size=16 con initials=None y mantiene 15 por defecto."""
+    import flet as ft
+    from mobile.components.ledger_primitives import NotalyListRow
+    from mobile.theme import LIGHT_TOKENS
+
+    row_default = NotalyListRow(
+        title="Colegio Base",
+        initials="CB",
+        tokens=LIGHT_TOKENS,
+    )
+    assert row_default.monogram_box is not None
+    assert isinstance(row_default.title_control, ft.Text)
+    assert row_default.title_control.size == 15
+
+    row_student = NotalyListRow(
+        title="Juarez, Luz",
+        subtitle="Aprobado",
+        initials=None,
+        title_size=16,
+        stripe_color=LIGHT_TOKENS.pass_fg,
+        show_divider=True,
+        tokens=LIGHT_TOKENS,
+    )
+    assert row_student.monogram_box is None
+    assert isinstance(row_student.title_control, ft.Text)
+    assert row_student.title_control.size == 16
+    assert row_student.title_control.weight == ft.FontWeight.W_600
+    assert isinstance(row_student.row_widget.controls[0], ft.Column)
+    assert row_student.border is not None
+    assert row_student.border.left.width == 3
+    assert row_student.border.bottom.color == LIGHT_TOKENS.border_hairline
+
+
+def test_spec031_notas_view_sin_monograma_ni_prefijo_ni_resumen_trimestral(tmp_path) -> None:
+    """RF-01, RF-02, RF-04, RF-05, RF-06, RF-08, RF-10: Filas de NotasView limpias en claro/oscuro."""
+    from types import SimpleNamespace
+    import flet as ft
+    from mobile.components.ledger_primitives import GradeCell
+    from mobile.state import AppState
+    from mobile.theme import DARK_TOKENS, LIGHT_TOKENS
+    from mobile.views.notas_view import NotasView, format_tabular_trimester_summary
+
+    assert format_tabular_trimester_summary([8, None, 6]) == "1°T 8 · 2°T -- · 3°T 6"
+
+    st = AppState(data_path=str(tmp_path / "spec031_notas.json"))
+    st.add_colegio("Colegio 1")
+    st.add_curso("Colegio 1", "1ro A", 2)
+    st.selected_colegio = "Colegio 1"
+    st.selected_curso = "1ro A"
+    st.rename_alumno("1", "Juarez, Luz")
+    st.rename_alumno("2", "")
+    st.set_nota("1", 0, "principales", 0, 8)
+    st.save_data()
+
+    for tok, mode, mode_str in (
+        (LIGHT_TOKENS, ft.ThemeMode.LIGHT, "light"),
+        (DARK_TOKENS, ft.ThemeMode.DARK, "dark"),
+    ):
+        st.theme_mode = mode_str
+        st.active_trimestre = 0
+        shown: list[Any] = []
+        page = SimpleNamespace(
+            width=360,
+            height=740,
+            theme_mode=mode,
+            overlay=[],
+            show_dialog=lambda d: shown.append(d),
+            pop_dialog=lambda: shown.pop() if shown else None,
+            update=lambda: None,
+        )
+
+        nv = NotasView(state=st, page=page, on_navigate=lambda _d: None)
+        list_ref = nv.lista_tarjetas_listview
+        assert len(nv.resumen_trimestres_labels) == 0
+
+        for sid, expected_name in (("1", "Juarez, Luz"), ("2", "Sin nombre")):
+            card = nv.tarjetas_alumnos[sid]
+            header_container = card.content.controls[0]
+            header_row = header_container.content
+            assert isinstance(header_row, ft.Row)
+            assert header_row.vertical_alignment == ft.CrossAxisAlignment.CENTER
+            assert len(header_row.controls) == 3
+
+            name_ctrl = header_row.controls[0]
+            assert isinstance(name_ctrl, ft.Text)
+            assert name_ctrl.value == expected_name
+            assert f"#{sid}" not in name_ctrl.value
+            assert "1°T" not in name_ctrl.value
+            assert name_ctrl.size == 16
+            assert name_ctrl.weight == ft.FontWeight.W_600
+            assert name_ctrl.color == tok.text_primary
+            assert name_ctrl.max_lines == 1
+            assert name_ctrl.overflow == ft.TextOverflow.ELLIPSIS
+            assert name_ctrl.expand is True
+            assert isinstance(header_row.controls[1], GradeCell)
+            assert header_row.controls[2] is nv.chevron_icons[sid]
+            assert card.border is not None
+            assert card.border.left.width == 3
+            assert card.border.bottom.color == tok.border_hairline
+
+            # Verificar que no quede monograma 40x40 ni texto "1°T" dentro de header_row
+            texts_header = _collect_controls_of_type(header_row, ft.Text)
+            assert not any("1°T" in str(t.value or "") for t in texts_header)
+
+        # RF-08: el dock conserva #id como referencia al editar y los trimestres mutan in-place
+        nv.alumnos_celdas["1"]["P0"]["container"].on_click(None)
+        assert nv.dock_label_active is not None
+        assert "#1" in nv.dock_label_active.value
+        nv._abrir_modal_renombrar_alumno("1", "Juarez, Luz")
+        assert len(shown) == 1
+        assert any("#1" in str(t.value or "") for t in _collect_controls_of_type(shown[0].title, ft.Text))
+
+        for tidx in (1, 2, 3):
+            nv._seleccionar_trimestre(tidx)
+            assert nv.lista_tarjetas_listview is list_ref
+            assert len(nv.resumen_trimestres_labels) == 0
+        assert nv.paneles_anuales["1"]["container"].visible is True
+        assert nv.paneles_anuales["1"]["t1_text"] is not None
+
+
+def test_spec031_asistencias_view_sin_monograma_ni_numero_orden_responsive(tmp_path) -> None:
+    """RF-01, RF-02, RF-06, RF-10: AsistenciasView limpia en 320dp, 360dp y 390dp (claro y oscuro)."""
+    from types import SimpleNamespace
+    import flet as ft
+    from mobile.components.ledger_primitives import AttendanceCellGroup
+    from mobile.state import AppState
+    from mobile.theme import DARK_TOKENS, LIGHT_TOKENS
+    from mobile.views.asistencias_view import AsistenciasView
+
+    st = AppState(data_path=str(tmp_path / "spec031_asist.json"))
+    st.add_colegio("Colegio 1")
+    st.add_curso("Colegio 1", "1ro A", 2)
+    st.selected_colegio = "Colegio 1"
+    st.selected_curso = "1ro A"
+    st.rename_alumno("1", "Gomez, Ana")
+    st.rename_alumno("2", "")
+    st.save_data()
+
+    for tok, mode, mode_str in (
+        (LIGHT_TOKENS, ft.ThemeMode.LIGHT, "light"),
+        (DARK_TOKENS, ft.ThemeMode.DARK, "dark"),
+    ):
+        st.theme_mode = mode_str
+        for width in (320, 360, 390):
+            st.data["colegios"]["Colegio 1"]["cursos"]["1ro A"]["asistencias"] = {}
+            page = SimpleNamespace(
+                width=width,
+                height=740,
+                theme_mode=mode,
+                overlay=[],
+                update=lambda: None,
+            )
+            av = AsistenciasView(state=st, page=page, on_navigate=lambda _d: None)
+            lv_ref = av.list_view
+
+            for sid, expected_name in (("1", "Gomez, Ana"), ("2", "Sin nombre")):
+                card = av.tarjetas_alumnos[sid]
+                all_texts = _collect_controls_of_type(card, ft.Text)
+                assert not any("N°" in str(t.value or "") for t in all_texts)
+                # Sin monograma 36x36 ni 40x40
+                boxes = [
+                    c for c in _collect_controls_of_type(card, ft.Container)
+                    if getattr(c, "width", None) in (36, 40) and getattr(c, "height", None) in (36, 40)
+                ]
+                assert len(boxes) == 0
+
+                if width < 360:
+                    assert isinstance(card.content, ft.Column)
+                    name_ctrl = card.content.controls[0]
+                    assert isinstance(name_ctrl, ft.Text)
+                    assert name_ctrl.expand is not True
+                else:
+                    assert isinstance(card.content, ft.Row)
+                    name_ctrl = card.content.controls[0]
+                    assert isinstance(name_ctrl, ft.Text)
+                    assert name_ctrl.expand is True
+
+                assert name_ctrl.value == expected_name
+                assert name_ctrl.size == 16
+                assert name_ctrl.weight == ft.FontWeight.W_600
+                assert name_ctrl.color == tok.text_primary
+                assert name_ctrl.max_lines == 1
+                assert name_ctrl.overflow == ft.TextOverflow.ELLIPSIS
+                assert len(_collect_controls_of_type(card, AttendanceCellGroup)) == 1
+                assert card.border.left.width == 3
+                assert card.border.bottom.color == tok.border_hairline
+
+            av._on_btn_click("1", "P")
+            assert av.list_view is lv_ref
+            assert av.tarjetas_alumnos["1"].border.left.color == tok.pass_fg
+
+
+def test_spec031_grupos_view_sin_monograma_fallback_sin_nombre_y_clipboard(tmp_path) -> None:
+    """RF-01, RF-02, RF-03, RF-07, RF-08: GruposView sin monogramas y con 'Sin nombre' en UI."""
+    from types import SimpleNamespace
+    import flet as ft
+    from mobile.state import AppState
+    from mobile.theme import DARK_TOKENS, LIGHT_TOKENS
+    from mobile.views.grupos_view import GruposView
+
+    st = AppState(data_path=str(tmp_path / "spec031_grupos.json"))
+    st.add_colegio("Colegio 1")
+    st.add_curso("Colegio 1", "1ro A", 2)
+    st.selected_colegio = "Colegio 1"
+    st.selected_curso = "1ro A"
+    st.rename_alumno("1", "Perez, Juan")
+    st.rename_alumno("2", "")
+    ok, _, tp = st.create_trabajo_grupo(
+        "TP Limpio",
+        [{"numero": 1, "integrantes": ["1", "2"], "nota": 8}],
+        auto_save=False,
+    )
+    assert ok and tp is not None
+
+    copied: list[str] = []
+    for tok, mode, mode_str in (
+        (LIGHT_TOKENS, ft.ThemeMode.LIGHT, "light"),
+        (DARK_TOKENS, ft.ThemeMode.DARK, "dark"),
+    ):
+        st.theme_mode = mode_str
+        page = SimpleNamespace(
+            width=360,
+            height=740,
+            theme_mode=mode,
+            overlay=[],
+            services=[],
+            update=lambda: None,
+        )
+        gv = GruposView(state=st, page=page, on_navigate=lambda _d: None)
+        gv.active_trabajo_id = str(tp["id"])
+        cards = gv._build_tarjetas_grupos(tp)
+        group_card = cards[0]
+        assert group_card.border is not None and group_card.border.left.width == 3
+
+        # Sin monogramas 32x32 dentro del listado de integrantes
+        boxes_32 = [
+            c for c in _collect_controls_of_type(group_card, ft.Container)
+            if getattr(c, "width", None) == 32 and getattr(c, "height", None) == 32
+        ]
+        assert len(boxes_32) == 0
+
+        texts = [t.value for t in _collect_controls_of_type(group_card, ft.Text)]
+        assert "Perez, Juan" in texts
+        assert "Sin nombre" in texts
+        assert not any("Alumno #" in str(v or "") for v in texts)
+
+        # Verificar tipografía 15sp Semi-Bold y botón SWAP_HORIZ
+        student_texts = [
+            t for t in _collect_controls_of_type(group_card, ft.Text)
+            if t.value in ("Perez, Juan", "Sin nombre")
+        ]
+        for st_txt in student_texts:
+            assert st_txt.size == 15
+            assert st_txt.weight == ft.FontWeight.W_600
+            assert st_txt.color == tok.text_primary
+            assert st_txt.expand is True
+            assert st_txt.max_lines == 1
+            assert st_txt.overflow == ft.TextOverflow.ELLIPSIS
+
+        swaps = [
+            b for b in _collect_controls_of_type(group_card, ft.IconButton)
+            if b.icon == ft.Icons.SWAP_HORIZ
+        ]
+        assert len(swaps) == 2
+
+        gv._copiar_texto_al_portapapeles = lambda text: copied.append(text) or True
+        gv._copiar_al_portapapeles()
+        assert "Alumno #2" in copied[-1]
+
+
+def test_spec031_estadisticas_view_rendimiento_conducta_y_asistencia(tmp_path) -> None:
+    """RF-01, RF-02, RF-07, RF-10: EstadisticasView sin monogramas ni #id en filas de alumnos."""
+    from types import SimpleNamespace
+    import flet as ft
+    from mobile.components.ledger_primitives import GradeCell, NotalyListRow
+    from mobile.state import AppState
+    from mobile.theme import DARK_TOKENS, LIGHT_TOKENS
+    from mobile.views.estadisticas_view import EstadisticasView
+
+    st = AppState(data_path=str(tmp_path / "spec031_stats.json"))
+    st.add_colegio("Colegio 1")
+    st.add_curso("Colegio 1", "1ro A", 2)
+    st.selected_colegio = "Colegio 1"
+    st.selected_curso = "1ro A"
+
+    for tok, mode, mode_str in (
+        (LIGHT_TOKENS, ft.ThemeMode.LIGHT, "light"),
+        (DARK_TOKENS, ft.ThemeMode.DARK, "dark"),
+    ):
+        st.theme_mode = mode_str
+        page = SimpleNamespace(
+            width=360,
+            height=740,
+            theme_mode=mode,
+            overlay=[],
+            update=lambda: None,
+        )
+        ev = EstadisticasView(state=st, page=page, on_navigate=lambda _d: None)
+        ev.tokens = tok
+
+        # 1. Rendimiento (riesgo / aprobados)
+        rend_box = ev._build_curso_alumnos_section(
+            {
+                "alumnos_detalle": [
+                    {"nombre": "Gomez, Ana", "condicion": "desaprobado", "nota_final": 4},
+                    {"nombre": "Perez, Luis", "condicion": "aprobado", "nota_final": 8},
+                ]
+            }
+        )
+        rend_rows = _collect_controls_of_type(rend_box, NotalyListRow)
+        assert len(rend_rows) == 2
+        for r in rend_rows:
+            assert r.monogram_box is None
+            assert isinstance(r.title_control, ft.Text)
+            assert r.title_control.size == 16
+            assert r.title_control.weight == ft.FontWeight.W_600
+            assert r.border.left.width == 3
+            assert len(_collect_controls_of_type(r, GradeCell)) == 1
+
+        # 2. Conducta (acordeón)
+        comp_card = ev._build_alumno_comportamiento_card(
+            {
+                "id": "1",
+                "nombre": "Juarez, Luz Nombre Sumamente Largo Para Probar 360dp",
+                "observaciones": [{"fecha": "2026-11-18", "tipo": "positivo", "subtipo": "Ejemplar", "observacion": "Ok"}],
+                "total": 1,
+                "conteo_tipo": {"positivo": 1, "regular": 0, "negativo": 0},
+            }
+        )
+        boxes_36 = [
+            c for c in _collect_controls_of_type(comp_card, ft.Container)
+            if getattr(c, "width", None) == 36 and getattr(c, "height", None) == 36
+        ]
+        assert len(boxes_36) == 0
+        header_row = comp_card.content.controls[0].content
+        assert isinstance(header_row, ft.Row)
+        info_col = header_row.controls[0]
+        assert isinstance(info_col, ft.Column)
+        assert info_col.expand is True
+        comp_name = info_col.controls[0]
+        assert isinstance(comp_name, ft.Text)
+        assert not comp_name.value.startswith("#1")
+        assert comp_name.size == 15
+        assert comp_name.weight == ft.FontWeight.W_600
+        assert comp_name.max_lines == 1
+        assert comp_name.overflow == ft.TextOverflow.ELLIPSIS
+        obs_sub = info_col.controls[1]
+        assert obs_sub.max_lines == 1
+        assert obs_sub.overflow == ft.TextOverflow.ELLIPSIS
+
+        # 3. Nómina de Asistencia por Alumno
+        asist_box = ev._build_asistencia_detalle_section(
+            {
+                "alumnos_detalle": [
+                    {"nombre": "Gomez, Ana", "porcentaje": 60.0, "alerta": True, "P": 3, "A": 2, "T": 0, "J": 0}
+                ]
+            },
+            "curso",
+        )
+        asist_rows = _collect_controls_of_type(asist_box, NotalyListRow)
+        assert len(asist_rows) == 1
+        ar = asist_rows[0]
+        assert ar.monogram_box is None
+        assert isinstance(ar.title_control, ft.Text)
+        assert ar.title_control.size == 16
+        assert ar.title_control.weight == ft.FontWeight.W_600
+        assert ar.summary_text is not None and "P 3" in ar.summary_text.value
+
+
+def test_spec031_alcance_negativo_colegios_cursos_planillas_search_y_modales(tmp_path) -> None:
+    """RF-08, RF-09: Colegios, Cursos, Planillas, GlobalSearch y modales permanecen intactos."""
+    from types import SimpleNamespace
+    import flet as ft
+    from mobile.components.comportamiento_dialog import ComportamientoDialog
+    from mobile.components.global_search import GlobalSearchOverlay
+    from mobile.components.ledger_primitives import NotalyListRow
+    from mobile.components.student_dialog import CustomizeColumnsDialog
+    from mobile.theme import LIGHT_TOKENS
+    from mobile.views.colegios_view import ColegiosView
+    from mobile.views.cursos_view import CursosView
+    from mobile.views.planillas_view import PlanillasView
+
+    page = SimpleNamespace(width=390, height=844, theme_mode=ft.ThemeMode.LIGHT, overlay=[], update=lambda: None)
+    state = SimpleNamespace(
+        tokens=LIGHT_TOKENS,
+        theme_mode="light",
+        current_screen="colegios",
+        selected_colegio="Colegio 1",
+        selected_curso=None,
+        search_query_colegios="",
+        get_colegios=lambda: ["Colegio 1"],
+        get_cursos=lambda _c: ["1ro A"],
+        get_colegio_data=lambda _c: {},
+        get_curso_data=lambda _c, _cur: {"alumnos": []},
+        get_alumnos=lambda _c, _cur: {},
+        get_horario_curso=lambda _c, _cur: "",
+        get_clases_curso=lambda _c, _cur: {},
+        depurar_planillas_huerfanas=lambda: None,
+        get_planillas=lambda: [
+            {
+                "id": "p1",
+                "colegio": "Colegio 1",
+                "curso": "1ro A",
+                "tipo": "notas",
+                "nombre_archivo": "notas.pdf",
+                "formato": "pdf",
+                "fecha": "2026-11-18",
+                "hora": "10:00",
+                "tamano_legible": "10 KB",
+                "ruta": str(tmp_path / "notas.pdf"),
+            }
+        ],
+        buscar_global=lambda _q: [
+            {"tipo": "alumno", "id": "1", "nombre": "Ana Gómez", "colegio": "Colegio 1", "curso": "1ro A"}
+        ],
+        get_comportamientos_alumno=lambda **_kw: [],
+    )
+
+    cv = ColegiosView(state=state, page=page, on_navigate=lambda _d: None)
+    col_row = next(c for c in cv.list_view.controls if isinstance(c, NotalyListRow))
+    assert col_row.monogram_box is not None and col_row.title_control.size == 15
+
+    cur_v = CursosView(state=state, page=page, on_navigate=lambda _d: None)
+    cur_row = next(c for c in cur_v.list_view.controls if isinstance(c, NotalyListRow))
+    assert cur_row.monogram_box is not None and cur_row.title_control.size == 15
+
+    pv = PlanillasView(state=state, page=page, on_navigate=lambda _d: None, tokens=LIGHT_TOKENS)
+    pv.colegios_expandidos.add("Colegio 1")
+    pv._actualizar_lista()
+    pl_row = _collect_controls_of_type(pv.list_view, NotalyListRow)[0]
+    assert isinstance(pl_row.row_widget.controls[0], ft.Container)
+
+    gs = GlobalSearchOverlay(state=state, page=None)
+    gs._actualizar_resultados("Ana")
+    assert isinstance(gs.controls[0], NotalyListRow)
+    assert gs.controls[0].monogram_box is not None
+
+    comp = ComportamientoDialog(state=state, id_alumno="1", nombre_alumno="Ana", colegio="Colegio 1", curso="1ro A", tokens=LIGHT_TOKENS)
+    assert "#1" in comp.header_row.controls[0].controls[0].value
+    assert any(getattr(c, "width", None) == 40 for c in _collect_controls_of_type(comp, ft.Container))
+
+    cols_dlg = CustomizeColumnsDialog(nombres_actuales=["P1", "P2"], tokens=LIGHT_TOKENS)
+    assert isinstance(cols_dlg.inputs[0].prefix, ft.Text)
+    assert cols_dlg.inputs[0].prefix.value == "#1 · "
+
+
+
 
 
 
