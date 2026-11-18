@@ -13,6 +13,8 @@ Incluye:
 
 from __future__ import annotations
 
+import asyncio
+import inspect
 from typing import Any, Callable, Sequence
 
 import flet as ft
@@ -233,6 +235,69 @@ class NotalyTopHeader(ft.Container):
 NotalyHeader = NotalyTopHeader
 
 
+def build_scroll_key(raw_key: str) -> Any:
+    """Construye una clave `ft.ScrollKey` estable para desplazamiento programático Flet 0.86+."""
+    if hasattr(ft, "ScrollKey"):
+        try:
+            return ft.ScrollKey(raw_key)
+        except Exception:
+            return raw_key
+    return raw_key
+
+
+def scroll_to_key_safe(
+    page: ft.Page | None,
+    scrollable_ctrl: Any,
+    scroll_key: Any,
+    *,
+    duration: int = 250,
+    delay: float = 0.05,
+) -> None:
+    """
+    Desplaza de forma segura un control desplazable (`Row`, `ListView`, etc.) hasta `scroll_key`,
+    soportando tanto la API corrutina de Flet 0.86+ como mocks síncronos o ejecuciones sin `page`.
+    """
+    if scrollable_ctrl is None or scroll_key is None:
+        return
+    scroll_fn = getattr(scrollable_ctrl, "scroll_to", None)
+    if not callable(scroll_fn):
+        return
+
+    if not inspect.iscoroutinefunction(scroll_fn):
+        try:
+            res = scroll_fn(scroll_key=scroll_key, duration=duration)
+            if inspect.isawaitable(res):
+                if page is not None and hasattr(page, "run_task"):
+                    async def _await_res() -> None:
+                        try:
+                            await res
+                        except Exception:
+                            pass
+
+                    page.run_task(_await_res)
+                elif inspect.iscoroutine(res):
+                    res.close()
+        except Exception:
+            pass
+        return
+
+    if page is None or not hasattr(page, "run_task"):
+        return
+
+    async def _do_scroll() -> None:
+        try:
+            if delay > 0:
+                await asyncio.sleep(delay)
+            await scroll_fn(scroll_key=scroll_key, duration=duration)
+        except Exception:
+            pass
+
+    try:
+        page.run_task(_do_scroll)
+    except Exception:
+        pass
+
+
 class UnderlineTabBar(ft.Container):
     """
     Barra plana de pestañas con indicador inferior continuo de `2px` (`RF-07`, `RF-09`).
@@ -250,25 +315,34 @@ class UnderlineTabBar(ft.Container):
         page: ft.Page | None = None,
         scrollable: bool = False,
         expand_tabs: bool = True,
+        auto_activate: bool = True,
     ) -> None:
         self.tokens = resolve_tokens(tokens=tokens, page=page, state=state)
+        self._host_page = page
         self._tabs = list(tabs)
         self._active_key = active_key
         self._on_change = on_change
+        self._scrollable = scrollable
+        self._auto_activate = auto_activate
         self._tab_containers: list[ft.Container] = []
+        self._tab_keys: dict[str, Any] = {}
 
         for key, label in self._tabs:
             is_active = key == self._active_key
+            tab_key = build_scroll_key(f"tab_{key}")
+            self._tab_keys[key] = tab_key
             lbl = ft.Text(
                 label,
                 size=13,
                 weight=ft.FontWeight.W_600 if is_active else ft.FontWeight.W_500,
                 color=self.tokens.accent_primary if is_active else self.tokens.text_secondary,
                 max_lines=1,
-                overflow=ft.TextOverflow.ELLIPSIS,
+                no_wrap=True,
+                overflow=ft.TextOverflow.CLIP if scrollable else ft.TextOverflow.ELLIPSIS,
                 text_align=ft.TextAlign.CENTER,
             )
             tab_box = ft.Container(
+                key=tab_key,
                 data=key,
                 height=44,
                 expand=(not scrollable and expand_tabs),
@@ -291,6 +365,7 @@ class UnderlineTabBar(ft.Container):
             spacing=0,
             scroll=ft.ScrollMode.AUTO if scrollable else None,
         )
+        self._tabs_row = row
 
         super().__init__(
             bgcolor=self.tokens.surface_primary,
@@ -301,9 +376,25 @@ class UnderlineTabBar(ft.Container):
         )
 
     def _handle_tap(self, key: str) -> None:
-        self.set_active(key, update=True)
+        if self._auto_activate:
+            self.set_active(key, update=True)
         if self._on_change is not None:
             self._on_change(key)
+
+    def scroll_to_active(self, duration: int = 250) -> None:
+        """Desplaza horizontalmente la barra de pestañas hacia la pestaña activa si es scrollable."""
+        if not self._scrollable:
+            return
+        target_key = self._tab_keys.get(self._active_key)
+        if target_key is None:
+            return
+        host_page = self._host_page
+        if host_page is None:
+            try:
+                host_page = self.page
+            except Exception:
+                host_page = None
+        scroll_to_key_safe(host_page, self._tabs_row, target_key, duration=duration)
 
     def set_active(self, active_key: str, *, update: bool = False) -> None:
         """Actualiza la pestaña activa in-place sin reconstruir la barra."""
@@ -326,6 +417,8 @@ class UnderlineTabBar(ft.Container):
                     self.update()
             except Exception:
                 pass
+            if self._scrollable:
+                self.scroll_to_active()
 
 
 def build_app_header(
@@ -354,6 +447,9 @@ def build_module_tabs(
     active_tab: str,
     on_change: Callable[[str], Any],
     tokens: ThemeTokens | None = None,
+    *,
+    page: ft.Page | None = None,
+    state: Any = None,
 ) -> UnderlineTabBar:
     """Selector subrayado editorial de módulos del curso (Notas / Asistencia / Grupos)."""
     return UnderlineTabBar(
@@ -365,4 +461,7 @@ def build_module_tabs(
         active_key=active_tab,
         on_change=on_change,
         tokens=tokens,
+        page=page,
+        state=state,
+        auto_activate=False,
     )

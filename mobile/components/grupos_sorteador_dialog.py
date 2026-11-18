@@ -17,7 +17,11 @@ from core.grupos import (
     distribuir_alumnos_en_grupos,
 )
 from mobile.components.ledger_primitives import EmptyStateView, NotalyListRow
-from mobile.components.notaly_sheet import NotalySheet, sheet_action_button
+from mobile.components.notaly_sheet import (
+    NotalySheet,
+    focus_control_safe,
+    sheet_action_button,
+)
 from mobile.state import AppState
 from mobile.theme import (
     FONT_MONO,
@@ -63,6 +67,7 @@ class SorteadorGruposDialog(NotalySheet):
         self.modo = "por_grupos"
         self.valor = 4 if self.total_alumnos >= 4 else max(1, self.total_alumnos)
         self.sortear_temas = False
+        self.switch_temas: ft.Switch | None = None
         self.temas_lista: list[str] = []
 
         trabajos_existentes = state.get_trabajos_grupo_curso(colegio, curso)
@@ -71,6 +76,7 @@ class SorteadorGruposDialog(NotalySheet):
         self.tf_titulo = ft.TextField(
             label="Título del Trabajo",
             value=f"Trabajo Práctico N° {num_nuevo}",
+            expand=True,
             border_radius=RADIUS_SM,
             bgcolor=tok.bg_canvas,
             border_color=tok.border_hairline,
@@ -119,7 +125,11 @@ class SorteadorGruposDialog(NotalySheet):
         self.temas_wrap = ft.Row(wrap=True, spacing=SPACE_XS, run_spacing=SPACE_XS)
 
         self.stepper_row: ft.Row = ft.Row()
-        self.inner_controls_column = ft.Column(spacing=SPACE_MD, tight=True)
+        self.inner_controls_column = ft.Column(
+            spacing=SPACE_MD,
+            tight=True,
+            horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
+        )
         self._rebuild_inner_controls()
 
         actions: list[ft.Control] = [
@@ -190,8 +200,13 @@ class SorteadorGruposDialog(NotalySheet):
         self._rebuild_inner_controls()
         self._safe_update()
 
-    def _toggle_temas(self, e: Any) -> None:
-        self.sortear_temas = bool(e.control.value)
+    def _toggle_temas(self, e: Any = None) -> None:
+        if e is not None and getattr(e, "control", None) is self.switch_temas and self.switch_temas is not None:
+            self.sortear_temas = bool(e.control.value)
+        else:
+            self.sortear_temas = not self.sortear_temas
+        if self.switch_temas is not None:
+            self.switch_temas.value = self.sortear_temas
         self._rebuild_inner_controls()
         self._safe_update()
 
@@ -203,6 +218,7 @@ class SorteadorGruposDialog(NotalySheet):
             self._refrescar_chips_temas()
             self._rebuild_inner_controls()
             self._safe_update()
+        focus_control_safe(self.app_page, self.tf_nuevo_tema)
 
     def _eliminar_tema(self, tema: str) -> None:
         if tema in self.temas_lista:
@@ -372,14 +388,35 @@ class SorteadorGruposDialog(NotalySheet):
             ]
         )
 
-        switch_temas = ft.Switch(
-            label="Sortear con temas",
+        self.switch_temas = ft.Switch(
             value=self.sortear_temas,
             active_color=tok.accent_primary,
             on_change=self._toggle_temas,
         )
+        fila_switch_temas = ft.Container(
+            height=48,
+            border_radius=RADIUS_SM,
+            padding=ft.Padding.symmetric(horizontal=SPACE_XS, vertical=0),
+            alignment=ft.Alignment.CENTER_LEFT,
+            ink=True,
+            on_click=lambda _e: self._toggle_temas(None),
+            content=ft.Row(
+                spacing=SPACE_SM,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                controls=[
+                    ft.Text(
+                        "Sortear con temas",
+                        size=14,
+                        weight=ft.FontWeight.W_500,
+                        color=tok.text_primary,
+                        expand=True,
+                    ),
+                    self.switch_temas,
+                ],
+            ),
+        )
 
-        seccion_temas_controls: list[ft.Control] = [switch_temas]
+        seccion_temas_controls: list[ft.Control] = [fila_switch_temas]
         if self.sortear_temas:
             self._refrescar_chips_temas()
             seccion_temas_controls.extend(
@@ -412,7 +449,7 @@ class SorteadorGruposDialog(NotalySheet):
             )
 
         self.inner_controls_column.controls = [
-            self.tf_titulo,
+            ft.Row(controls=[self.tf_titulo]),
             modo_tabs,
             self.stepper_row,
             caja_preview,

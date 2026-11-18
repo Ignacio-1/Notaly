@@ -1278,10 +1278,10 @@ def test_spec029_notaly_sheet_scroll_acotado_y_selector_estadisticas(tmp_path) -
     assert sheet.scrollable is True
     assert sheet.clip_behavior == ft.ClipBehavior.ANTI_ALIAS
     assert sheet.size_constraints.max_height == int(844 * 0.85)
-    assert sheet.body_column.expand is True
-    assert sheet.body_column.expand_loose is True
+    assert sheet.body_column.expand in (None, False)
     assert sheet.body_column.tight is True
-    assert sheet.body_column.scroll == ft.ScrollMode.AUTO
+    assert sheet.body_column.horizontal_alignment == ft.CrossAxisAlignment.STRETCH
+    assert sheet.content.content.scroll == ft.ScrollMode.AUTO
 
     state = AppState(data_path=str(tmp_path / "stats_multi.json"))
     for i in range(1, 6):
@@ -1308,8 +1308,10 @@ def test_spec029_notaly_sheet_scroll_acotado_y_selector_estadisticas(tmp_path) -
     assert len(shown) == 1
     selector_sheet = shown[0]
     assert isinstance(selector_sheet, NotalySheet)
-    assert selector_sheet.body_column.expand is True
-    assert selector_sheet.body_column.expand_loose is True
+    assert selector_sheet.body_column.expand in (None, False)
+    assert selector_sheet.body_column.tight is True
+    assert selector_sheet.body_column.horizontal_alignment == ft.CrossAxisAlignment.STRETCH
+    assert selector_sheet.content.content.scroll == ft.ScrollMode.AUTO
     assert len(selector_sheet.body_column.controls) == 5
 
 
@@ -2268,6 +2270,462 @@ def test_spec031_alcance_negativo_colegios_cursos_planillas_search_y_modales(tmp
     cols_dlg = CustomizeColumnsDialog(nombres_actuales=["P1", "P2"], tokens=LIGHT_TOKENS)
     assert isinstance(cols_dlg.inputs[0].prefix, ft.Text)
     assert cols_dlg.inputs[0].prefix.value == "#1 · "
+
+
+# ---------------------------------------------------------------------------
+# SPEC-032 (TDD): Correcciones Integrales de Auditoría E2E en Emulador Android
+# ---------------------------------------------------------------------------
+
+
+def _crear_mock_page_spec032(width: int = 360, height: int = 800, dark: bool = False):
+    """Crea una página simulada completa para pruebas SPEC-032 de navegación y modales."""
+    import inspect
+    from types import SimpleNamespace
+    import flet as ft
+
+    class _MockWindow:
+        def __init__(self) -> None:
+            self.closed = False
+
+        def close(self) -> None:
+            self.closed = True
+
+    class _MockView:
+        def __init__(self) -> None:
+            self.can_pop = True
+            self.on_confirm_pop = None
+            self.pop_confirmed = None
+
+        def confirm_pop(self, should_pop: bool) -> None:
+            self.pop_confirmed = should_pop
+
+    page = SimpleNamespace(
+        width=width,
+        height=height,
+        title="Notaly",
+        theme_mode=ft.ThemeMode.DARK if dark else ft.ThemeMode.LIGHT,
+        bgcolor=None,
+        theme=None,
+        fonts={},
+        padding=0,
+        spacing=0,
+        services=[],
+        controls=[],
+        overlay=[],
+        dialog_stack=[],
+        views=[_MockView()],
+        window=_MockWindow(),
+        navigation_bar=None,
+        appbar=None,
+        on_keyboard_event=None,
+        on_app_lifecycle_state_change=None,
+        on_resize=None,
+    )
+    page.add = lambda *ctrls: page.controls.extend(ctrls)
+    page.update = lambda: None
+
+    def _show_dialog(dlg):
+        dlg.open = True
+        page.dialog_stack.append(dlg)
+
+    def _pop_dialog():
+        if page.dialog_stack:
+            dlg = page.dialog_stack.pop()
+            dlg.open = False
+            return dlg
+        return None
+
+    def _run_task(fn, *args, **kwargs):
+        res = fn(*args, **kwargs)
+        if inspect.isawaitable(res):
+            res.close()
+        return res
+
+    page.show_dialog = _show_dialog
+    page.pop_dialog = _pop_dialog
+    page.run_task = _run_task
+    return page
+
+
+def test_spec032_underline_tab_bar_y_back_cache_cursos(tmp_path) -> None:
+    """RF-01, RF-02: build_module_tabs no muta vista saliente cacheada y BACK resincroniza el tab activo."""
+    import json
+    from unittest.mock import patch
+    from core.constants import K_COLEGIOS, K_CURSOS, K_ALUMNOS, K_NOMBRE
+    from mobile.components.ui_header import UnderlineTabBar, build_module_tabs
+    from mobile.theme import LIGHT_TOKENS
+    from mobile.views.asistencias_view import AsistenciasView
+    from mobile.views.grupos_view import GruposView
+    from mobile.views.notas_view import NotasView
+
+    data_file = tmp_path / "spec032_back_tabs.json"
+    data_file.write_text(
+        json.dumps(
+            {
+                K_COLEGIOS: {
+                    "Colegio 1": {
+                        K_CURSOS: {
+                            "1ro A": {
+                                K_ALUMNOS: {
+                                    "1": {K_NOMBRE: "Gomez, Ana"},
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    tab_bar_modulo = build_module_tabs(
+        active_tab="notas",
+        on_change=lambda _dest: None,
+        tokens=LIGHT_TOKENS,
+    )
+    tab_asist = next(box for box in tab_bar_modulo._tab_containers if box.data == "asistencias")
+    tab_asist.on_click(None)
+    assert tab_bar_modulo._active_key == "notas"
+
+    page = _crear_mock_page_spec032(width=360, height=800, dark=False)
+    with patch("core.gestor_datos.leer_ruta_config", return_value=str(data_file)), patch(
+        "core.gestor_datos.obtener_ruta_datos_por_defecto", return_value=str(data_file)
+    ), patch("mobile.state.AppState.find_local_backups", return_value=[]):
+        from mobile.main import main
+
+        main(page)
+
+    real_state = page.controls[0].content.state
+    nav = page.controls[0].content.on_navigate
+    real_state.selected_colegio = "Colegio 1"
+    real_state.selected_curso = "1ro A"
+    nav("cursos")
+    nav("notas")
+    vista_notas = page.controls[0].content
+    assert isinstance(vista_notas, NotasView)
+    assert getattr(vista_notas, "module_tabs", None) is not None
+
+    nav("asistencias")
+    vista_asist = page.controls[0].content
+    assert isinstance(vista_asist, AsistenciasView)
+    asist_tabs = getattr(vista_asist, "module_tabs", None)
+    assert isinstance(asist_tabs, UnderlineTabBar)
+    assert asist_tabs._active_key == "asistencias"
+
+    # Simular tap real en pestaña "Grupos" desde AsistenciasView
+    box_grupos = next(b for b in asist_tabs._tab_containers if b.data == "grupos")
+    box_grupos.on_click(None)
+    vista_grupos = page.controls[0].content
+    assert isinstance(vista_grupos, GruposView)
+    grupos_tabs = getattr(vista_grupos, "module_tabs", None)
+    assert isinstance(grupos_tabs, UnderlineTabBar)
+    assert grupos_tabs._active_key == "grupos"
+
+    # Presionar BACK del sistema debe volver a AsistenciasView con su tab subrayado en "asistencias"
+    page.views[0].on_confirm_pop(None)
+    vista_restaurada = page.controls[0].content
+    assert isinstance(vista_restaurada, AsistenciasView)
+    assert vista_restaurada.module_tabs._active_key == "asistencias"
+
+    # Segundo BACK vuelve a NotasView con su tab subrayado en "notas"
+    page.views[0].on_confirm_pop(None)
+    vista_notas_back = page.controls[0].content
+    assert isinstance(vista_notas_back, NotasView)
+    assert vista_notas_back.module_tabs._active_key == "notas"
+
+
+def test_spec032_grupos_tabs_3_o_mas_scroll_activo_sin_truncar(tmp_path) -> None:
+    """RF-09: GruposView con 3+ trabajos evita truncamiento elíptico y autodesplaza al tab activo."""
+    from unittest.mock import MagicMock, patch
+    import flet as ft
+    from core.constants import K_ALUMNOS, K_COLEGIOS, K_CURSOS, K_NOMBRE
+    from mobile.components.ui_header import UnderlineTabBar
+    from mobile.state import AppState
+    from mobile.theme import DARK_TOKENS, LIGHT_TOKENS
+    from mobile.views.grupos_view import GruposView
+
+    for dark, _tokens in ((False, LIGHT_TOKENS), (True, DARK_TOKENS)):
+        state = AppState(data_path=str(tmp_path / f"grupos_{dark}.json"))
+        state.theme_mode = "dark" if dark else "light"
+        state.data = {
+            K_COLEGIOS: {
+                "Colegio 1": {
+                    K_CURSOS: {
+                        "1ro A": {
+                            K_ALUMNOS: {
+                                "1": {K_NOMBRE: "Alvarez, Sofia"},
+                                "2": {K_NOMBRE: "Juarez, Luz"},
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        state.selected_colegio = "Colegio 1"
+        state.selected_curso = "1ro A"
+        ids_creados = []
+        for i in range(1, 4):
+            _ok, _msg, tb = state.create_trabajo_grupo(
+                f"Trabajo Práctico N° {i}",
+                [{"id": "1", "nombre": "Grupo 1", "integrantes": ["1", "2"]}],
+                auto_save=False,
+            )
+            ids_creados.append(str(tb["id"]))
+
+        page = _crear_mock_page_spec032(width=360, height=800, dark=dark)
+        with patch.object(
+            UnderlineTabBar, "scroll_to_active", wraps=UnderlineTabBar.scroll_to_active, autospec=True
+        ) as spy_scroll_init:
+            gv = GruposView(state=state, page=page, on_navigate=lambda _d: None)
+            # Apertura inicial con 3+ trabajos autodesplaza automáticamente al 3.er trabajo activo
+            assert spy_scroll_init.call_count >= 1
+            assert gv.active_trabajo_id == ids_creados[-1]
+
+        assert gv.trabajos_tabs is not None
+        assert len(gv.trabajos_tabs._tab_containers) == 3
+
+        for tab_box in gv.trabajos_tabs._tab_containers:
+            assert tab_box.key is not None
+            lbl = tab_box.content
+            assert isinstance(lbl, ft.Text)
+            assert lbl.no_wrap is True
+            assert lbl.overflow != ft.TextOverflow.ELLIPSIS
+
+        # Reconstrucción de cuerpo (agregar grupo manual) conserva scroll sobre tab activo
+        with patch.object(
+            UnderlineTabBar, "scroll_to_active", wraps=UnderlineTabBar.scroll_to_active, autospec=True
+        ) as spy_scroll_rebuild:
+            gv._agregar_grupo_manual()
+            assert spy_scroll_rebuild.call_count >= 1
+
+        # Verificar autodesplazamiento seguro al seleccionar el 3.er TP (con mock y con page=None)
+        mock_scroll = MagicMock()
+        gv.trabajos_tabs._tabs_row.scroll_to = mock_scroll
+        gv._seleccionar_trabajo(ids_creados[-1])
+        assert mock_scroll.call_count >= 1
+        call_kwargs = mock_scroll.call_args.kwargs
+        assert "scroll_key" in call_kwargs and call_kwargs["scroll_key"] is not None
+
+        # Simular creación de un 4.º trabajo práctico vía Sorteador (`on_created`)
+        _ok4, _msg4, tb4 = state.create_trabajo_grupo(
+            "Trabajo Práctico N° 4",
+            [{"id": "1", "nombre": "Grupo 1", "integrantes": ["1", "2"]}],
+            auto_save=False,
+        )
+        gv.active_trabajo_id = str(tb4["id"])
+        with patch.object(
+            UnderlineTabBar, "scroll_to_active", wraps=UnderlineTabBar.scroll_to_active, autospec=True
+        ) as spy_scroll_new:
+            gv._refrescar_body_y_scroll()
+            assert spy_scroll_new.call_count >= 1
+            assert gv.trabajos_tabs._active_key == str(tb4["id"])
+
+        gv_headless = GruposView(state=state, page=None, on_navigate=lambda _d: None)
+        gv_headless._seleccionar_trabajo(ids_creados[-1])
+
+    # Navegación desde main.py hacia GruposView cacheada también reenfoca trabajos_tabs
+    import json
+    data_file = tmp_path / "main_grupos_cache.json"
+    data_file.write_text(json.dumps({
+        K_COLEGIOS: {"Colegio 1": {K_CURSOS: {"1ro A": {K_ALUMNOS: {"1": {K_NOMBRE: "Alvarez, Sofia"}}}}}}
+    }), encoding="utf-8")
+    page_main = _crear_mock_page_spec032(width=360, height=800, dark=False)
+    with patch("core.gestor_datos.leer_ruta_config", return_value=str(data_file)), patch(
+        "core.gestor_datos.obtener_ruta_datos_por_defecto", return_value=str(data_file)
+    ), patch("mobile.state.AppState.find_local_backups", return_value=[]):
+        from mobile.main import main
+        main(page_main)
+    st_main = page_main.controls[0].content.state
+    nav_main = page_main.controls[0].content.on_navigate
+    st_main.selected_colegio = "Colegio 1"
+    st_main.selected_curso = "1ro A"
+    for idx in range(1, 4):
+        st_main.create_trabajo_grupo(
+            f"TP {idx}", [{"id": "1", "nombre": "G1", "integrantes": ["1"]}], auto_save=False
+        )
+    nav_main("cursos")
+    nav_main("grupos")
+    nav_main("notas")
+    with patch.object(
+        UnderlineTabBar, "scroll_to_active", wraps=UnderlineTabBar.scroll_to_active, autospec=True
+    ) as spy_cached_grupos:
+        nav_main("grupos")
+        assert spy_cached_grupos.call_count >= 1
+
+
+def test_spec032_ux_notaly_sheet_sorteador_search_planificaciones_y_footer_inicio(tmp_path) -> None:
+    """RF-10..RF-14: Valida hojas adaptativas, TextFields 100%, foco/fila en sorteador, búsqueda, planif y Footer."""
+    from unittest.mock import patch
+    import flet as ft
+    from core.constants import K_ALUMNOS, K_COLEGIOS, K_CURSOS, K_NOMBRE
+    from mobile.components.calificar_grupo_dialog import CalificarGrupoDialog
+    from mobile.components.comportamiento_dialog import ComportamientoDialog
+    from mobile.components.footer import AppFooter
+    from mobile.components.global_search import GlobalSearchOverlay
+    from mobile.components.grupos_sorteador_dialog import SorteadorGruposDialog
+    from mobile.components.notaly_sheet import NotalySheet, sheet_action_button
+    from mobile.components.planificacion_dialog import PlanificacionCursoDialog
+    from mobile.components.planificaciones_institucion_dialog import PlanificacionesInstitucionDialog
+    from mobile.state import AppState
+    from mobile.theme import DARK_TOKENS, LIGHT_TOKENS
+
+    for dark, tokens in ((False, LIGHT_TOKENS), (True, DARK_TOKENS)):
+        page = _crear_mock_page_spec032(width=360, height=800, dark=dark)
+
+        # 1. NotalySheet corto (sin estiramiento forzado) y largo (scroll hasta 85%)
+        sheet_corto = NotalySheet(
+            page=page,
+            title="Opciones",
+            body=[ft.Text("Opción 1"), ft.Text("Opción 2")],
+            tokens=tokens,
+        )
+        assert sheet_corto.body_column.expand in (None, False)
+        assert sheet_corto.body_column.tight is True
+        assert sheet_corto.body_column.horizontal_alignment == ft.CrossAxisAlignment.STRETCH
+        outer_col = sheet_corto.content.content
+        assert isinstance(outer_col, ft.Column)
+        assert outer_col.scroll == ft.ScrollMode.AUTO
+        assert outer_col.horizontal_alignment == ft.CrossAxisAlignment.STRETCH
+        assert sheet_corto.size_constraints.max_height == int(800 * 0.85)
+
+        sheet_largo = NotalySheet(
+            page=page,
+            title="Selector",
+            body=[ft.Text(f"Item {i}") for i in range(15)],
+            actions=[sheet_action_button("Cerrar", lambda _e: None, tokens=tokens, primary=False)],
+            tokens=tokens,
+        )
+        assert sheet_largo.scrollable is True
+        assert sheet_largo.content.content.scroll == ft.ScrollMode.AUTO
+
+        state = AppState(data_path=str(tmp_path / f"ux_{dark}.json"))
+        state.theme_mode = "dark" if dark else "light"
+        state.data = {
+            K_COLEGIOS: {
+                "Colegio 1": {
+                    K_CURSOS: {
+                        "1ro A": {
+                            K_ALUMNOS: {
+                                "1": {K_NOMBRE: "Ana Gómez"},
+                                "2": {K_NOMBRE: "Luis Pérez"},
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        state.selected_colegio = "Colegio 1"
+        state.selected_curso = "1ro A"
+
+        # 2. TextFields al 100% de ancho en diálogos de NotalySheet
+        def _tiene_estiramiento(dlg: NotalySheet, tf: ft.TextField) -> bool:
+            if getattr(tf, "expand", None) is True:
+                return True
+            if dlg.body_column.horizontal_alignment == ft.CrossAxisAlignment.STRETCH and tf in dlg.body_column.controls:
+                return True
+            return False
+
+        comp_dlg = ComportamientoDialog(
+            state=state,
+            id_alumno="1",
+            nombre_alumno="Ana Gómez",
+            colegio="Colegio 1",
+            curso="1ro A",
+            page=page,
+            tokens=tokens,
+        )
+        assert comp_dlg.observacion_input_container.content.horizontal_alignment == ft.CrossAxisAlignment.STRETCH
+        assert _tiene_estiramiento(comp_dlg, comp_dlg.txt_observacion)
+
+        sort_dlg = SorteadorGruposDialog(
+            state=state,
+            page=page,
+            on_created=lambda _t: None,
+            tokens=tokens,
+        )
+        assert sort_dlg.inner_controls_column.horizontal_alignment == ft.CrossAxisAlignment.STRETCH
+        assert _tiene_estiramiento(sort_dlg, sort_dlg.tf_titulo)
+
+        cal_dlg = CalificarGrupoDialog(
+            state=state,
+            page=page,
+            trabajo_id="1",
+            grupo={"id": "1", "nombre": "Grupo 1", "integrantes": ["1"]},
+            on_saved=lambda: None,
+            tokens=tokens,
+        )
+        assert _tiene_estiramiento(cal_dlg, cal_dlg.tf_observacion)
+
+        plan_dlg = PlanificacionCursoDialog(
+            state=state,
+            colegio="Colegio 1",
+            curso="1ro A",
+            page=page,
+            tokens=tokens,
+        )
+        assert _tiene_estiramiento(plan_dlg, plan_dlg.txt_horario)
+
+        # 3. Sorteador: fila completa tactile >= 48dp y foco continuo en tf_nuevo_tema
+        assert sort_dlg.sortear_temas is False
+        fila_temas = next(
+            c
+            for c in sort_dlg.inner_controls_column.controls
+            if isinstance(c, ft.Container) and callable(getattr(c, "on_click", None)) and getattr(c, "height", 0) >= 48
+        )
+        fila_temas.on_click(None)
+        assert sort_dlg.sortear_temas is True
+        assert getattr(sort_dlg, "switch_temas", None) is not None and sort_dlg.switch_temas.value is True
+
+        with patch("mobile.components.grupos_sorteador_dialog.focus_control_safe") as mock_focus:
+            sort_dlg.tf_nuevo_tema.value = "Tema A"
+            sort_dlg._agregar_tema()
+            assert "Tema A" in sort_dlg.temas_lista
+            assert mock_focus.call_count == 1
+            assert mock_focus.call_args[0][1] is sort_dlg.tf_nuevo_tema
+
+            # Incluso entrada vacía o repetida conserva foco
+            sort_dlg.tf_nuevo_tema.value = ""
+            sort_dlg._agregar_tema()
+            assert mock_focus.call_count == 2
+            assert mock_focus.call_args[0][1] is sort_dlg.tf_nuevo_tema
+
+        # 4. GlobalSearchOverlay limpia al cerrar/reabrir y no tiene borde divisor en cabecera
+        gs = GlobalSearchOverlay(state=state, page=page, tokens=tokens)
+        gs.abrir()
+        assert gs.search_header.border is None
+        gs.query_field.value = "Ana"
+        gs.clear_button.visible = True
+        gs._actualizar_resultados("Ana")
+        assert len(gs.results_list.controls) >= 1
+
+        assert gs.cerrar_vista_si_abierta() is True
+        assert gs.query_field.value == ""
+        assert gs.clear_button.visible is False
+        assert "Escribe para buscar" in gs.results_list.controls[0].title.value
+        gs.abrir()
+        assert gs.query_field.value == ""
+        assert gs.clear_button.visible is False
+
+        # 5. PlanificacionesInstitucionDialog sin línea divisoria bajo chips_bar
+        pi_dlg = PlanificacionesInstitucionDialog(state=state, colegio="Colegio 1", page=page, tokens=tokens)
+        assert getattr(pi_dlg, "chips_bar", None) is not None
+        assert pi_dlg.chips_bar.border is None
+
+    # 6. AppFooter al tocar "Inicio" limpia navigation_history y navega a "colegios"
+    nav_dests: list[str] = []
+    state_footer = AppState(data_path=str(tmp_path / "footer_clear.json"))
+    state_footer.current_screen = "notas"
+    state_footer.push_history()
+    state_footer.current_screen = "planillas"
+    state_footer.push_history()
+    assert state_footer.can_pop() is True
+
+    footer = AppFooter(state=state_footer, on_navigate=lambda d: nav_dests.append(d))
+    footer.selected_index = 0
+    footer._al_cambiar_pestana(None)
+    assert nav_dests == ["colegios"]
+    assert state_footer.can_pop() is False
+
 
 
 

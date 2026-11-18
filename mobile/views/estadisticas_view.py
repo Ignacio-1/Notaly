@@ -1,7 +1,7 @@
 """
 Vista editorial de Estadísticas y Analítica Académica ("Crisp Editorial Ledger") (SPEC-028).
 
-Preserva exactamente 12 contenedores reactivos in-place en `list_view.controls`,
+Preserva exactamente 9 contenedores reactivos in-place en `list_view.controls` y mantiene fijas las barras de alcance/sección/período sobre el área scrollable,
 presenta contexto jerárquico en 2 líneas + botón `Cambiar` de `48dp` hacia `NotalySheet`,
 pestañas subrayadas `UnderlineTabBar`, banda editorial de 3 KPIs críticos (`25sp LedgerMono`),
 listado prioritario de alumnos en riesgo con filete `3px` y gráficos tokenizados (RF-19, RNF-01, B6, B7).
@@ -10,6 +10,7 @@ listado prioritario de alumnos en riesgo con filete `3px` y gráficos tokenizado
 from __future__ import annotations
 
 import math
+import re
 from typing import Any, Callable
 
 import flet as ft
@@ -19,12 +20,16 @@ from core.constants import (
     COMPORTAMIENTO_NEGATIVO,
     COMPORTAMIENTO_POSITIVO,
     COMPORTAMIENTO_REGULAR,
+    K_APELLIDO,
     K_ASISTENCIAS,
     K_FECHA,
+    K_NOMBRE,
+    K_NOMBRE_PILA,
     K_OBSERVACION,
     K_SUBTIPO,
     K_TIPO,
     formatear_fecha,
+    formatear_nombre_completo,
 )
 from core.calculos import ordenar_fechas_cronologicamente
 from mobile.components.comportamiento_dialog import get_comportamiento_style
@@ -63,10 +68,14 @@ PERIODOS_CORTOS = [
 ]
 
 
+_ALUMNO_PLACEHOLDER_RE = re.compile(r"^Alumno\s+#.+$")
+
+
 class EstadisticasView(ft.Container):
     """
     Vista integral de estadísticas académicas, comportamiento y asistencias.
-    Mantiene exactamente 12 contenedores mutables dentro de `list_view.controls`.
+    Mantiene fijas las barras de alcance, sección y período sobre el ListView
+    con exactamente 9 contenedores mutables dentro de `list_view.controls`.
     """
 
     def __init__(
@@ -87,11 +96,12 @@ class EstadisticasView(ft.Container):
         if not self.state.selected_colegio and colegios:
             self.state.selected_colegio = colegios[0]
 
-        # Contenedores reactivos mutables in-place (invariante: 12 controles en ListView)
+        # Contenedores reactivos mutables in-place (invariante: 9 controles en ListView)
         self.header_container = ft.Container()
         self.level_selector_container = ft.Container()
         self.seccion_selector_container = ft.Container()
         self.period_selector_container = ft.Container()
+        self.fixed_nav_container = ft.Container()
         self.kpi_container = ft.Container()
         self.donut_container = ft.Container()
         self.histograma_container = ft.Container()
@@ -131,6 +141,41 @@ class EstadisticasView(ft.Container):
         except Exception:
             pass
 
+    def _obtener_alumnos_curso_actual(self) -> dict:
+        if not hasattr(self.state, "get_alumnos") or not callable(self.state.get_alumnos):
+            return {}
+        col = getattr(self.state, "selected_colegio", None) or ""
+        cur = getattr(self.state, "selected_curso", None) or ""
+        if not col or not cur:
+            return {}
+        res = self.state.get_alumnos(col, cur)
+        return res if isinstance(res, dict) else {}
+
+    def _resolver_nombre_visible_alumno(
+        self,
+        al: dict,
+        alumnos_curso: dict | None = None,
+    ) -> str:
+        """
+        Resuelve el nombre editorial limpio del alumno sin exponer 'Alumno #N'.
+        No altera `core/`; contrasta con los datos del curso o sanitiza el fallback.
+        """
+        al_id = str(al.get("id", "")).strip()
+        mapa = alumnos_curso if alumnos_curso is not None else self._obtener_alumnos_curso_actual()
+        if isinstance(mapa, dict) and al_id and al_id in mapa and isinstance(mapa[al_id], dict):
+            reg = mapa[al_id]
+            nom_reg = (reg.get(K_NOMBRE) or "").strip()
+            if not nom_reg:
+                ap = (reg.get(K_APELLIDO) or "").strip()
+                nom_p = (reg.get(K_NOMBRE_PILA) or "").strip()
+                nom_reg = formatear_nombre_completo(ap, nom_p).strip()
+            return nom_reg or "Sin nombre"
+
+        raw = (al.get("nombre") or "").strip()
+        if not raw or (al_id and raw == f"Alumno #{al_id}") or _ALUMNO_PLACEHOLDER_RE.match(raw):
+            return "Sin nombre"
+        return raw
+
     def _get_active_periodo(self) -> int:
         return max(0, min(int(self.state.estadisticas_periodo), 3))
 
@@ -146,9 +191,6 @@ class EstadisticasView(ft.Container):
         self._actualizar_datos_ui()
 
         self.list_view.controls = [
-            self.level_selector_container,
-            self.seccion_selector_container,
-            self.period_selector_container,
             self.kpi_container,
             self.donut_container,
             self.histograma_container,
@@ -161,14 +203,33 @@ class EstadisticasView(ft.Container):
         ]
 
         pw = getattr(self.app_page, "width", None) if self.app_page else None
+        gutter = responsive_gutter(pw if isinstance(pw, (int, float)) else None)
+        fixed_nav_col = ft.Column(
+            spacing=0,
+            tight=True,
+            controls=[
+                ft.Container(
+                    padding=ft.Padding(left=gutter, right=gutter, top=SPACE_SM, bottom=SPACE_XS),
+                    content=self.level_selector_container,
+                ),
+                self.seccion_selector_container,
+                self.period_selector_container,
+            ],
+        )
+        self.fixed_nav_container = ft.Container(
+            padding=0,
+            content=constrain_tablet_content(fixed_nav_col, pw, tok),
+        )
         self.content = ft.Column(
             spacing=0,
             expand=True,
             controls=[
                 self.header_container,
+                self.fixed_nav_container,
                 ft.Container(
                     expand=True,
                     padding=0,
+                    clip_behavior=ft.ClipBehavior.HARD_EDGE,
                     content=constrain_tablet_content(self.list_view, pw, tok),
                 ),
             ],
@@ -375,7 +436,7 @@ class EstadisticasView(ft.Container):
         self.state.estadisticas_periodo = nuevo_idx
         self._actualizar_datos_ui()
         for c in (
-            self.period_selector_container,
+            self.fixed_nav_container,
             self.kpi_container,
             self.donut_container,
             self.histograma_container,
@@ -396,8 +457,7 @@ class EstadisticasView(ft.Container):
         self.seccion_activa = nueva_seccion
         self._actualizar_datos_ui()
         for c in (
-            self.seccion_selector_container,
-            self.period_selector_container,
+            self.fixed_nav_container,
             self.kpi_container,
             self.donut_container,
             self.histograma_container,
@@ -421,9 +481,7 @@ class EstadisticasView(ft.Container):
         self._actualizar_datos_ui()
         for c in (
             self.header_container,
-            self.level_selector_container,
-            self.seccion_selector_container,
-            self.period_selector_container,
+            self.fixed_nav_container,
             self.kpi_container,
             self.donut_container,
             self.histograma_container,
@@ -446,9 +504,7 @@ class EstadisticasView(ft.Container):
         self._actualizar_datos_ui()
         for c in (
             self.header_container,
-            self.level_selector_container,
-            self.seccion_selector_container,
-            self.period_selector_container,
+            self.fixed_nav_container,
             self.kpi_container,
             self.donut_container,
             self.histograma_container,
@@ -647,9 +703,7 @@ class EstadisticasView(ft.Container):
         self._actualizar_datos_ui()
         for c in (
             self.header_container,
-            self.level_selector_container,
-            self.seccion_selector_container,
-            self.period_selector_container,
+            self.fixed_nav_container,
             self.kpi_container,
             self.donut_container,
             self.histograma_container,
@@ -1267,6 +1321,7 @@ class EstadisticasView(ft.Container):
         desaprobados = [a for a in alumnos if a["condicion"] == "desaprobado"]
         aprobados = [a for a in alumnos if a["condicion"] == "aprobado"]
         pendientes = [a for a in alumnos if a["condicion"] == "pendiente"]
+        alumnos_curso = self._obtener_alumnos_curso_actual()
 
         def _build_section(
             titulo_grupo: str,
@@ -1280,7 +1335,7 @@ class EstadisticasView(ft.Container):
                 nota_str = str(nota) if nota is not None else "--"
                 rows.append(
                     NotalyListRow(
-                        title=al["nombre"],
+                        title=self._resolver_nombre_visible_alumno(al, alumnos_curso),
                         subtitle=subtitle_tag,
                         initials=None,
                         title_size=16,
@@ -1564,7 +1619,12 @@ class EstadisticasView(ft.Container):
     def _build_alumno_comportamiento_card(self, al: dict) -> ft.Container:
         tok = self.tokens
         al_id = str(al.get("id", ""))
-        nombre = (al.get("nombre", "") or "").strip() or "Sin nombre"
+        alumnos_curso = (
+            self._obtener_alumnos_curso_actual()
+            if getattr(self.state, "estadisticas_nivel", "colegio") == "curso"
+            else None
+        )
+        nombre = self._resolver_nombre_visible_alumno(al, alumnos_curso)
         observaciones = al.get("observaciones", [])
         total_obs = al.get("total", len(observaciones))
         conteo = al.get("conteo_tipo", {})
@@ -2075,8 +2135,15 @@ class EstadisticasView(ft.Container):
                 )
 
             rows: list[ft.Control] = []
+            alumnos_curso = self._obtener_alumnos_curso_actual()
             # Priorizar alumnos en riesgo (< 75%)
-            alumnos_ord = sorted(alumnos, key=lambda a: (not bool(a.get("alerta")), a.get("nombre", "")))
+            alumnos_ord = sorted(
+                alumnos,
+                key=lambda a: (
+                    not bool(a.get("alerta")),
+                    self._resolver_nombre_visible_alumno(a, alumnos_curso),
+                ),
+            )
             for idx, al in enumerate(alumnos_ord):
                 pct = al.get("porcentaje")
                 pct_str = f"{pct:.1f}%" if pct is not None else "--"
@@ -2120,7 +2187,7 @@ class EstadisticasView(ft.Container):
 
                 rows.append(
                     NotalyListRow(
-                        title=al["nombre"],
+                        title=self._resolver_nombre_visible_alumno(al, alumnos_curso),
                         tabular_summary=metricas_resumen,
                         initials=None,
                         title_size=16,

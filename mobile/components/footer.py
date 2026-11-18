@@ -105,6 +105,8 @@ class AppFooter(ft.NavigationBar):
         idx = self.selected_index
         if idx == 0:
             self.state.footer_tab = "inicio"
+            if hasattr(self.state, "clear_history") and callable(self.state.clear_history):
+                self.state.clear_history()
             self.on_navigate_callback("colegios")
         elif idx == 1:
             self.state.footer_tab = "planillas"

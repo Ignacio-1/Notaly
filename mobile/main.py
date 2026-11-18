@@ -122,8 +122,15 @@ def main(page: ft.Page):
     page.padding = 0
     page.spacing = 0
 
+    def _navegar_desde_footer(view_name: str) -> None:
+        if view_name == "colegios":
+            state.clear_history()
+            navigate("colegios", push_history=False)
+            return
+        navigate(view_name)
+
     main_container = ft.Container(expand=True, bgcolor=tokens.bg_canvas)
-    footer = AppFooter(state=state, on_navigate=lambda v: navigate(v), tokens=tokens)
+    footer = AppFooter(state=state, on_navigate=_navegar_desde_footer, tokens=tokens)
     page.navigation_bar = footer
 
     global_search: GlobalSearchOverlay | None = None
@@ -292,7 +299,10 @@ def main(page: ft.Page):
             ):
                 _curso_views["notas"] = NotasView(state, page, on_navigate=navigate)
                 _curso_views_versions["notas"] = roster_ver
-            main_container.content = _curso_views["notas"]
+            vista_curso = _curso_views["notas"]
+            if getattr(vista_curso, "module_tabs", None) is not None:
+                vista_curso.module_tabs.set_active("notas", update=False)
+            main_container.content = vista_curso
         elif view_name == "asistencias":
             if (
                 "asistencias" not in _curso_views
@@ -300,7 +310,10 @@ def main(page: ft.Page):
             ):
                 _curso_views["asistencias"] = AsistenciasView(state, page, on_navigate=navigate)
                 _curso_views_versions["asistencias"] = roster_ver
-            main_container.content = _curso_views["asistencias"]
+            vista_curso = _curso_views["asistencias"]
+            if getattr(vista_curso, "module_tabs", None) is not None:
+                vista_curso.module_tabs.set_active("asistencias", update=False)
+            main_container.content = vista_curso
         elif view_name == "grupos":
             if (
                 "grupos" not in _curso_views
@@ -308,7 +321,10 @@ def main(page: ft.Page):
             ):
                 _curso_views["grupos"] = GruposView(state, page, on_navigate=navigate)
                 _curso_views_versions["grupos"] = roster_ver
-            main_container.content = _curso_views["grupos"]
+            vista_curso = _curso_views["grupos"]
+            if getattr(vista_curso, "module_tabs", None) is not None:
+                vista_curso.module_tabs.set_active("grupos", update=False)
+            main_container.content = vista_curso
         elif view_name == "estadisticas":
             main_container.content = EstadisticasView(state, page, on_navigate=navigate)
         elif view_name == "planillas":
@@ -317,6 +333,21 @@ def main(page: ft.Page):
         footer.sincronizar_vista(view_name)
         _sync_container_footer_divider()
         page.update()
+
+        if view_name == "grupos" and getattr(main_container.content, "trabajos_tabs", None) is not None:
+            main_container.content.trabajos_tabs.scroll_to_active()
+
+        if (
+            view_name == "notas"
+            and getattr(state, "pending_alumno_focus", False)
+            and getattr(state, "selected_alumno_id", None)
+        ):
+            target_id = state.selected_alumno_id
+            state.pending_alumno_focus = False
+            vista_actual = main_container.content
+            if hasattr(vista_actual, "enfocar_alumno"):
+                vista_actual.enfocar_alumno(target_id, asegurar_editable=True, scroll=True)
+                page.update()
 
     def al_restaurar_copia() -> None:
         _curso_views.clear()

@@ -95,6 +95,7 @@ class PlanificacionCursoDialog(NotalySheet):
         self.txt_horario = ft.TextField(
             label="Horario del curso (opcional)",
             value=horario_actual,
+            expand=True,
             hint_text="Ej: lun a vie 12:00 a 12:40",
             prefix_icon=ft.Icons.ACCESS_TIME,
             text_size=13,
@@ -184,7 +185,7 @@ class PlanificacionCursoDialog(NotalySheet):
             title="Planificación de Clases",
             subtitle=f"{curso} · {colegio}",
             body=[
-                self.txt_horario,
+                ft.Row(controls=[self.txt_horario]),
                 ft.Divider(height=1, thickness=1, color=tok.border_hairline),
                 seccion_calendario,
                 ft.Divider(height=1, thickness=1, color=tok.border_hairline),

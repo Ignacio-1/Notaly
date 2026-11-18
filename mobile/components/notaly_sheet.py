@@ -367,9 +367,7 @@ class NotalySheet(ft.BottomSheet):
             body_controls,
             spacing=SPACE_MD,
             tight=True,
-            scroll=ft.ScrollMode.AUTO,
-            expand=True,
-            expand_loose=True,
+            horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
         )
 
         self.actions_container = build_action_rows(actions)
@@ -388,7 +386,13 @@ class NotalySheet(ft.BottomSheet):
             )
 
         inner_wrapper = ft.Container(
-            content=ft.Column(outer_controls, spacing=SPACE_MD, tight=True),
+            content=ft.Column(
+                outer_controls,
+                spacing=SPACE_MD,
+                tight=True,
+                scroll=ft.ScrollMode.AUTO,
+                horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
+            ),
             padding=ft.Padding(left=gutter, top=SPACE_SM, right=gutter, bottom=SPACE_LG),
             bgcolor=self._tok.surface_primary,
         )

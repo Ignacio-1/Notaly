@@ -58,6 +58,7 @@ class CalificarGrupoDialog(NotalySheet):
         self.tf_observacion = ft.TextField(
             label="Observaciones / Devolución grupal",
             value=grupo.get("observacion") or "",
+            expand=True,
             multiline=True,
             min_lines=2,
             max_lines=3,
@@ -146,7 +147,7 @@ class CalificarGrupoDialog(NotalySheet):
                 ],
             ),
             btn_borrar,
-            self.tf_observacion,
+            ft.Row(controls=[self.tf_observacion]),
             banner_aislamiento,
         ]
 

@@ -107,7 +107,7 @@ def test_planificaciones_dialog_responsive_and_no_wrap(responsive_state):
     dlg = PlanificacionesInstitucionDialog(responsive_state, "Colegio Modelo", page=page)
 
     assert isinstance(dlg, NotalySheet)
-    assert dlg.body_column.scroll == ft.ScrollMode.AUTO
+    assert dlg.content.content.scroll == ft.ScrollMode.AUTO
 
     # Tarjeta del curso
     card = dlg.cursos_content_col.controls[0]
@@ -135,7 +135,7 @@ def test_sorteador_dialog_stepper_and_scroll_responsiveness(responsive_state):
 
     assert isinstance(dlg, NotalySheet)
     assert dlg.size_constraints.max_height == int(720 * 0.85)
-    assert dlg.body_column.scroll == ft.ScrollMode.AUTO
+    assert dlg.content.content.scroll == ft.ScrollMode.AUTO
 
     # Verificar el stepper
     stepper_row = dlg.stepper_row
@@ -165,7 +165,7 @@ def test_export_dialog_responsive_and_scroll(responsive_state):
     )
 
     assert isinstance(dlg, NotalySheet)
-    assert dlg.body_column.scroll == ft.ScrollMode.AUTO
+    assert dlg.content.content.scroll == ft.ScrollMode.AUTO
 
     # Las opciones deben ser filas planas editoriales concisas
     opciones = dlg.formato_selector.content.controls

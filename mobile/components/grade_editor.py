@@ -109,6 +109,7 @@ class GradeEditorDialog(ft.AlertDialog):
         body = ft.Column(
             tight=True,
             spacing=SPACE_MD,
+            horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
             controls=[
                 ft.Text(
                     alumno_nombre,

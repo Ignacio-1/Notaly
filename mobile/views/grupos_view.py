@@ -85,6 +85,7 @@ class GruposView(ft.Container):
         self.state.on_save_status_change = self._on_save_status_change
 
         self.active_trabajo_id: str | None = None
+        self.module_tabs: UnderlineTabBar | None = None
         self.body_container = ft.Container(expand=True, padding=0)
         self.lista_grupos_listview: ft.ListView | None = None
         self.trabajos_tabs: UnderlineTabBar | None = None
@@ -146,10 +147,12 @@ class GruposView(ft.Container):
         )
 
         # Nivel fijo 2: selector subrayado de módulos
-        module_tabs = build_module_tabs(
+        self.module_tabs = build_module_tabs(
             active_tab="grupos",
-            on_change=lambda dest: self.on_navigate(dest),
+            on_change=self._cambiar_modulo,
             tokens=tok,
+            page=self.app_page,
+            state=self.state,
         )
 
         self._actualizar_contenido_body()
@@ -159,10 +162,19 @@ class GruposView(ft.Container):
             spacing=0,
             controls=[
                 header,
-                module_tabs,
+                self.module_tabs,
                 self.body_container,
             ],
         )
+        if self.trabajos_tabs is not None:
+            self.trabajos_tabs.scroll_to_active()
+
+    def _cambiar_modulo(self, dest: str) -> None:
+        if dest == "grupos":
+            return
+        if hasattr(self.state, "flush_auto_save"):
+            self.state.flush_auto_save()
+        self.on_navigate(dest)
 
     def _actualizar_contenido_body(self) -> None:
         tok = resolve_tokens(page=self.app_page, state=self.state)
@@ -205,12 +217,15 @@ class GruposView(ft.Container):
             controls=self._build_tarjetas_grupos(trabajo_actual),
         )
 
+        self.barra_acciones_container = ft.Container(content=barra_acciones, padding=0)
+        self.selector_trabajos_container = ft.Container(content=selector_trabajos, padding=0)
+
         self.body_container.content = ft.Column(
             expand=True,
             spacing=0,
             controls=[
-                selector_trabajos,
-                barra_acciones,
+                self.selector_trabajos_container,
+                self.barra_acciones_container,
                 ft.Container(
                     expand=True,
                     padding=0,
@@ -267,7 +282,11 @@ class GruposView(ft.Container):
                 spacing=0,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
                 controls=[
-                    ft.Container(expand=True, content=self.trabajos_tabs),
+                    ft.Container(
+                        expand=True,
+                        clip_behavior=ft.ClipBehavior.HARD_EDGE,
+                        content=self.trabajos_tabs,
+                    ),
                     btn_nuevo_tp,
                 ],
             ),
@@ -563,16 +582,37 @@ class GruposView(ft.Container):
             content=constrain_tablet_content(empty_view, pw, tok),
         )
 
-    def _seleccionar_trabajo(self, trabajo_id: str) -> None:
-        self.active_trabajo_id = trabajo_id
+    def _refrescar_body_y_scroll(self) -> None:
+        """Reconstruye el cuerpo activo, refresca la UI y enfoca el tab del trabajo."""
         self._actualizar_contenido_body()
         self._safe_update()
+        if self.trabajos_tabs is not None:
+            self.trabajos_tabs.scroll_to_active()
+
+    def _seleccionar_trabajo(self, trabajo_id: str) -> None:
+        self.active_trabajo_id = str(trabajo_id)
+        colegio = self.state.selected_colegio or ""
+        curso = self.state.selected_curso or ""
+        trabajo_actual = self.state.get_trabajo_grupo(self.active_trabajo_id, colegio, curso)
+        if (
+            trabajo_actual
+            and self.trabajos_tabs is not None
+            and self.lista_grupos_listview is not None
+            and hasattr(self, "barra_acciones_container")
+        ):
+            grupos_act = trabajo_actual.get("grupos") or []
+            self.btn_copiar_header.visible = len(grupos_act) > 0
+            self.trabajos_tabs.set_active(self.active_trabajo_id, update=True)
+            self.barra_acciones_container.content = self._build_barra_trabajo_activo(trabajo_actual)
+            self.lista_grupos_listview.controls = self._build_tarjetas_grupos(trabajo_actual)
+            self._safe_update()
+            return
+        self._refrescar_body_y_scroll()
 
     def _abrir_sorteador(self) -> None:
         def on_created(nuevo_trabajo: dict):
             self.active_trabajo_id = str(nuevo_trabajo.get("id"))
-            self._actualizar_contenido_body()
-            self._safe_update()
+            self._refrescar_body_y_scroll()
 
         dlg = SorteadorGruposDialog(
             self.state,
@@ -584,8 +624,7 @@ class GruposView(ft.Container):
 
     def _abrir_calificar_grupo(self, trabajo_id: str, grupo: dict) -> None:
         def on_saved():
-            self._actualizar_contenido_body()
-            self._safe_update()
+            self._refrescar_body_y_scroll()
 
         dlg = CalificarGrupoDialog(
             self.state,
@@ -606,8 +645,7 @@ class GruposView(ft.Container):
         grupos: list[dict],
     ) -> None:
         def on_moved():
-            self._actualizar_contenido_body()
-            self._safe_update()
+            self._refrescar_body_y_scroll()
 
         dlg = ReasignarAlumnoDialog(
             state=self.state,
@@ -649,8 +687,7 @@ class GruposView(ft.Container):
                 tema=tf_tema.value or "",
             )
             cerrar()
-            self._actualizar_contenido_body()
-            self._safe_update()
+            self._refrescar_body_y_scroll()
 
         dlg = NotalyCompactDialog(
             page=self.app_page,
@@ -671,8 +708,7 @@ class GruposView(ft.Container):
             return
         ok, _msg, _ = self.state.add_grupo_a_trabajo(self.active_trabajo_id)
         if ok:
-            self._actualizar_contenido_body()
-            self._safe_update()
+            self._refrescar_body_y_scroll()
 
     def _confirmar_eliminar_trabajo(self) -> None:
         if not self.active_trabajo_id:
@@ -691,8 +727,7 @@ class GruposView(ft.Container):
             self.state.delete_trabajo_grupo(self.active_trabajo_id)
             cerrar()
             self.active_trabajo_id = None
-            self._actualizar_contenido_body()
-            self._safe_update()
+            self._refrescar_body_y_scroll()
 
         dlg = NotalyCompactDialog(
             page=self.app_page,

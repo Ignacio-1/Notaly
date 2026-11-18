@@ -181,6 +181,7 @@ class StudentFormDialog(ft.AlertDialog):
         body_col = ft.Column(
             tight=True,
             spacing=SPACE_MD,
+            horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
             controls=[
                 self.lbl_contador,
                 self.txt_apellido,
@@ -343,6 +344,7 @@ class CreateEntityDialog(ft.AlertDialog):
             content=ft.Column(
                 tight=True,
                 spacing=SPACE_MD,
+                horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
                 controls=[self.txt_nombre, self.lbl_error],
             ),
         )
@@ -429,6 +431,7 @@ class ColegioFormDialog(ft.AlertDialog):
             content=ft.Column(
                 tight=True,
                 spacing=SPACE_MD,
+                horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
                 controls=[
                     self.txt_nombre,
                     self.txt_direccion,
@@ -536,6 +539,7 @@ class CreateCursoDialog(ft.AlertDialog):
             content=ft.Column(
                 tight=True,
                 spacing=SPACE_MD,
+                horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
                 controls=[
                     self.txt_nombre,
                     self.txt_cantidad,
@@ -637,6 +641,7 @@ class RenameDialog(ft.AlertDialog):
             content=ft.Column(
                 tight=True,
                 spacing=SPACE_MD,
+                horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
                 controls=[self.txt_nombre, self.lbl_error],
             ),
         )
@@ -773,6 +778,7 @@ class CustomizeColumnsDialog(ft.AlertDialog):
             content=ft.Column(
                 tight=True,
                 spacing=SPACE_MD,
+                horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
                 controls=self.inputs,
             ),
         )

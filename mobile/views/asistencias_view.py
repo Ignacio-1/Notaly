@@ -35,6 +35,7 @@ from mobile.components.planillas_curso_dialog import PlanillasCursoDialog
 from mobile.components.ui_header import (
     NotalyTopHeader,
     SaveStatusIndicator,
+    UnderlineTabBar,
     build_module_tabs,
 )
 from mobile.state import AppState
@@ -94,6 +95,7 @@ class AsistenciasView(ft.Container):
             padding=ft.Padding(left=0, right=0, top=0, bottom=88),
         )
         self.btn_todos_presentes: ft.OutlinedButton | None = None
+        self.module_tabs: UnderlineTabBar | None = None
 
         self.save_indicator = SaveStatusIndicator(
             status=self.state.save_status,
@@ -173,10 +175,12 @@ class AsistenciasView(ft.Container):
         )
 
         # Nivel fijo 2: Pestañas subrayadas de módulo
-        module_tabs = build_module_tabs(
+        self.module_tabs = build_module_tabs(
             active_tab="asistencias",
             on_change=lambda dest: self._cambiar_pestana([dest]),
             tokens=tok,
+            page=self.app_page,
+            state=self.state,
         )
 
         # Barra de fecha tabular focal (sin disparador EVENT duplicado)
@@ -395,7 +399,7 @@ class AsistenciasView(ft.Container):
             spacing=0,
             controls=[
                 header,
-                module_tabs,
+                self.module_tabs,
                 ft.Container(
                     expand=True,
                     padding=0,

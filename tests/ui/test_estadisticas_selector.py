@@ -97,12 +97,13 @@ def state_con_datos(tmp_path):
 
 
 def test_estadisticas_view_tarjeta_contexto_render(state_con_datos, mock_page):
-    """Verifica la Tarjeta de Contexto Jerárquico en level_selector_container y los 12 controles base."""
+    """Verifica la Tarjeta de Contexto Jerárquico fija en fixed_nav_container y los 9 controles base."""
     view = EstadisticasView(state=state_con_datos, page=mock_page, on_navigate=lambda _: None)
 
-    # Invariante Constitucional: exactamente 12 controles
-    assert len(view.list_view.controls) == 12
-    assert view.list_view.controls[0] is view.level_selector_container
+    # Invariante SPEC-032: exactamente 9 controles analíticos en ListView y barra fija arriba
+    assert len(view.list_view.controls) == 9
+    assert view.level_selector_container not in view.list_view.controls
+    assert getattr(view, "fixed_nav_container", None) is not None
 
     # Inspección de la tarjeta de contexto (Nivel Institucional inicial)
     card = view.level_selector_container.content
@@ -133,7 +134,7 @@ def test_estadisticas_view_tarjeta_contexto_render(state_con_datos, mock_page):
     texto_curso_consolidado = " ".join(t for t in textos_curso if t)
     assert "Colegio Belgrano" in texto_curso_consolidado
     assert "3ro B" in texto_curso_consolidado
-    assert len(view.list_view.controls) == 12
+    assert len(view.list_view.controls) == 9
     assert view.list_view.padding.bottom >= 88
 
 
@@ -187,7 +188,7 @@ def test_estadisticas_view_seleccion_contexto_modal(state_con_datos, mock_page):
     assert state_con_datos.estadisticas_nivel == "curso"
 
     # Tarjeta de contexto actualizada in-place
-    assert len(view.list_view.controls) == 12
+    assert len(view.list_view.controls) == 9
     card = view.level_selector_container.content
     textos = []
     def _extraer(ctrl):
@@ -206,7 +207,7 @@ def test_estadisticas_view_seleccion_contexto_modal(state_con_datos, mock_page):
     view._seleccionar_contexto("Colegio Belgrano", nivel="colegio")
     assert len(mock_page.dialog_stack) == 0
     assert state_con_datos.estadisticas_nivel == "colegio"
-    assert len(view.list_view.controls) == 12
+    assert len(view.list_view.controls) == 9
 
 
 def test_estadisticas_view_colegio_sin_cursos(state_con_datos, mock_page):
@@ -219,7 +220,7 @@ def test_estadisticas_view_colegio_sin_cursos(state_con_datos, mock_page):
     view._seleccionar_contexto("Colegio San Martin", nivel="colegio")
     assert state_con_datos.selected_colegio == "Colegio San Martin"
     assert state_con_datos.estadisticas_nivel == "colegio"
-    assert len(view.list_view.controls) == 12
+    assert len(view.list_view.controls) == 9
 
 
 def test_estadisticas_view_editorial_kpi_and_no_hex_literals(state_con_datos, mock_page):

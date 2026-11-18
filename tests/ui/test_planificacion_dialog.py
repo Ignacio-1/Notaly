@@ -253,7 +253,8 @@ def test_planificacion_dialog_modo_oscuro_y_tokens(temp_state):
     assert dlg_dark.bgcolor == DARK_TOKENS.surface_primary
     assert dlg_dark.header_row.controls[0].controls[0].color == DARK_TOKENS.text_primary
     assert dlg_dark.header_row.controls[0].controls[1].color == DARK_TOKENS.text_secondary
-    assert dlg_dark.body_column.scroll == ft.ScrollMode.AUTO
+    assert dlg_dark.content.content.scroll == ft.ScrollMode.AUTO
+    assert dlg_dark.body_column.horizontal_alignment == ft.CrossAxisAlignment.STRETCH
 
     # Modo Claro por defecto
     dlg_light = PlanificacionCursoDialog(

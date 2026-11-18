@@ -69,9 +69,10 @@ class PlanificacionesInstitucionDialog(NotalySheet):
         chips_bar = ft.Container(
             bgcolor=tok.surface_primary,
             border_radius=RADIUS_NONE,
-            border=ft.Border.only(bottom=ft.BorderSide(1, tok.border_hairline)),
+            border=None,
             content=self.chips_row,
         )
+        self.chips_bar = chips_bar
 
         btn_cerrar = sheet_action_button(
             "Listo / Cerrar",

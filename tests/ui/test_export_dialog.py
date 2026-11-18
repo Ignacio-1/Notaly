@@ -222,7 +222,7 @@ def test_export_dialog_responsividad_y_scroll():
 
     assert isinstance(dlg, NotalySheet)
     assert dlg.size_constraints.max_height == int(800 * 0.85)
-    assert dlg.content_col.scroll == ft.ScrollMode.AUTO
+    assert dlg.content.content.scroll == ft.ScrollMode.AUTO
 
 
 def test_export_dialog_restauracion_dock_on_dismiss():

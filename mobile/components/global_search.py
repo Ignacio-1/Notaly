@@ -101,7 +101,7 @@ class GlobalSearchOverlay(ft.Container):
             height=56,
             bgcolor=self._tok.surface_primary,
             border_radius=RADIUS_NONE,
-            border=ft.Border.only(bottom=ft.BorderSide(1, self._tok.border_hairline)),
+            border=None,
             padding=ft.Padding.symmetric(horizontal=SPACE_SM, vertical=0),
             content=ft.Row(
                 controls=[
@@ -198,7 +198,9 @@ class GlobalSearchOverlay(ft.Container):
         self.actualizar_tema(self._tok)
         self._montar_en_overlay_si_falta()
         self.is_open = True
-        self._actualizar_resultados(self.query_field.value or "")
+        q_actual = self.query_field.value or ""
+        self.clear_button.visible = bool(str(q_actual).strip())
+        self._actualizar_resultados(q_actual)
         try:
             if self.app_page is not None:
                 self.app_page.update()
@@ -213,10 +215,15 @@ class GlobalSearchOverlay(ft.Container):
     def cerrar_vista_si_abierta(self) -> bool:
         """
         Cierra de manera síncrona y segura la superposición si se encuentra abierta.
+        Limpia la consulta y resultados previos antes de ocultar la superposición.
         Retorna `True` si efectivamente estaba abierta y fue cerrada.
         """
         if not self._is_open:
             return False
+        self.query_field.value = ""
+        self.clear_button.visible = False
+        self._ultimo_query = ""
+        self._actualizar_resultados("")
         self.is_open = False
         try:
             if self.app_page is not None:
@@ -235,9 +242,7 @@ class GlobalSearchOverlay(ft.Container):
         self._tok = tok
         self.bgcolor = tok.bg_canvas
         self.search_header.bgcolor = tok.surface_primary
-        self.search_header.border = ft.Border.only(
-            bottom=ft.BorderSide(1, tok.border_hairline)
-        )
+        self.search_header.border = None
         self.back_button.icon_color = tok.text_secondary
         self.clear_button.icon_color = tok.text_secondary
         self.query_field.color = tok.text_primary

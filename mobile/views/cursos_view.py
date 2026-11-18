@@ -343,6 +343,10 @@ class CursosView(ft.Container):
     def _abrir_curso(self, nombre_curso: str, pestana: str = "notas") -> None:
         """Navega a la planilla o módulo del curso delegando en `on_navigate` (B4)."""
         self.state.selected_curso = nombre_curso
+        if hasattr(self.state, "selected_alumno_id"):
+            self.state.selected_alumno_id = None
+        if hasattr(self.state, "pending_alumno_focus"):
+            self.state.pending_alumno_focus = False
         self.on_navigate(pestana)
 
     def _abrir_modal_crear(self, _e: Any = None) -> None:

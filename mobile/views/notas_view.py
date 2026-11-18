@@ -16,10 +16,14 @@ import flet as ft
 
 from core.calculos import procesar_calificaciones_alumno
 from core.constants import (
+    K_APELLIDO,
+    K_NOMBRE,
+    K_NOMBRE_PILA,
     NOMBRES_TRIMESTRES,
     NOTA_MINIMA_APROBACION,
     NUM_EXTRAS,
     NUM_PRINCIPALES,
+    formatear_nombre_completo,
     separar_nombre_completo,
 )
 from mobile.components.comportamiento_dialog import ComportamientoDialog
@@ -42,6 +46,8 @@ from mobile.components.ui_header import (
     SaveStatusIndicator,
     UnderlineTabBar,
     build_module_tabs,
+    build_scroll_key,
+    scroll_to_key_safe,
 )
 from mobile.state import AppState
 from mobile.theme import (
@@ -163,6 +169,7 @@ class NotasView(ft.Container):
         self.slots_controls_by_student: dict[str, dict[str, Any]] = {}
         self.expanded_containers: dict[str, ft.Container] = {}
         self.chevron_icons: dict[str, ft.Icon] = {}
+        self._card_scroll_keys: dict[str, Any] = {}
         self.lista_tarjetas_listview: ft.ListView | None = None
 
         self.paneles_anuales: dict[str, dict[str, Any]] = {}
@@ -309,6 +316,8 @@ class NotasView(ft.Container):
             active_tab="notas",
             on_change=lambda dest: self._cambiar_pestana([dest]),
             tokens=tok,
+            page=self.app_page,
+            state=self.state,
         )
 
         # Sub-header integrado al scroll: períodos planos subrayados + barra de herramientas
@@ -848,6 +857,7 @@ class NotasView(ft.Container):
         self.slots_controls_by_student = {}
         self.expanded_containers = {}
         self.chevron_icons = {}
+        self._card_scroll_keys = {}
         self.paneles_anuales = {}
 
         if not alumnos:
@@ -873,6 +883,7 @@ class NotasView(ft.Container):
                 padding=ft.Padding(left=0, top=0, right=0, bottom=88),
                 controls=ctrls,
                 expand=True,
+                build_controls_on_demand=False,
             )
             return self.lista_tarjetas_listview
 
@@ -881,8 +892,9 @@ class NotasView(ft.Container):
 
         for id_al, al_data in alumnos.items():
             id_str = str(id_al)
-            nombre_al = (al_data.get("nombre") or "").strip() or "Sin nombre"
-            ap_act, nom_act = separar_nombre_completo(nombre_al)
+            raw_nombre_al = (al_data.get("nombre") or "").strip()
+            nombre_al = raw_nombre_al or "Sin nombre"
+            ap_act, nom_act = separar_nombre_completo(raw_nombre_al)
             if id_str not in self.name_drafts:
                 self.name_drafts[id_str] = {"apellido": ap_act, "nombre": nom_act}
 
@@ -994,7 +1006,7 @@ class NotasView(ft.Container):
                 width=48,
                 height=48,
                 tooltip="Editar o eliminar alumno",
-                on_click=lambda _, i=id_str, n=nombre_al: self._abrir_modal_renombrar_alumno(i, n),
+                on_click=lambda _, i=id_str, n=raw_nombre_al: self._abrir_modal_renombrar_alumno(i, n),
             )
             cabecera_desplegada_row = ft.Row(
                 alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
@@ -1135,7 +1147,10 @@ class NotasView(ft.Container):
                 nota_final_red, total, is_open and not es_modo_anual, es_modo_anual, tok
             )
 
+            scroll_key = build_scroll_key(f"alumno_{id_str}")
+            self._card_scroll_keys[id_str] = scroll_key
             card_container = ft.Container(
+                key=scroll_key,
                 bgcolor=tok.surface_primary,
                 border_radius=RADIUS_NONE,
                 border=ft.Border.only(
@@ -1186,6 +1201,7 @@ class NotasView(ft.Container):
             padding=ft.Padding(left=0, top=0, right=0, bottom=88),
             controls=ctrls,
             expand=True,
+            build_controls_on_demand=False,
         )
         return self.lista_tarjetas_listview
 
@@ -1286,7 +1302,7 @@ class NotasView(ft.Container):
             active_nombre = alumnos[active_id].get("nombre", "")
 
         _, _, slot_col_name, _ = self._get_slot_meta(self.active_grade_index, nombres_cols)
-        nombre_corto = active_nombre.split(",")[0].strip() if active_nombre else ""
+        nombre_corto = self._extraer_nombre_corto(active_nombre)
 
         self.dock_label_active = ft.Text(
             f"Ingresar {slot_col_name} · #{active_id} {nombre_corto}"
@@ -1495,6 +1511,15 @@ class NotasView(ft.Container):
             next_idx = (idx + 1) % len(alumnos_keys)
             self._toggle_expand_alumno(alumnos_keys[next_idx])
 
+    @staticmethod
+    def _extraer_nombre_corto(nombre: str | None) -> str:
+        """Normaliza espacios y obtiene el primer segmento visible del nombre para el dock."""
+        limpio = (nombre or "").strip()
+        if not limpio:
+            return "Sin nombre"
+        primer_tramo = limpio.split(",")[0].strip()
+        return primer_tramo or "Sin nombre"
+
     def _actualizar_dock_labels(self) -> None:
         if not self.dock_label_active:
             return
@@ -1507,7 +1532,7 @@ class NotasView(ft.Container):
 
         active_id = self.expanded_student_id
         active_nombre = alumnos.get(active_id, {}).get("nombre", "") if active_id else ""
-        nombre_corto = active_nombre.split(",")[0].strip() if active_nombre else ""
+        nombre_corto = self._extraer_nombre_corto(active_nombre)
         _, _, slot_col_name, _ = self._get_slot_meta(self.active_grade_index, nombres_cols)
 
         if active_id:
@@ -1653,10 +1678,117 @@ class NotasView(ft.Container):
             except Exception:
                 pass
 
+    def _desplazar_hacia_alumno(self, sid: str, duration: int = 300) -> None:
+        """Desplaza el ListView in-place hasta la tarjeta de `sid` de forma segura."""
+        sid_str = str(sid)
+        card = self.tarjetas_alumnos.get(sid_str)
+        target_key = self._card_scroll_keys.get(sid_str) or getattr(card, "key", None)
+        scroll_to_key_safe(
+            self.app_page,
+            self.lista_tarjetas_listview,
+            target_key,
+            duration=duration,
+        )
+
+    def enfocar_alumno(
+        self,
+        id_al: str | None,
+        *,
+        asegurar_editable: bool = True,
+        scroll: bool = True,
+    ) -> bool:
+        """
+        Expande in-place al alumno indicado (cambiando de Anual a 1° Trim si es
+        necesario) y desplaza suavemente el listado hacia su tarjeta.
+        """
+        if not id_al:
+            return False
+        sid_str = str(id_al)
+
+        if sid_str not in self.tarjetas_alumnos:
+            colegio = self.state.selected_colegio or ""
+            curso = self.state.selected_curso or ""
+            alumnos = self.state.get_alumnos(colegio, curso)
+            if sid_str not in alumnos:
+                return False
+            if asegurar_editable and self.state.active_trimestre >= 3:
+                self.state.active_trimestre = 0
+            self.expanded_student_id = sid_str
+            self.active_grade_index = 0
+            self._build_ui()
+            self._safe_update()
+            if scroll:
+                self._desplazar_hacia_alumno(sid_str)
+            return True
+
+        tok = resolve_tokens(page=self.app_page, state=self.state)
+        prev_id = self.expanded_student_id
+
+        if asegurar_editable and self.state.active_trimestre >= 3:
+            if prev_id and str(prev_id) != sid_str and str(prev_id) in self.expanded_containers:
+                prev_str = str(prev_id)
+                self.expanded_containers[prev_str].visible = False
+                if prev_str in self.chevron_icons:
+                    self.chevron_icons[prev_str].icon = ft.Icons.EXPAND_MORE
+                    self.chevron_icons[prev_str].color = tok.text_secondary
+            self.expanded_student_id = sid_str
+            self.active_grade_index = 0
+            self._seleccionar_trimestre(0)
+            if sid_str in self.expanded_containers:
+                self.expanded_containers[sid_str].visible = True
+            if sid_str in self.chevron_icons:
+                self.chevron_icons[sid_str].icon = ft.Icons.EXPAND_LESS
+                self.chevron_icons[sid_str].color = tok.accent_primary
+            self._actualizar_slots_ui(sid_str)
+            self._actualizar_fila_alumno_ui(sid_str)
+            self._actualizar_dock_labels()
+            self._safe_update()
+        else:
+            if prev_id != sid_str:
+                if prev_id and str(prev_id) in self.expanded_containers:
+                    prev_str = str(prev_id)
+                    self.expanded_containers[prev_str].visible = False
+                    if prev_str in self.chevron_icons:
+                        self.chevron_icons[prev_str].icon = ft.Icons.EXPAND_MORE
+                        self.chevron_icons[prev_str].color = tok.text_secondary
+                    self._actualizar_fila_alumno_ui(prev_str)
+                self.expanded_student_id = sid_str
+                if self.active_grade_index < 0:
+                    self.active_grade_index = 0
+                if sid_str in self.expanded_containers:
+                    self.expanded_containers[sid_str].visible = True
+                if sid_str in self.chevron_icons:
+                    self.chevron_icons[sid_str].icon = ft.Icons.EXPAND_LESS
+                    self.chevron_icons[sid_str].color = tok.accent_primary
+                self._actualizar_slots_ui(sid_str)
+                self._actualizar_fila_alumno_ui(sid_str)
+                self._actualizar_dock_labels()
+                self._safe_update()
+            elif sid_str in self.expanded_containers and not self.expanded_containers[sid_str].visible:
+                self.expanded_containers[sid_str].visible = True
+                self._actualizar_slots_ui(sid_str)
+                self._actualizar_fila_alumno_ui(sid_str)
+                self._actualizar_dock_labels()
+                self._safe_update()
+
+        if scroll:
+            self._desplazar_hacia_alumno(sid_str)
+        return True
+
+    def sincronizar_seleccion_busqueda(self) -> bool:
+        """Sincroniza el foco visual con `state.selected_alumno_id` si existe."""
+        target = getattr(self.state, "selected_alumno_id", None)
+        if not target:
+            return False
+        return self.enfocar_alumno(str(target), asegurar_editable=True, scroll=True)
+
     def _toggle_expand_alumno(self, sid: str) -> None:
         """Expande o colapsa la fila del alumno in-place sin destruir el ListView."""
         if self.state.active_trimestre >= 3:
             return
+
+        if hasattr(self.state, "selected_alumno_id"):
+            self.state.selected_alumno_id = None
 
         tok = resolve_tokens(page=self.app_page, state=self.state)
         prev_id = self.expanded_student_id
@@ -1886,8 +2018,26 @@ class NotasView(ft.Container):
         )
         self._mostrar_dialogo_con_dock_oculto(dlg)
 
-    def _abrir_modal_renombrar_alumno(self, id_al: str, nombre_actual: str) -> None:
-        ap_act, nom_act = separar_nombre_completo(nombre_actual)
+    def _abrir_modal_renombrar_alumno(self, id_al: str, nombre_actual: str = "") -> None:
+        colegio = self.state.selected_colegio or ""
+        curso = self.state.selected_curso or ""
+        alumnos = self.state.get_alumnos(colegio, curso) if hasattr(self.state, "get_alumnos") else {}
+        al_real = alumnos.get(str(id_al)) if isinstance(alumnos, dict) else None
+        raw_nombre = ""
+        if isinstance(al_real, dict):
+            raw_nombre = (al_real.get(K_NOMBRE) or "").strip()
+            ap_explicit = (al_real.get(K_APELLIDO) or "").strip()
+            nom_explicit = (al_real.get(K_NOMBRE_PILA) or "").strip()
+            if ap_explicit or nom_explicit:
+                ap_act, nom_act = ap_explicit, nom_explicit
+            else:
+                ap_act, nom_act = separar_nombre_completo(raw_nombre)
+        else:
+            texto_crudo = "" if (nombre_actual or "").strip() == "Sin nombre" else (nombre_actual or "").strip()
+            raw_nombre = texto_crudo
+            ap_act, nom_act = separar_nombre_completo(texto_crudo)
+
+        nombre_visible = raw_nombre or formatear_nombre_completo(ap_act, nom_act) or "Sin nombre"
 
         def confirmar(nuevo_apellido: str, nuevo_nombre: str):
             exito, msg = self.state.rename_alumno(id_al, nuevo_apellido, nuevo_nombre)
@@ -1905,13 +2055,15 @@ class NotasView(ft.Container):
             nombre_actual=nom_act,
             modo_continuo=False,
             on_confirm=confirmar,
-            on_delete=lambda: self._abrir_modal_eliminar_alumno(id_al, nombre_actual),
+            on_delete=lambda: self._abrir_modal_eliminar_alumno(id_al, nombre_visible),
             page=self.app_page,
             tokens=self.tokens,
         )
         self._mostrar_dialogo_con_dock_oculto(dlg)
 
     def _abrir_modal_eliminar_alumno(self, id_al: str, nombre: str) -> None:
+        nombre_seguro = (nombre or "").strip() or "Sin nombre"
+
         def confirmar():
             exito, msg = self.state.delete_alumno(id_al)
             if exito:
@@ -1924,7 +2076,7 @@ class NotasView(ft.Container):
         dlg = ConfirmDeleteDialog(
             titulo="Eliminar Alumno",
             mensaje=(
-                f"¿Estás seguro de que deseas eliminar al alumno '{nombre}' "
+                f"¿Estás seguro de que deseas eliminar al alumno '{nombre_seguro}' "
                 f"(N° {id_al}) y todas sus notas y asistencias?"
             ),
             on_confirm=confirmar,
@@ -1952,9 +2104,17 @@ class NotasView(ft.Container):
         self._mostrar_dialogo_con_dock_oculto(dlg)
 
     def _ordenar_alumnos_az(self) -> None:
-        self.state.order_alumnos_alphabetically()
+        mapa_ids = self.state.order_alumnos_alphabetically() or {}
+        if self.expanded_student_id:
+            self.expanded_student_id = mapa_ids.get(
+                str(self.expanded_student_id),
+                self.expanded_student_id,
+            )
+        self.name_drafts.clear()
         self._build_ui()
         self._safe_update()
+        if self.expanded_student_id and self.expanded_student_id in self.tarjetas_alumnos:
+            self._desplazar_hacia_alumno(self.expanded_student_id)
         self._mostrar_snackbar("Alumnos ordenados alfabéticamente (A-Z).")
 
     def _abrir_modal_exportar(self) -> None:

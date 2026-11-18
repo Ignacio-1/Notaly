@@ -116,6 +116,7 @@ class AppState:
         self.selected_colegio: str | None = None
         self.selected_curso: str | None = None
         self.selected_alumno_id: str | None = None
+        self.pending_alumno_focus: bool = False
         self.active_trimestre: int = 0  # 0: 1° Trim, 1: 2° Trim, 2: 3° Trim, 3: Resumen Anual
         self.asistencia_fecha: str = datetime.now().strftime("%Y-%m-%d")
         self.footer_tab: str = "inicio"  # "inicio", "planillas", "estadisticas"
@@ -439,14 +440,17 @@ class AppState:
             self.selected_curso = None
             self.search_query_cursos = ""
             self.selected_alumno_id = None
+            self.pending_alumno_focus = False
         elif tipo == "curso":
             self.selected_colegio = colegio
             self.selected_curso = curso
             self.selected_alumno_id = None
+            self.pending_alumno_focus = False
         elif tipo == "alumno":
             self.selected_colegio = colegio
             self.selected_curso = curso
             self.selected_alumno_id = str(alumno_id) if alumno_id is not None else None
+            self.pending_alumno_focus = alumno_id is not None
 
         if on_navigate:
             on_navigate(destino)
@@ -1234,53 +1238,107 @@ class AppState:
         self.save_data()
         return True, "Alumno eliminado y orden actualizado."
 
-    def order_alumnos_alphabetically(self, colegio: str | None = None, curso: str | None = None) -> None:
+    def _remapear_asistencias_y_grupos(
+        self,
+        curso_dict: dict,
+        mapa_ids: dict[str, str],
+    ) -> None:
+        """Actualiza las referencias de IDs de alumnos en asistencias y trabajos en grupo."""
+        from core.constants import K_TRABAJOS_GRUPO, K_GRUPOS, K_INTEGRANTES
+
+        asistencias = curso_dict.get(K_ASISTENCIAS, {})
+        nuevas_asistencias = {}
+        if isinstance(asistencias, dict):
+            for fecha, registros_dia in asistencias.items():
+                nuevos_registros = {}
+                if isinstance(registros_dia, dict):
+                    for viejo_id, estado in registros_dia.items():
+                        v_str = str(viejo_id)
+                        if v_str in mapa_ids:
+                            nuevos_registros[mapa_ids[v_str]] = estado
+                nuevas_asistencias[fecha] = nuevos_registros
+        curso_dict[K_ASISTENCIAS] = nuevas_asistencias
+
+        trabajos = curso_dict.get(K_TRABAJOS_GRUPO, [])
+        if isinstance(trabajos, list):
+            for trabajo in trabajos:
+                if not isinstance(trabajo, dict):
+                    continue
+                grupos = trabajo.get(K_GRUPOS, [])
+                if not isinstance(grupos, list):
+                    continue
+                for grupo in grupos:
+                    if not isinstance(grupo, dict):
+                        continue
+                    integrantes = grupo.get(K_INTEGRANTES, [])
+                    if isinstance(integrantes, list):
+                        grupo[K_INTEGRANTES] = [
+                            mapa_ids[str(aid)]
+                            for aid in integrantes
+                            if str(aid) in mapa_ids
+                        ]
+
+    def order_alumnos_alphabetically(
+        self,
+        colegio: str | None = None,
+        curso: str | None = None,
+    ) -> dict[str, str]:
         """
         Ordena los alumnos alfabéticamente por APELLIDO y renumera sus IDs consecutivamente.
-        Se puede ejecutar cuantas veces se desee.
+        Los alumnos con nombre registrado van primero (normalizando mayúsculas y acentos)
+        y los alumnos sin nombre quedan al final preservando su orden numérico relativo.
+        Retorna el mapa `{viejo_id: nuevo_id}`.
         """
         from core.constants import separar_nombre_completo, K_APELLIDO, K_NOMBRE_PILA
-        curso_dict = self.get_curso_data(colegio, curso)
+
+        c_col = colegio or self.selected_colegio
+        c_cur = curso or self.selected_curso
+        curso_dict = self.get_curso_data(c_col, c_cur)
         if not curso_dict or not curso_dict.get(K_ALUMNOS):
-            return
+            return {}
 
         alumnos = curso_dict[K_ALUMNOS]
 
         def criterio_apellido(item_id: str):
             al = alumnos[item_id]
-            # Si tiene K_APELLIDO explícito, usarlo
-            ap = al.get(K_APELLIDO, "").strip()
-            nom = al.get(K_NOMBRE_PILA, "").strip()
-            if not ap:
-                ap, nom = separar_nombre_completo(al.get(K_NOMBRE, ""))
-            # Normalizar para ordenar sin distinguir mayúsculas ni acentos básicos
-            return (ap.lower(), nom.lower(), int(item_id) if item_id.isdigit() else 9999)
+            ap = (al.get(K_APELLIDO, "") or "").strip()
+            nom = (al.get(K_NOMBRE_PILA, "") or "").strip()
+            if not ap and not nom:
+                ap, nom = separar_nombre_completo((al.get(K_NOMBRE, "") or "").strip())
+            int_id = int(item_id) if str(item_id).isdigit() else 999999
+            if not (ap or nom):
+                return (1, "", "", "", "", int_id)
+            return (
+                0,
+                gestor_datos.normalizar_texto(ap),
+                gestor_datos.normalizar_texto(nom),
+                ap.casefold(),
+                nom.casefold(),
+                int_id,
+            )
 
-        # Ordenar por Apellido (y en caso de empate por Nombre)
         ids_ordenados = sorted(alumnos.keys(), key=criterio_apellido)
 
         alumnos_reordenados = {}
-        mapa_ids = {}
+        mapa_ids: dict[str, str] = {}
         for nuevo_id, viejo_id in enumerate(ids_ordenados, start=1):
             alumnos_reordenados[str(nuevo_id)] = alumnos[viejo_id]
             mapa_ids[str(viejo_id)] = str(nuevo_id)
 
         curso_dict[K_ALUMNOS] = alumnos_reordenados
+        self._remapear_asistencias_y_grupos(curso_dict, mapa_ids)
 
-        # Actualizar asistencias con el nuevo mapeo
-        asistencias = curso_dict.get(K_ASISTENCIAS, {})
-        nuevas_asistencias = {}
-        for fecha, registros_dia in asistencias.items():
-            nuevos_registros = {}
-            if isinstance(registros_dia, dict):
-                for viejo_id, estado in registros_dia.items():
-                    if str(viejo_id) in mapa_ids:
-                        nuevos_registros[mapa_ids[str(viejo_id)]] = estado
-            nuevas_asistencias[fecha] = nuevos_registros
-        curso_dict[K_ASISTENCIAS] = nuevas_asistencias
+        if (
+            self.selected_alumno_id
+            and c_col == self.selected_colegio
+            and c_cur == self.selected_curso
+            and str(self.selected_alumno_id) in mapa_ids
+        ):
+            self.selected_alumno_id = mapa_ids[str(self.selected_alumno_id)]
 
         self.curso_roster_version += 1
         self.save_data()
+        return mapa_ids
 
     def set_nota(
         self,

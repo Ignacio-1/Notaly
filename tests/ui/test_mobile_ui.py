@@ -1121,7 +1121,10 @@ def test_estadisticas_view_render_colegio(isolated_app_state, mock_page_mobile):
     assert view.donut_container.content is not None
     assert view.histograma_container.content is not None
     assert view.dynamic_content_container.content is not None
-    assert len(view.list_view.controls) == 12
+    assert len(view.list_view.controls) == 9
+    assert view.level_selector_container not in view.list_view.controls
+    assert view.seccion_selector_container not in view.list_view.controls
+    assert view.period_selector_container not in view.list_view.controls
 
 
 def test_estadisticas_view_render_curso(isolated_app_state, mock_page_mobile):
@@ -1650,3 +1653,333 @@ def test_notas_view_dock_retractil_y_header_colapsable_y_lapiz_edicion(isolated_
     assert isinstance(dlg, StudentFormDialog)
     assert dlg.on_delete is not None
     mock_page_mobile.pop_dialog()
+
+
+# ---------------------------------------------------------------------------
+# SPEC-032 (TDD): Enfoque de búsqueda en caché, orden A-Z, edición vacía y Estadísticas
+# ---------------------------------------------------------------------------
+
+
+def _crear_pagina_main_spec032(width: int = 360, height: int = 800, dark: bool = False):
+    import inspect
+    from types import SimpleNamespace
+
+    class _Win:
+        closed = False
+
+        def close(self):
+            self.closed = True
+
+    class _View:
+        can_pop = True
+        on_confirm_pop = None
+
+        def confirm_pop(self, _ok):
+            pass
+
+    p = SimpleNamespace(
+        width=width,
+        height=height,
+        title="Notaly",
+        theme_mode=ft.ThemeMode.DARK if dark else ft.ThemeMode.LIGHT,
+        bgcolor=None,
+        theme=None,
+        fonts={},
+        padding=0,
+        spacing=0,
+        services=[],
+        controls=[],
+        overlay=[],
+        dialog_stack=[],
+        views=[_View()],
+        window=_Win(),
+        navigation_bar=None,
+        appbar=None,
+        on_keyboard_event=None,
+        on_app_lifecycle_state_change=None,
+        on_resize=None,
+    )
+    p.add = lambda *c: p.controls.extend(c)
+    p.update = lambda: None
+    p.show_dialog = lambda d: p.dialog_stack.append(d)
+    p.pop_dialog = lambda: p.dialog_stack.pop() if p.dialog_stack else None
+
+    def _run_task(fn, *args, **kwargs):
+        res = fn(*args, **kwargs)
+        if inspect.isawaitable(res):
+            res.close()
+        return res
+
+    p.run_task = _run_task
+    return p
+
+
+def test_spec032_busqueda_global_enfoca_alumno_en_vista_cacheada_y_desde_anual(tmp_path):
+    """RF-03, RF-04: Seleccionar alumno en búsqueda global enfoca in-place incluso en NotasView cacheada/Anual."""
+    import json
+    from unittest.mock import MagicMock, patch
+    from core.constants import K_ALUMNOS, K_COLEGIOS, K_CURSOS, K_NOMBRE
+    from mobile.state import AppState
+    from mobile.views.notas_view import NotasView
+
+    alumnos = {str(i): {K_NOMBRE: f"Alumno Prueba {i}"} for i in range(1, 31)}
+    alumnos["25"] = {K_NOMBRE: "Juarez, Luz"}
+    data_file = tmp_path / "search_focus.json"
+    data_file.write_text(
+        json.dumps({K_COLEGIOS: {"Colegio Nacional": {K_CURSOS: {"1ro A": {K_ALUMNOS: alumnos}}}}}),
+        encoding="utf-8",
+    )
+
+    page = _crear_pagina_main_spec032(width=360, height=800, dark=False)
+    with patch("core.gestor_datos.leer_ruta_config", return_value=str(data_file)), patch(
+        "core.gestor_datos.obtener_ruta_datos_por_defecto", return_value=str(data_file)
+    ), patch("mobile.state.AppState.find_local_backups", return_value=[]):
+        from mobile.main import main
+
+        main(page)
+
+    real_state = page.controls[0].content.state
+    nav = page.controls[0].content.on_navigate
+    real_state.selected_colegio = "Colegio Nacional"
+    real_state.selected_curso = "1ro A"
+    nav("cursos")
+    nav("notas")
+
+    vista_notas = page.controls[0].content
+    assert isinstance(vista_notas, NotasView)
+    assert vista_notas.lista_tarjetas_listview.build_controls_on_demand is False
+    assert getattr(vista_notas.tarjetas_alumnos["25"], "key", None) is not None
+
+    # Dejar vista cacheada en pestaña Anual y otra tarjeta abierta, ir a planillas y buscar a alumno 25
+    vista_notas._seleccionar_trimestre(3)
+    assert real_state.active_trimestre == 3
+    lv_ref = vista_notas.lista_tarjetas_listview
+    mock_scroll = MagicMock()
+    vista_notas.lista_tarjetas_listview.scroll_to = mock_scroll
+
+    nav("planillas")
+    real_state.seleccionar_resultado_busqueda(
+        {"tipo": "alumno", "id": "25", "nombre": "Juarez, Luz", "colegio": "Colegio Nacional", "curso": "1ro A"},
+        on_navigate=nav,
+    )
+
+    vista_despues = page.controls[0].content
+    assert vista_despues is vista_notas
+    assert vista_notas.lista_tarjetas_listview is lv_ref
+    assert real_state.active_trimestre == 0
+    assert vista_notas.expanded_student_id == "25"
+    assert vista_notas.expanded_containers["25"].visible is True
+    assert mock_scroll.call_count >= 1
+    assert mock_scroll.call_args.kwargs.get("scroll_key") is not None
+
+    # Si ya estaba en un trimestre editable (ej. T2), conservar T2 al enfocar otro alumno
+    vista_notas._seleccionar_trimestre(1)
+    assert real_state.active_trimestre == 1
+    real_state.seleccionar_resultado_busqueda(
+        {"tipo": "alumno", "id": "10", "nombre": "Alumno Prueba 10", "colegio": "Colegio Nacional", "curso": "1ro A"},
+        on_navigate=nav,
+    )
+    assert real_state.active_trimestre == 1
+    assert vista_notas.expanded_student_id == "10"
+
+    # Tolerancia con page=None en scroll programático y fallback desde Anual
+    vista_sin_page = NotasView(real_state, None, on_navigate=lambda _x: None)
+    assert vista_sin_page.enfocar_alumno("25", asegurar_editable=True, scroll=True) is True
+
+    real_state.active_trimestre = 3
+    vista_sin_page.tarjetas_alumnos.pop("25", None)
+    assert vista_sin_page.enfocar_alumno("25", asegurar_editable=True, scroll=True) is True
+    assert real_state.active_trimestre == 0
+
+    # Sanitización de nombres con espacios en blanco para el dock
+    assert NotasView._extraer_nombre_corto("   ") == "Sin nombre"
+    assert NotasView._extraer_nombre_corto("  , Perez") == "Sin nombre"
+    assert NotasView._extraer_nombre_corto("Juarez, Luz") == "Juarez"
+
+
+def test_spec032_ordenamiento_az_sin_nombre_al_final_y_seguimiento_expandido(tmp_path):
+    """RF-05, RF-06: Ordenamiento A-Z ubica alumnos sin nombre al final, normaliza acentos y preserva seguimiento."""
+    from core.constants import K_ALUMNOS, K_ASISTENCIAS, K_COLEGIOS, K_CURSOS, K_NOMBRE, K_TRABAJOS_GRUPO
+    from mobile.state import AppState
+    from mobile.views.notas_view import NotasView
+
+    state = AppState(data_path=str(tmp_path / "az_sort.json"))
+    state.data = {
+        K_COLEGIOS: {
+            "Colegio 1": {
+                K_CURSOS: {
+                    "1ro A": {
+                        K_ALUMNOS: {
+                            "1": {K_NOMBRE: ""},
+                            "2": {K_NOMBRE: "Ávila, Ana"},
+                            "3": {K_NOMBRE: ""},
+                            "4": {K_NOMBRE: "Alvarez, Luis"},
+                            "5": {K_NOMBRE: "Zapata, Luz"},
+                        },
+                        K_ASISTENCIAS: {"2026-11-18": {"2": "P", "5": "A"}},
+                        K_TRABAJOS_GRUPO: [
+                            {
+                                "id": "1",
+                                "titulo": "TP1",
+                                "grupos": [{"id": "1", "nombre": "Grupo 1", "integrantes": ["2", "5", "1"]}],
+                            }
+                        ],
+                    }
+                }
+            }
+        }
+    }
+    state.selected_colegio = "Colegio 1"
+    state.selected_curso = "1ro A"
+    state.selected_alumno_id = "2"
+
+    page = _crear_pagina_main_spec032()
+    nv = NotasView(state, page, on_navigate=lambda _x: None)
+
+    # Simular que usuario expandió manualmente a "Zapata, Luz" (#5) luego de llegar por búsqueda
+    nv._toggle_expand_alumno("5")
+    assert nv.expanded_student_id == "5"
+
+    nv._ordenar_alumnos_az()
+    alumnos_ord = state.get_alumnos("Colegio 1", "1ro A")
+    nombres_ord = [alumnos_ord[str(i)][K_NOMBRE] for i in range(1, 6)]
+    assert nombres_ord == ["Alvarez, Luis", "Ávila, Ana", "Zapata, Luz", "", ""]
+
+    # Verificar remapeo de asistencias y grupos y seguimiento de tarjeta expandida ("Zapata, Luz" ahora es "3")
+    assert state.get_asistencias_dia("2026-11-18", "Colegio 1", "1ro A") == {"2": "P", "3": "A"}
+    integrantes = state.get_trabajos_grupo_curso("Colegio 1", "1ro A")[0]["grupos"][0]["integrantes"]
+    assert integrantes == ["2", "3", "4"]
+    assert nv.expanded_student_id == "3"
+    assert nv.expanded_containers["3"].visible is True
+
+
+def test_spec032_editar_y_eliminar_alumno_sin_nombre(isolated_app_state, mock_page_mobile):
+    """RF-07: Editar un alumno sin nombre abre campos vacíos, valida no vacío y muestra 'Sin nombre' al eliminar."""
+    from mobile.views.notas_view import NotasView
+
+    isolated_app_state.selected_colegio = "Colegio Nacional"
+    isolated_app_state.selected_curso = "5to A"
+    isolated_app_state.data[K_COLEGIOS]["Colegio Nacional"][K_CURSOS]["5to A"][K_ALUMNOS]["3"] = {
+        "nombre": ""
+    }
+    nv = NotasView(isolated_app_state, mock_page_mobile, on_navigate=lambda _x: None)
+
+    nv._abrir_modal_renombrar_alumno("3", "Sin nombre")
+    dlg = mock_page_mobile.active_dialog
+    assert isinstance(dlg, StudentFormDialog)
+    assert dlg.txt_apellido.value == ""
+    assert dlg.txt_nombre.value == ""
+
+    exito, _msg = isolated_app_state.rename_alumno("3", "", "")
+    assert exito is False
+
+    dlg.on_delete()
+    confirm_dlg = mock_page_mobile.active_dialog
+    assert isinstance(confirm_dlg, ConfirmDeleteDialog)
+    assert "Sin nombre" in confirm_dlg.message_text.value
+    mock_page_mobile.pop_dialog()
+
+
+def test_spec032_estadisticas_sin_alumno_numeral_y_barra_periodos_fija(tmp_path):
+    """RF-08, RF-15: Estadísticas muestra 'Sin nombre' (sin 'Alumno #') y fija barras selectoras sin recorte."""
+    from core.constants import (
+        K_ALUMNOS,
+        K_ASISTENCIAS,
+        K_COLEGIOS,
+        K_COMPORTAMIENTOS,
+        K_CURSOS,
+        K_FECHA,
+        K_NOMBRE,
+        K_SUBTIPO,
+        K_TIPO,
+        K_TRIMESTRES,
+    )
+    from mobile.theme import DARK_TOKENS, LIGHT_TOKENS
+
+    def _collect_text_values(ctrl):
+        vals = []
+        if ctrl is None:
+            return vals
+        if isinstance(ctrl, ft.Text) and isinstance(ctrl.value, str):
+            vals.append(ctrl.value)
+        if getattr(ctrl, "title", None) and isinstance(ctrl.title, str):
+            vals.append(ctrl.title)
+        if hasattr(ctrl, "content") and ctrl.content is not None:
+            vals.extend(_collect_text_values(ctrl.content))
+        for ch in getattr(ctrl, "controls", None) or []:
+            vals.extend(_collect_text_values(ch))
+        return vals
+
+    for dark, _tokens in ((False, LIGHT_TOKENS), (True, DARK_TOKENS)):
+        state = AppState(data_path=str(tmp_path / f"stats_spec032_{dark}.json"))
+        state.theme_mode = "dark" if dark else "light"
+        state.data = {
+            K_COLEGIOS: {
+                "Colegio Nacional": {
+                    K_CURSOS: {
+                        "5to A": {
+                            K_ALUMNOS: {
+                                "1": {
+                                    K_NOMBRE: "Gomez, Ana",
+                                    K_TRIMESTRES: {"0": {"P": [8, 9, None], "E": [], "R": None}},
+                                    K_COMPORTAMIENTOS: [{"id": "c1", K_TIPO: "positivo", K_SUBTIPO: "Ejemplar", K_FECHA: "18-11-2026"}],
+                                },
+                                "2": {
+                                    K_NOMBRE: "",
+                                    K_TRIMESTRES: {"0": {"P": [3, 4, None], "E": [], "R": None}},
+                                    K_COMPORTAMIENTOS: [{"id": "c2", K_TIPO: "negativo", K_SUBTIPO: "Inadecuado", K_FECHA: "18-11-2026"}],
+                                },
+                            },
+                            K_ASISTENCIAS: {"2026-11-18": {"1": "P", "2": "A"}},
+                        }
+                    }
+                }
+            }
+        }
+        state.selected_colegio = "Colegio Nacional"
+        state.selected_curso = "5to A"
+        state.estadisticas_nivel = "curso"
+        state.estadisticas_periodo = 0
+
+        page = _crear_pagina_main_spec032(width=360, height=800, dark=dark)
+        ev = EstadisticasView(state, page, on_navigate=lambda _d: None)
+
+        # Barras selectoras fijas fuera de list_view y ListView con ClipBehavior.HARD_EDGE
+        assert getattr(ev, "fixed_nav_container", None) is not None
+        assert ev.level_selector_container not in ev.list_view.controls
+        assert ev.seccion_selector_container not in ev.list_view.controls
+        assert ev.period_selector_container not in ev.list_view.controls
+        assert len(ev.list_view.controls) == 9
+        scroll_wrapper = ev.content.controls[2]
+        assert scroll_wrapper.clip_behavior == ft.ClipBehavior.HARD_EDGE
+
+        # In-place updates al conmutar período y sección
+        lv_refs = ev.list_view.controls
+        ev._conmutar_periodo(1)
+        assert ev.list_view.controls is lv_refs
+        ev._conmutar_periodo(0)
+
+        # Rendimiento sin "Alumno #"
+        textos_rend = _collect_text_values(ev.dynamic_content_container)
+        assert any("Sin nombre" in t for t in textos_rend)
+        assert not any("Alumno #" in t for t in textos_rend)
+
+        # Conducta curso + institucional (IDs compuestos con espacio "5to A_2")
+        ev._conmutar_seccion("conducta")
+        assert ev.list_view.controls is lv_refs
+        textos_cond = _collect_text_values(ev.comportamiento_container)
+        assert any("Sin nombre" in t for t in textos_cond)
+        assert not any("Alumno #" in t for t in textos_cond)
+
+        ev._conmutar_nivel("colegio")
+        textos_cond_inst = _collect_text_values(ev.comportamiento_container)
+        assert any("Sin nombre" in t for t in textos_cond_inst)
+        assert not any("Alumno #" in t for t in textos_cond_inst)
+
+        # Asistencias sin "Alumno #"
+        ev._conmutar_nivel("curso", "5to A")
+        ev._conmutar_seccion("asistencias")
+        assert ev.list_view.controls is lv_refs
+        textos_asist = _collect_text_values(ev.asistencia_detalle_container)
+        assert any("Sin nombre" in t for t in textos_asist)
+        assert not any("Alumno #" in t for t in textos_asist)

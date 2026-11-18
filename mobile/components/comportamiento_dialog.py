@@ -108,6 +108,7 @@ class ComportamientoDialog(NotalySheet):
         self.txt_observacion = ft.TextField(
             label="Observación (opcional)",
             hint_text="",
+            expand=True,
             multiline=True,
             min_lines=2,
             max_lines=4,
@@ -124,8 +125,9 @@ class ComportamientoDialog(NotalySheet):
         self.observacion_input_container.content = ft.Column(
             spacing=SPACE_XS,
             tight=True,
+            horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
             controls=[
-                self.txt_observacion,
+                ft.Row(controls=[self.txt_observacion]),
                 self.micro_status_text,
             ],
         )
