@@ -113,6 +113,7 @@ def test_ci_workflow_reproducible_y_compuertas_produccion() -> None:
     assert "scripts/obfuscate_pipeline.py" in all_run
     assert "MANAGE_EXTERNAL_STORAGE" not in wf_text or "aapt2" in all_run
     assert "READ_EXTERNAL_STORAGE" in all_run and "WRITE_EXTERNAL_STORAGE" in all_run
+    assert "META-INF/*.RSA" in all_run and "len(sig_blocks) == 1" in all_run
 
     # Compuertas de verificación automáticas post-compilación
     assert "pubspec.lock" in all_run

@@ -273,14 +273,26 @@ jobs:
             done
           fi
 
-          # Firmar AABs con jarsigner
+          # Firmar AABs con jarsigner (eliminando firmas previas/debug para garantizar 1 sola cadena de certificados)
           for aab in build/aab/*.aab; do
             if [ -f "$aab" ] && [[ "$aab" != *"-signed.aab" ]]; then
+              zip -d "$aab" 'META-INF/*.SF' 'META-INF/*.RSA' 'META-INF/*.DSA' 'META-INF/*.EC' 'META-INF/MANIFEST.MF' >/dev/null 2>&1 || true
               jarsigner \
                 -keystore release.keystore \
                 -storepass "$KEYSTORE_PASSWORD" \
                 -keypass "$KEY_PASSWORD" \
                 "$aab" "$KEY_ALIAS"
+              jarsigner -verify -strict "$aab" >/dev/null
+              python - "$aab" <<'PY'
+          import sys, zipfile
+          with zipfile.ZipFile(sys.argv[1]) as zf:
+              sig_blocks = [
+                  n for n in zf.namelist()
+                  if n.startswith("META-INF/") and n.upper().endswith((".RSA", ".DSA", ".EC"))
+              ]
+          assert len(sig_blocks) == 1, f"El AAB debe tener exactamente 1 cadena de firma: {sig_blocks}"
+          print(f"OK AAB firmado con 1 cadena de certificado: {sig_blocks[0]}")
+          PY
               mv "$aab" "${aab%.aab}-signed.aab"
             fi
           done
