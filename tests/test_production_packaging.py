@@ -113,6 +113,8 @@ def test_ci_workflow_reproducible_y_compuertas_produccion() -> None:
     assert "notaly-key.jks" in all_run and ".jks" in all_run
     assert "GestorNotasEducativo_App.zip" in all_run
     assert "debuggable" in all_run
+    assert "actions/cache@v4" in wf_text
+    assert "for attempt in 1 2 3" in all_run
 
 
 def test_obfuscate_pipeline_real_sobre_copia_y_falla_ante_error_sintaxis(tmp_path: Path) -> None:
