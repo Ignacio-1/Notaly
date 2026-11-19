@@ -1706,8 +1706,11 @@ class AppState:
 
     def get_backup_directories(self) -> list[Path]:
         """
-        Retorna la lista ordenada de directorios donde se pueden guardar o buscar copias de seguridad.
-        Maneja tanto Android (almacenamiento público y scoped storage) como Desktop/Linux/macOS.
+        Retorna la lista ordenada de directorios seguros para guardar o buscar copias de seguridad.
+        - En Android/iOS (Scoped Storage + políticas Google Play): usa exclusivamente almacenamiento
+          privado interno de la app (`FLET_APP_STORAGE_DATA` / `_get_config_dir()`), delegando
+          la exportación externa en el selector SAF (`ft.FilePicker`) y Share Sheet nativo.
+        - En Desktop: prioriza `Downloads`/`Documents` del usuario y respalda en carpetas internas.
         """
         candidates: list[Path] = []
         seen: set[str] = set()
@@ -1726,51 +1729,33 @@ class AppState:
                 seen.add(p_str)
                 candidates.append(p_resolved)
 
-        # 1. Android external storage (Downloads / Descargas / Documents)
-        android_paths = [
-            "/storage/emulated/0/Download",
-            "/storage/emulated/0/Downloads",
-            "/sdcard/Download",
-            "/sdcard/Downloads",
-            "/storage/emulated/0/Documents",
-            "/sdcard/Documents",
-        ]
-        ext_storage = os.getenv("EXTERNAL_STORAGE")
-        if ext_storage:
-            android_paths.insert(0, f"{ext_storage}/Download")
-            android_paths.insert(1, f"{ext_storage}/Downloads")
+        # 1. En Desktop: priorizar directorios estándar del usuario (nunca rutas públicas cableadas en Android)
+        if not gestor_planillas.es_plataforma_movil():
+            home = Path.home()
+            home_str = str(home).rstrip("\\/").replace("\\", "/")
+            if home_str not in ["", "/", "/data", "/root"] and not home_str.startswith("/data/"):
+                downloads_dir = home / "Downloads"
+                descargas_dir = home / "Descargas"
+                if downloads_dir.exists() and downloads_dir.is_dir():
+                    add_candidate(downloads_dir)
+                elif descargas_dir.exists() and descargas_dir.is_dir():
+                    add_candidate(descargas_dir)
+                elif not home_str.startswith("/"):
+                    # En sistemas Desktop donde Downloads aún no exista pero el home sea de usuario válido
+                    add_candidate(downloads_dir)
 
-        for p_str in android_paths:
-            p = Path(p_str)
-            if p.exists() and p.is_dir():
-                add_candidate(p)
+                for folder in ["Downloads", "Descargas", "Documents", "Documentos"]:
+                    p = home / folder
+                    if p.exists() and p.is_dir():
+                        add_candidate(p)
 
-        # 2. Desktop user directories: Prioridad absoluta para la carpeta Downloads del equipo
-        home = Path.home()
-        home_str = str(home).rstrip("\\/").replace("\\", "/")
-        if home_str not in ["", "/", "/data", "/root"]:
-            downloads_dir = home / "Downloads"
-            descargas_dir = home / "Descargas"
-            if downloads_dir.exists() and downloads_dir.is_dir():
-                add_candidate(downloads_dir)
-            elif descargas_dir.exists() and descargas_dir.is_dir():
-                add_candidate(descargas_dir)
-            elif not home_str.startswith("/"):
-                # En sistemas Desktop donde Downloads aún no exista pero el home sea de usuario válido
-                add_candidate(downloads_dir)
-
-            for folder in ["Downloads", "Descargas", "Documents", "Documentos"]:
-                p = home / folder
-                if p.exists() and p.is_dir():
-                    add_candidate(p)
-
-        # 3. Carpeta de backups interna de la aplicación (100% garantizada para lectura/escritura)
+        # 2. Almacenamiento privado interno de la aplicación (100% garantizado en Android/iOS y Desktop)
         if self.data_path:
             parent_dir = Path(self.data_path).parent
             add_candidate(parent_dir / "backups")
             add_candidate(parent_dir)
 
-        # 4. Carpeta de configuración global de la app
+        # 3. Carpeta de configuración global de la app
         try:
             cfg_dir = gestor_datos._get_config_dir()
             add_candidate(cfg_dir / "backups")
@@ -1807,7 +1792,6 @@ class AppState:
                 dest_dir.mkdir(parents=True, exist_ok=True)
                 backup_path = dest_dir / backup_name
 
-                import json
                 temp_file = dest_dir / f"{backup_name}.tmp"
                 with open(temp_file, 'w', encoding='utf-8') as f:
                     json.dump(self.data, f, ensure_ascii=False, indent=2)
@@ -1857,23 +1841,36 @@ class AppState:
         if not colegios or len(colegios) == 0:
             return False, "Base de datos vacía, omitiendo respaldo automático.", None
 
-        # Priorizar Descargas / Documentos para facilitar transferir a otro dispositivo,
-        # con fallback a la carpeta segura interna de la app.
+        # En Desktop priorizar Descargas/Documentos; en Android usa directamente
+        # almacenamiento interno seguro sin intentar rutas públicas restringidas.
         dest_dirs_to_try: list[Path] = []
-        for d in self.get_backup_directories():
+        seen_dests: set[str] = set()
+
+        def _append_dest(p: Path | None) -> None:
+            if p is None:
+                return
+            key = str(p)
+            if key not in seen_dests:
+                seen_dests.add(key)
+                dest_dirs_to_try.append(p)
+
+        backup_dirs = self.get_backup_directories()
+        for d in backup_dirs:
             nom = d.name.lower()
             if "download" in nom or "descarga" in nom or "document" in nom:
-                dest_dirs_to_try.append(d)
+                _append_dest(d)
 
         if self.data_path:
-            dest_dirs_to_try.append(Path(self.data_path).parent / "backups")
-            dest_dirs_to_try.append(Path(self.data_path).parent)
+            _append_dest(Path(self.data_path).parent / "backups")
+            _append_dest(Path(self.data_path).parent)
         try:
             cfg_dir = gestor_datos._get_config_dir()
-            dest_dirs_to_try.append(cfg_dir / "backups")
-            dest_dirs_to_try.append(cfg_dir)
+            _append_dest(cfg_dir / "backups")
+            _append_dest(cfg_dir)
         except Exception:
             pass
+        for d in backup_dirs:
+            _append_dest(d)
 
         now = datetime.now()
         fecha_str = now.strftime(FORMATO_FECHA)
@@ -1958,6 +1955,28 @@ class AppState:
             return True
         colegios = self.data.get(K_COLEGIOS, {})
         return not bool(colegios and len(colegios) > 0)
+
+    def export_backup_bytes(self) -> tuple[bytes | None, str | None]:
+        """
+        Serializa una copia de respaldo en bytes UTF-8 lista para exportar vía SAF (`FilePicker.save_file`).
+        Retorna `(bytes_json, nombre_sugerido)` o `(None, None)` si no hay datos ni copias disponibles.
+        """
+        fecha_tag = datetime.now().strftime(FORMATO_FECHA)
+        nombre_sugerido = f"copia_notaly_{fecha_tag}.json"
+
+        snapshot = copy.deepcopy(self.data)
+        if isinstance(snapshot, dict) and snapshot.get(K_COLEGIOS):
+            payload = json.dumps(snapshot, ensure_ascii=False, indent=2).encode("utf-8")
+            return payload, nombre_sugerido
+
+        ruta_previa = self.get_latest_auto_backup_path()
+        if ruta_previa and ruta_previa.exists():
+            try:
+                return ruta_previa.read_bytes(), nombre_sugerido
+            except OSError as exc:
+                logger.warning("No se pudo leer copia previa %s para exportar: %s", ruta_previa, exc)
+
+        return None, None
 
     def get_latest_auto_backup_path(self) -> Path | None:
         """Retorna la ruta física del archivo de copia automática más reciente si existe."""

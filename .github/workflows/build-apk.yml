@@ -121,7 +121,7 @@ jobs:
               --product "Notaly" \
               --org com.notaly.app \
               --build-version 2.1.0 \
-              --build-number 3 \
+              --build-number 4 \
               --compile-app \
               --cleanup-app \
               --yes \
@@ -152,7 +152,7 @@ jobs:
               --product "Notaly" \
               --org com.notaly.app \
               --build-version 2.1.0 \
-              --build-number 3 \
+              --build-number 4 \
               --compile-app \
               --cleanup-app \
               --yes \
@@ -234,8 +234,8 @@ jobs:
             exit 1
           fi
           "$AAPT2" dump permissions "$APK_FILE"
-          if "$AAPT2" dump permissions "$APK_FILE" | grep -q "MANAGE_EXTERNAL_STORAGE"; then
-            echo "ERROR: MANAGE_EXTERNAL_STORAGE prohibido en Play Store"
+          if "$AAPT2" dump permissions "$APK_FILE" | grep -Eq "MANAGE_EXTERNAL_STORAGE|READ_EXTERNAL_STORAGE|WRITE_EXTERNAL_STORAGE"; then
+            echo "ERROR: Permiso de almacenamiento externo prohibido o innecesario para Play Store"
             exit 1
           fi
           if "$AAPT2" dump xmltree "$APK_FILE" --file AndroidManifest.xml | grep -Eq 'debuggable.*(0xffffffff|true)'; then

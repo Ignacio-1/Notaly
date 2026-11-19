@@ -21,7 +21,7 @@ product_name = "Notaly"
 org_name = "com.notaly.app"
 module_name = "mobile_app"
 build_version = "2.1.0"
-build_number = 3
+build_number = 4
 
 [tool.flet.app]
 path = "."
@@ -65,7 +65,3 @@ exclude = [
 [tool.flet.flutter.pubspec.dependency_overrides]
 jni = "1.1.2"
 jni_flutter = "1.0.4+1"
-
-[tool.flet.android.permission]
-"android.permission.READ_EXTERNAL_STORAGE" = true
-"android.permission.WRITE_EXTERNAL_STORAGE" = true

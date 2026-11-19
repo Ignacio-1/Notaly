@@ -360,6 +360,7 @@ _MIME_TYPES = {
     ".pdf": "application/pdf",
     ".csv": "text/csv",
     ".txt": "text/plain",
+    ".json": "application/json",
 }
 
 

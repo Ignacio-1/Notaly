@@ -229,3 +229,67 @@ def test_create_local_backup_permission_denied_fallback(populated_state, tmp_pat
     assert backup_path is not None
     assert backup_path.exists()
     assert str(safe_dir) in str(backup_path)
+
+
+def test_android_scoped_storage_backup_dirs_sin_rutas_publicas_ni_warnings(
+    tmp_path, monkeypatch, caplog
+):
+    """
+    En Android Scoped Storage (sin permisos externos), get_backup_directories y create_daily_auto_backup
+    usan exclusivamente FLET_APP_STORAGE_DATA interno sin intentar escribir en /storage o /sdcard.
+    """
+    import logging
+    import sys
+    from core import gestor_datos
+
+    app_storage = tmp_path / "flet_app_data"
+    app_storage.mkdir(parents=True, exist_ok=True)
+    pref_file = tmp_path / "preferencias.json"
+    data_file = app_storage / "Promediador" / "datos_promedios.json"
+    data_file.parent.mkdir(parents=True, exist_ok=True)
+    data_file.write_text(
+        json.dumps({K_COLEGIOS: {"Colegio Android": {K_CURSOS: {}}}}),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setenv("ANDROID_ROOT", "/system")
+    monkeypatch.setenv("ANDROID_DATA", "/data")
+    monkeypatch.setenv("FLET_APP_STORAGE_DATA", str(app_storage))
+    monkeypatch.setattr(gestor_datos, "PREFERENCIAS_FILE", pref_file)
+
+    state = AppState(data_path=str(data_file))
+    dirs = state.get_backup_directories()
+
+    assert len(dirs) >= 1
+    for d in dirs:
+        s = str(d).replace("\\", "/")
+        assert "/storage/" not in s and "/sdcard/" not in s
+        assert "/Downloads" not in s and "/Documents" not in s
+        assert str(tmp_path.resolve()).replace("\\", "/") in s
+
+    with caplog.at_level(logging.WARNING):
+        ok_auto, _, path_auto = state.create_daily_auto_backup()
+        ok_local, _, path_local = state.create_local_backup()
+
+    assert ok_auto is True and path_auto is not None and path_auto.exists()
+    assert ok_local is True and path_local is not None and path_local.exists()
+    assert str(app_storage.resolve()) in str(path_auto.resolve())
+    assert str(app_storage.resolve()) in str(path_local.resolve())
+    assert not [r for r in caplog.records if "Permission" in r.getMessage() or "No se pudo escribir" in r.getMessage()]
+
+
+def test_export_backup_bytes_populated_and_empty(populated_state, tmp_path):
+    """export_backup_bytes devuelve bytes JSON válidos cuando hay datos y (None, None) si está vacío."""
+    payload, nombre = populated_state.export_backup_bytes()
+    assert payload is not None
+    assert nombre is not None and nombre.endswith(".json")
+    decoded = json.loads(payload.decode("utf-8"))
+    assert "Colegio Belgrano" in decoded[K_COLEGIOS]
+
+    empty_file = tmp_path / "empty_datos.json"
+    empty_file.write_text(json.dumps({K_COLEGIOS: {}}), encoding="utf-8")
+    empty_state = AppState(data_path=str(empty_file))
+    with patch.object(empty_state, "get_latest_auto_backup_path", return_value=None):
+        p_empty, n_empty = empty_state.export_backup_bytes()
+    assert (p_empty, n_empty) == (None, None)

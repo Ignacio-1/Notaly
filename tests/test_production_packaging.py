@@ -23,14 +23,21 @@ def test_pyproject_fija_jni_dependency_overrides_y_exclusiones_produccion() -> N
     assert flet_cfg["org_name"] == "com.notaly.app"
     assert flet_cfg["project_name"] == "notaly"
     assert flet_cfg["module_name"] == "mobile_app"
-    assert int(flet_cfg["build_number"]) >= 3
+    assert int(flet_cfg["build_number"]) >= 4
 
     overrides = flet_cfg["flutter"]["pubspec"]["dependency_overrides"]
     assert overrides["jni"] == "1.1.2"
     assert overrides["jni_flutter"] == "1.0.4+1"
 
     perms = flet_cfg.get("android", {}).get("permission", {})
-    assert not any("MANAGE_EXTERNAL_STORAGE" in k for k in perms)
+    for forbidden_perm in (
+        "MANAGE_EXTERNAL_STORAGE",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+    ):
+        assert not any(forbidden_perm in k for k in perms), (
+            f"Permiso de almacenamiento innecesario/prohibido en pyproject.toml: {forbidden_perm}"
+        )
 
     exclude = set(flet_cfg["app"]["exclude"])
     required_excludes = {
@@ -105,6 +112,7 @@ def test_ci_workflow_reproducible_y_compuertas_produccion() -> None:
     assert f"--build-number {expected_build_number}" in all_run
     assert "scripts/obfuscate_pipeline.py" in all_run
     assert "MANAGE_EXTERNAL_STORAGE" not in wf_text or "aapt2" in all_run
+    assert "READ_EXTERNAL_STORAGE" in all_run and "WRITE_EXTERNAL_STORAGE" in all_run
 
     # Compuertas de verificación automáticas post-compilación
     assert "pubspec.lock" in all_run

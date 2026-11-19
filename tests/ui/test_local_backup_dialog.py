@@ -504,3 +504,106 @@ def test_state_sanitizes_stale_selections_on_replace_restore(populated_state):
     assert populated_state.selected_colegio is None
     assert populated_state.selected_curso is None
     assert populated_state.selected_alumno_id is None
+
+
+def test_local_backup_dialog_saf_save_file_y_cancelacion(populated_state, mock_page):
+    """Verifica guardar copia por SAF (FilePicker.save_file con src_bytes, sin allowed_extensions) y cancelación."""
+    import asyncio
+    from unittest.mock import AsyncMock
+
+    mock_page.run_task = lambda fn, *a, **kw: asyncio.run(fn(*a, **kw))
+
+    fp = MagicMock(spec=["save_file", "pick_files", "on_result"])
+    fp.save_file = AsyncMock(return_value="content://com.android.providers.downloads/copia.json")
+
+    dlg = LocalBackupDialog(populated_state, mock_page, file_picker=fp)
+
+    def _buscar_btns(ctrl):
+        res = []
+        if isinstance(ctrl, (ft.OutlinedButton, ft.FilledButton, ft.Button)):
+            res.append(ctrl)
+        if hasattr(ctrl, "content") and ctrl.content:
+            res.extend(_buscar_btns(ctrl.content))
+        if hasattr(ctrl, "controls") and ctrl.controls:
+            for c in ctrl.controls:
+                res.extend(_buscar_btns(c))
+        return res
+
+    btns = _buscar_btns(dlg.tabs_content_container.content)
+    btn_guardar = next((b for b in btns if "guardar copia" in _obtener_texto_boton(b).lower()), None)
+    assert btn_guardar is not None
+
+    btn_guardar.on_click(None)
+    fp.save_file.assert_awaited_once()
+    kwargs = fp.save_file.call_args.kwargs
+    assert kwargs["file_name"].endswith(".json")
+    assert isinstance(kwargs["src_bytes"], bytes)
+    assert "Colegio Belgrano" in json.loads(kwargs["src_bytes"].decode("utf-8"))[K_COLEGIOS]
+    assert "allowed_extensions" not in kwargs
+    assert "file_type" not in kwargs
+    assert len(mock_page.overlay) == 1
+    assert "guardada correctamente" in mock_page.overlay[-1].content.value.lower()
+
+    # Cancelación del selector SAF no genera error ni SnackBar extra
+    mock_page.overlay.clear()
+    fp.save_file = AsyncMock(return_value=None)
+    btn_guardar.on_click(None)
+    assert len(mock_page.overlay) == 0
+
+
+def test_local_backup_dialog_mobile_pick_files_usa_any_y_filtra_extension(populated_state, mock_page, monkeypatch):
+    """En móvil, pick_files usa FileType.ANY para evitar archivos .json en gris y valida extensión en Python."""
+    import asyncio
+    from unittest.mock import AsyncMock
+
+    mock_page.run_task = lambda fn, *a, **kw: asyncio.run(fn(*a, **kw))
+    monkeypatch.setattr("mobile.components.local_backup_dialog.gestor_planillas.es_plataforma_movil", lambda: True)
+
+    bad_file = MagicMock()
+    bad_file.name = "documento.pdf"
+    bad_file.path = None
+    bad_file.bytes = b"%PDF"
+
+    fp = MagicMock(spec=["save_file", "pick_files", "on_result"])
+    fp.pick_files = AsyncMock(return_value=[bad_file])
+
+    dlg = LocalBackupDialog(populated_state, mock_page, file_picker=fp)
+    textos = _extraer_textos_recursivo(dlg.tabs_content_container.content)
+    assert any("privado en la app" in t.lower() for t in textos)
+
+    def _buscar_btns(ctrl):
+        res = []
+        if isinstance(ctrl, (ft.OutlinedButton, ft.FilledButton, ft.Button)):
+            res.append(ctrl)
+        if hasattr(ctrl, "content") and ctrl.content:
+            res.extend(_buscar_btns(ctrl.content))
+        if hasattr(ctrl, "controls") and ctrl.controls:
+            for c in ctrl.controls:
+                res.extend(_buscar_btns(c))
+        return res
+
+    btn_select = next(
+        (b for b in _buscar_btns(dlg.tabs_content_container.content) if "seleccionar archivo" in _obtener_texto_boton(b).lower()),
+        None,
+    )
+    assert btn_select is not None
+
+    btn_select.on_click(None)
+    fp.pick_files.assert_awaited_once()
+    pick_kw = fp.pick_files.call_args.kwargs
+    assert pick_kw["file_type"] == ft.FilePickerFileType.ANY
+    assert pick_kw["allowed_extensions"] is None
+    assert pick_kw["with_data"] is True
+    assert len(mock_page.dialog_stack) == 0
+    assert any(".json" in sb.content.value.lower() for sb in mock_page.overlay)
+
+    # Ahora con JSON válido en bytes (content URI Android)
+    good_file = MagicMock()
+    good_file.name = "respaldo_saf.json"
+    good_file.path = None
+    good_file.bytes = json.dumps({K_COLEGIOS: {"Colegio SAF": {K_CURSOS: {}}}}).encode("utf-8")
+    fp.pick_files = AsyncMock(return_value=[good_file])
+
+    btn_select.on_click(None)
+    assert len(mock_page.dialog_stack) == 1
+    assert any("Confirmar Restauración" in t for t in _extraer_textos_recursivo(mock_page.active_dialog.title))

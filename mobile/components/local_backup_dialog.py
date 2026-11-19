@@ -16,7 +16,7 @@ from typing import Any, Callable
 
 import flet as ft
 
-from core import gestor_datos
+from core import gestor_datos, gestor_planillas
 from core.constants import (
     FORMATO_FECHA,
     K_ALUMNOS,
@@ -75,6 +75,13 @@ class LocalBackupDialog(NotalySheet):
         self.app_state = state
         self.app_page = page
         self.file_picker = file_picker
+        if self.file_picker is None and self.app_page is not None:
+            services = getattr(self.app_page, "services", None)
+            if isinstance(services, list):
+                self.file_picker = next(
+                    (s for s in services if isinstance(s, ft.FilePicker)),
+                    None,
+                )
         self.tokens = resolve_tokens(tokens=tokens, page=page, state=state)
         self.on_restored = on_restored
 
@@ -182,6 +189,51 @@ class LocalBackupDialog(NotalySheet):
                     error=True,
                 )
 
+        async def guardar_copia_dispositivo(_e: Any) -> None:
+            if not self.file_picker or not callable(getattr(self.file_picker, "save_file", None)):
+                self._mostrar_snackbar(
+                    "Selector de archivos no disponible en esta sesión.",
+                    error=True,
+                )
+                return
+
+            raw_bytes: bytes | None = None
+            nombre_sugerido: str | None = None
+            if hasattr(self.app_state, "export_backup_bytes"):
+                raw_bytes, nombre_sugerido = self.app_state.export_backup_bytes()
+            elif getattr(self.app_state, "data", None):
+                datos_mem = self.app_state.data
+                if isinstance(datos_mem, dict) and datos_mem.get(K_COLEGIOS):
+                    raw_bytes = json.dumps(datos_mem, ensure_ascii=False, indent=2).encode("utf-8")
+                    nombre_sugerido = f"copia_notaly_{datetime.now().strftime(FORMATO_FECHA)}.json"
+
+            if not raw_bytes:
+                self._mostrar_snackbar(
+                    "No hay datos disponibles para guardar una copia.",
+                    error=True,
+                )
+                return
+
+            try:
+                # No pasar allowed_extensions/CUSTOM en Android save_file (evita errores MIME en SAF)
+                ruta_guardada = await self.file_picker.save_file(
+                    dialog_title="Guardar copia de seguridad de Notaly",
+                    file_name=nombre_sugerido or "copia_notaly.json",
+                    src_bytes=raw_bytes,
+                )
+                if ruta_guardada:
+                    self._mostrar_snackbar("Copia guardada correctamente en el dispositivo.")
+            except Exception as err:
+                logger.error("Error al guardar copia vía SAF: %s", err)
+                self._mostrar_snackbar(f"No se pudo guardar la copia: {err}", error=True)
+
+        es_movil = gestor_planillas.es_plataforma_movil()
+        aviso_resguardo = (
+            "Resguardo automático privado en la app. Podés guardarlo en Descargas o compartirlo en cualquier momento."
+            if es_movil
+            else "Las copias se guardan automáticamente en Descargas sin intervención manual."
+        )
+
         estado_badge = ft.Container(
             content=ft.Text(
                 estado_texto,
@@ -224,17 +276,39 @@ class LocalBackupDialog(NotalySheet):
                     ),
                     tabular_text(detalle_str, size=12, color=tok.text_secondary),
                     ft.Text(
-                        "Las copias se guardan automáticamente en Descargas sin intervención manual.",
+                        aviso_resguardo,
                         size=11,
                         color=tok.text_secondary,
                     ),
-                    sheet_action_button(
-                        "Compartir copia automática",
-                        compartir_copia,
-                        tokens=tok,
-                        primary=False,
-                        icon=ft.Icons.SHARE_OUTLINED,
-                        expand=True,
+                    ft.Column(
+                        spacing=SPACE_XS,
+                        tight=True,
+                        controls=[
+                            ft.Row(
+                                controls=[
+                                    sheet_action_button(
+                                        "Guardar copia (.json)",
+                                        lambda e: self._run_async(guardar_copia_dispositivo, e),
+                                        tokens=tok,
+                                        primary=False,
+                                        icon=ft.Icons.DOWNLOAD_OUTLINED,
+                                        expand=True,
+                                    ),
+                                ],
+                            ),
+                            ft.Row(
+                                controls=[
+                                    sheet_action_button(
+                                        "Compartir copia automática",
+                                        compartir_copia,
+                                        tokens=tok,
+                                        primary=False,
+                                        icon=ft.Icons.SHARE_OUTLINED,
+                                        expand=True,
+                                    ),
+                                ],
+                            ),
+                        ],
                     ),
                 ],
             ),
@@ -349,10 +423,12 @@ class LocalBackupDialog(NotalySheet):
         async def abrir_selector_archivo(_e: Any) -> None:
             if self.file_picker:
                 try:
+                    # En Android SAF `FileType.CUSTOM` con 'json' suele deshabilitar archivos válidos en algunos gestores
+                    es_entorno_movil = gestor_planillas.es_plataforma_movil()
                     archivos = await self.file_picker.pick_files(
                         dialog_title="Seleccionar copia de seguridad de Notaly",
-                        file_type=ft.FilePickerFileType.CUSTOM,
-                        allowed_extensions=["json"],
+                        file_type=ft.FilePickerFileType.ANY if es_entorno_movil else ft.FilePickerFileType.CUSTOM,
+                        allowed_extensions=None if es_entorno_movil else ["json"],
                         with_data=True,
                     )
                     if archivos and len(archivos) > 0:
@@ -363,13 +439,17 @@ class LocalBackupDialog(NotalySheet):
             else:
                 self._mostrar_snackbar("Selector de archivos no disponible en esta sesión.", error=True)
 
-        btn_manual = sheet_action_button(
-            "Seleccionar archivo .json",
-            lambda e: self._run_async(abrir_selector_archivo, e),
-            tokens=tok,
-            primary=False,
-            icon=ft.Icons.FILE_OPEN_OUTLINED,
-            expand=True,
+        btn_manual = ft.Row(
+            controls=[
+                sheet_action_button(
+                    "Seleccionar archivo .json",
+                    lambda e: self._run_async(abrir_selector_archivo, e),
+                    tokens=tok,
+                    primary=False,
+                    icon=ft.Icons.FILE_OPEN_OUTLINED,
+                    expand=True,
+                )
+            ]
         )
 
         self.tabs_content_container.content = ft.Column(
@@ -391,6 +471,15 @@ class LocalBackupDialog(NotalySheet):
     def _procesar_archivo_seleccionado(self, picked_file: Any) -> None:
         if not picked_file:
             return
+
+        nombre_sel = getattr(picked_file, "name", None)
+        if isinstance(nombre_sel, str) and "." in nombre_sel:
+            if Path(nombre_sel).suffix.lower() not in (".json", ".bak"):
+                self._mostrar_snackbar(
+                    "Selecciona un archivo de copia de seguridad (.json) válido.",
+                    error=True,
+                )
+                return
 
         ruta_archivo = getattr(picked_file, "path", None)
         file_bytes = getattr(picked_file, "bytes", None)

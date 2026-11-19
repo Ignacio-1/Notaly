@@ -63,6 +63,7 @@ def test_es_plataforma_movil_detecta_flet_platform(entorno_escritorio, plataform
         ("Planilla 5C - 12-10-2026.pdf", "application/pdf"),
         ("Planilla 5C - 12-10-2026 (1).CSV", "text/csv"),
         ("Planilla 5C - 12-10-2026.txt", "text/plain"),
+        ("copia_notaly_19-11-2026.json", "application/json"),
         ("archivo.desconocido", "application/octet-stream"),
     ],
 )
