@@ -31,7 +31,9 @@ data.json
 
 
 *.jks
+*.jks*
 *.keystore
+*.keystore*
 
 
 # Infraestructura interna de agentes y contexto de IA

@@ -55,7 +55,7 @@ def ofuscar_archivo(path: Path) -> bool:
         return False
 
 
-def procesar_proyecto(root_dir: Path):
+def procesar_proyecto(root_dir: Path) -> bool:
     print(f"Iniciando ofuscación en: {root_dir}")
     total_files = 0
     obfuscated_files = 0
@@ -78,16 +78,23 @@ def procesar_proyecto(root_dir: Path):
                     obfuscated_files += 1
 
     print(f"Ofuscación completada: {obfuscated_files}/{total_files} archivos protegidos con éxito.")
+    if total_files == 0 or obfuscated_files != total_files:
+        print(f"ERROR: falló la ofuscación en {total_files - obfuscated_files} archivo(s).")
+        return False
 
     # Pre-compilar bytecode optimizado (-O2)
     print("Pre-compilando bytecode optimizado...")
-    compileall.compile_dir(str(root_dir / "core"), force=True, optimize=2, quiet=1)
-    compileall.compile_dir(str(root_dir / "mobile"), force=True, optimize=2, quiet=1)
+    ok_core = compileall.compile_dir(str(root_dir / "core"), force=True, optimize=2, quiet=1)
+    ok_mobile = compileall.compile_dir(str(root_dir / "mobile"), force=True, optimize=2, quiet=1)
+    if not (ok_core and ok_mobile):
+        print("ERROR: falló la pre-compilación de bytecode optimizado (-O2).")
+        return False
     print("Bytecode pre-compilado listo.")
+    return True
 
 
 if __name__ == "__main__":
     base_dir = Path(__file__).resolve().parent.parent
     if len(sys.argv) > 1:
         base_dir = Path(sys.argv[1]).resolve()
-    procesar_proyecto(base_dir)
+    sys.exit(0 if procesar_proyecto(base_dir) else 1)

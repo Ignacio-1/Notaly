@@ -34,7 +34,7 @@ jobs:
       - name: Instalar dependencias Python
         run: |
           python -m pip install --upgrade pip setuptools wheel
-          pip install "flet[all]>=0.28.0" fpdf2 requests Pillow python-minifier
+          pip install "flet[all]==1.1.2" "fpdf2==2.9.0" "requests==2.34.2" "Pillow==13.0.0" "python-minifier==3.4.0"
 
       - name: Ofuscar y proteger código fuente (Anti-Reversing)
         run: |
@@ -107,7 +107,7 @@ jobs:
             --product "Notaly" \
             --org com.notaly.app \
             --build-version 2.1.0 \
-            --build-number 2 \
+            --build-number 3 \
             --compile-app \
             --cleanup-app \
             --yes \
@@ -130,7 +130,7 @@ jobs:
             --product "Notaly" \
             --org com.notaly.app \
             --build-version 2.1.0 \
-            --build-number 2 \
+            --build-number 3 \
             --compile-app \
             --cleanup-app \
             --yes \
@@ -138,12 +138,81 @@ jobs:
             -vv \
             --flutter-build-args=--verbose
 
-      - name: Verificar binarios generados
+      - name: Verificar binarios y compuertas de producción
         run: |
           echo "=== Archivos AAB generados ==="
-          find build/aab -name "*.aab" -type f || true
+          find build/aab -name "*.aab" -type f -size +0c
           echo "=== Archivos APK generados ==="
-          find build/apk -name "*.apk" -type f || true
+          find build/apk -name "*.apk" -type f -size +0c
+          python - <<'PY'
+          import io, sys, yaml, zipfile
+          from pathlib import Path
+
+          aabs = list(Path("build/aab").glob("*.aab"))
+          apks = list(Path("build/apk").glob("*.apk"))
+          assert aabs and apks, f"Faltan binarios: aabs={aabs}, apks={apks}"
+
+          lock = Path("build/flutter/pubspec.lock")
+          if not lock.is_file():
+              lock = next(Path("build").rglob("pubspec.lock"), None)
+          assert lock is not None and lock.is_file(), "No se encontro build/flutter/pubspec.lock"
+          lock_data = yaml.safe_load(lock.read_text(encoding="utf-8")) or {}
+          pkgs = lock_data.get("packages", {})
+          assert pkgs.get("jni", {}).get("version") == "1.1.2", f"jni inesperado: {pkgs.get('jni')}"
+          assert pkgs.get("jni_flutter", {}).get("version") == "1.0.4+1", f"jni_flutter inesperado: {pkgs.get('jni_flutter')}"
+          print("OK pubspec.lock: jni==1.1.2 y jni_flutter==1.0.4+1")
+
+          with zipfile.ZipFile(apks[0]) as apk_zip:
+              app_zip = zipfile.ZipFile(io.BytesIO(apk_zip.read("assets/app.zip")))
+              names = app_zip.namelist()
+
+          with zipfile.ZipFile(aabs[0]) as aab_zip:
+              aab_app_zip = zipfile.ZipFile(io.BytesIO(aab_zip.read("base/assets/app.zip")))
+              aab_names = aab_app_zip.namelist()
+
+          forbidden_prefixes = (
+              "tests/",
+              "gui/",
+              "docs/",
+              "design-system/",
+              "scripts/",
+              "dist/",
+              "Output/",
+              "GestorNotasEducativo_App.zip",
+              "notaly-key.jks",
+              "release.keystore",
+              "data.json",
+              "log_emulador.txt",
+              "error_arranque.txt",
+              "pyarmor.bug.log",
+          )
+          for artifact_name, entry_list in (("APK", names), ("AAB", aab_names)):
+              for required in ("mobile_app.pyc", "mobile/main.pyc", "core/calculos.pyc"):
+                  assert required in entry_list, f"Falta {required} en app.zip de {artifact_name}"
+              leaks = [
+                  n for n in entry_list
+                  if n.startswith(forbidden_prefixes)
+                  or ".jks" in n.lower()
+                  or n.lower().endswith(".keystore")
+              ]
+              assert not leaks, f"Archivos prohibidos o de escritorio en {artifact_name}: {leaks[:20]}"
+              print(f"OK {artifact_name} app.zip limpio ({len(entry_list)} entradas)")
+          PY
+          AAPT2=$(find "$ANDROID_HOME/build-tools" -name aapt2 | sort -V | tail -n 1)
+          APK_FILE=$(find build/apk -name "*.apk" -type f | head -n 1)
+          if [ -z "$AAPT2" ] || [ -z "$APK_FILE" ]; then
+            echo "ERROR: No se encontro aapt2 o el APK compilado para validar el manifiesto"
+            exit 1
+          fi
+          "$AAPT2" dump permissions "$APK_FILE"
+          if "$AAPT2" dump permissions "$APK_FILE" | grep -q "MANAGE_EXTERNAL_STORAGE"; then
+            echo "ERROR: MANAGE_EXTERNAL_STORAGE prohibido en Play Store"
+            exit 1
+          fi
+          if "$AAPT2" dump xmltree "$APK_FILE" --file AndroidManifest.xml | grep -Eq 'debuggable.*(0xffffffff|true)'; then
+            echo "ERROR: android:debuggable habilitado en APK release"
+            exit 1
+          fi
 
       - name: Firmar binarios (si hay secrets configurados)
         env:
