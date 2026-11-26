@@ -416,7 +416,7 @@ def parsear_fecha_para_orden(fecha_str: str) -> tuple[int, int, int]:
 
 
 # --- Novedades de actualización (SPEC-036) ---
-VERSION_NOVEDADES_ACTUAL = "2.1.0"
+VERSION_NOVEDADES_ACTUAL = "2.2.0"
 K_ULTIMA_VERSION_NOVEDADES = "ultima_version_novedades_vista"
 
 NOVEDADES_VERSION_ACTUAL = [
