@@ -627,6 +627,7 @@ class IntensificacionView(ft.Container):
             label="Observaciones",
             hint_text="Anotación individual del examen...",
             value=obs_ini,
+            expand=True,
             text_size=13,
             border_radius=RADIUS_SM,
             bgcolor=tok.bg_canvas,
@@ -656,6 +657,7 @@ class IntensificacionView(ft.Container):
             content=ft.Column(
                 spacing=SPACE_SM,
                 tight=True,
+                horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
                 controls=[
                     ft.Row(
                         alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
@@ -679,7 +681,7 @@ class IntensificacionView(ft.Container):
                         vertical_alignment=ft.CrossAxisAlignment.CENTER,
                         controls=[btn_presente, btn_ausente, tf_nota],
                     ),
-                    tf_obs,
+                    ft.Row(controls=[tf_obs]),
                 ],
             ),
         )

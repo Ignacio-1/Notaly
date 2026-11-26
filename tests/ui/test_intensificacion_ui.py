@@ -264,6 +264,8 @@ class TestIntensificacionViewYModales:
         card = iv.eval_cards_map[ev_id]
         data_card = card.data
         assert data_card["tf_nota"].disabled is True
+        assert data_card["tf_obs"].expand is True
+        assert card.content.horizontal_alignment == ft.CrossAxisAlignment.STRETCH
         assert data_card["badge_text"].value == "Pendiente"
 
         # Marcar Presente in-place
@@ -302,6 +304,21 @@ class TestIntensificacionViewYModales:
             tokens=LIGHT_TOKENS,
         )
         assert dlg.desaprobados_ids == {"1", "3"}
+        # Los desaprobados aparecen priorizados al inicio del selector
+        assert list(dlg._checkboxes.keys()) == ["1", "3", "2"]
+        # En cursos grandes (> 4 alumnos) el selector usa altura acotada scrollable (260dp)
+        for i in range(4, 10):
+            st.add_alumno(f"Extra{i}", "Alumno")
+        dlg_grande = BloqueIntensificacionDialog(
+            state=st,
+            page=page,
+            periodo_id=per["id"],
+            tipo_inicial="grupo",
+            tokens=LIGHT_TOKENS,
+        )
+        assert dlg_grande.selector_box.height == 260
+        assert dlg_grande.selector_container.scroll == ft.ScrollMode.AUTO
+
         dlg._seleccionar_desaprobados()
         assert set(dlg.selected_ids) == {"1", "3"}
         # Permite tildar manualmente también a alumno aprobado ("2")
@@ -325,6 +342,7 @@ class TestIntensificacionViewYModales:
         dlg_imp = ImportarPeriodoIntensificacionDialog(st, page, per2["id"], tokens=LIGHT_TOKENS)
         assert len(dlg_imp.candidatos) == 1
         assert dlg_imp.candidatos[0]["alumno_id"] == "1"
+        assert dlg_imp.btn_importar.content.value == "Importar"
 
         # ExportIntensificacionDialog genera PDF y registra tipo "intensificacion"
         monkeypatch.setattr("core.gestor_planillas.obtener_directorio_exportaciones", lambda: tmp_path)

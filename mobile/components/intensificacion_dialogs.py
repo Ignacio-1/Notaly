@@ -250,7 +250,11 @@ class BloqueIntensificacionDialog(NotalySheet):
 
         self.lbl_error = ft.Text("", size=12, color=tok.fail_fg, visible=False)
         self.lbl_contador = tabular_text("", size=12, color=tok.text_secondary)
-        self.selector_container = ft.Column(spacing=0, tight=True)
+        self.selector_container = ft.Column(
+            spacing=0,
+            tight=True,
+            scroll=ft.ScrollMode.AUTO,
+        )
         self._checkboxes: dict[str, ft.Checkbox] = {}
 
         self.btn_sel_desaprobados = sheet_action_button(
@@ -303,14 +307,18 @@ class BloqueIntensificacionDialog(NotalySheet):
                     color=tok.text_secondary,
                 )
             )
+        selector_height = min(260, max(72, len(self.alumnos_curso) * 58))
+        self.selector_box = ft.Container(
+            height=selector_height if len(self.alumnos_curso) > 4 else None,
+            bgcolor=tok.surface_primary,
+            border=ft.Border.all(1, tok.border_hairline),
+            border_radius=RADIUS_SM,
+            clip_behavior=ft.ClipBehavior.HARD_EDGE,
+            content=self.selector_container,
+        )
         body_controls.extend(
             [
-                ft.Container(
-                    bgcolor=tok.surface_primary,
-                    border=ft.Border.all(1, tok.border_hairline),
-                    border_radius=RADIUS_SM,
-                    content=self.selector_container,
-                ),
+                self.selector_box,
                 self.lbl_error,
             ]
         )
@@ -388,7 +396,11 @@ class BloqueIntensificacionDialog(NotalySheet):
 
     def _render_selector_alumnos(self) -> None:
         tok = self.tokens
-        ids_ord = _ordenar_ids_alumnos(self.alumnos_curso)
+        ids_base = _ordenar_ids_alumnos(self.alumnos_curso)
+        # Mostrar primero los alumnos desaprobados (< 6) preservando el orden relativo de cada grupo
+        ids_ord = [aid for aid in ids_base if aid in self.desaprobados_ids] + [
+            aid for aid in ids_base if aid not in self.desaprobados_ids
+        ]
         self._checkboxes.clear()
         filas: list[ft.Control] = []
 
@@ -588,7 +600,7 @@ class ImportarPeriodoIntensificacionDialog(NotalySheet):
         self.preview_col = ft.Column(spacing=0, tight=True)
         self.lbl_error = ft.Text("", size=12, color=tok.fail_fg, visible=False)
         self.btn_importar = sheet_action_button(
-            "Importar seleccionados",
+            "Importar",
             lambda _e: self._confirmar_importacion(),
             tokens=tok,
             primary=True,
