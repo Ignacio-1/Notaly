@@ -41,6 +41,9 @@ from .constants import (
     K_COMPORTAMIENTOS,
     K_TRABAJOS_GRUPO,
     K_PERIODOS_INTENSIFICACION,
+    K_REGIMEN,
+    K_DESAPRUEBA_HASTA,
+    K_USAR_RECUPERATORIO,
 )
 
 logger = logging.getLogger(__name__)
@@ -422,6 +425,11 @@ def fusionar_datos(datos_destino: dict, datos_origen: dict) -> dict:
             if hor_origen and not (colegios_destino[nombre_colegio].get(K_HORARIOS) or "").strip():
                 colegios_destino[nombre_colegio][K_HORARIOS] = colegio_data.get(K_HORARIOS)
 
+            if K_REGIMEN in colegio_data and K_REGIMEN not in colegios_destino[nombre_colegio]:
+                colegios_destino[nombre_colegio][K_REGIMEN] = colegio_data[K_REGIMEN]
+            if K_DESAPRUEBA_HASTA in colegio_data and K_DESAPRUEBA_HASTA not in colegios_destino[nombre_colegio]:
+                colegios_destino[nombre_colegio][K_DESAPRUEBA_HASTA] = colegio_data[K_DESAPRUEBA_HASTA]
+
             # Colegio ya existe: fusionar cursos
             cursos_destino = colegios_destino[nombre_colegio].setdefault(K_CURSOS, {})
             cursos_origen = colegio_data.get(K_CURSOS, {})
@@ -437,6 +445,12 @@ def fusionar_datos(datos_destino: dict, datos_origen: dict) -> dict:
                     hor_origen = (curso_data.get(K_HORARIO) or curso_data.get("horarios") or "").strip()
                     if hor_origen and not (cursos_destino[nombre_curso].get(K_HORARIO) or "").strip():
                         cursos_destino[nombre_curso][K_HORARIO] = hor_origen
+
+                    # Incorporar criterios evaluativos si destino carece de ellos (no destructivo)
+                    if K_DESAPRUEBA_HASTA in curso_data and K_DESAPRUEBA_HASTA not in cursos_destino[nombre_curso]:
+                        cursos_destino[nombre_curso][K_DESAPRUEBA_HASTA] = curso_data[K_DESAPRUEBA_HASTA]
+                    if K_USAR_RECUPERATORIO in curso_data and K_USAR_RECUPERATORIO not in cursos_destino[nombre_curso]:
+                        cursos_destino[nombre_curso][K_USAR_RECUPERATORIO] = curso_data[K_USAR_RECUPERATORIO]
 
                     # Fusionar clases planificadas de forma no destructiva
                     clases_destino = cursos_destino[nombre_curso].setdefault(K_CLASES, {})
@@ -503,6 +517,8 @@ def fusionar_datos(datos_destino: dict, datos_origen: dict) -> dict:
                                             mapa_bloq_dest[bid] = b_orig
                                     else:
                                         b_dest = mapa_bloq_dest[bid]
+                                        if K_DESAPRUEBA_HASTA in b_orig and K_DESAPRUEBA_HASTA not in b_dest:
+                                            b_dest[K_DESAPRUEBA_HASTA] = b_orig[K_DESAPRUEBA_HASTA]
                                         evs_dest = b_dest.setdefault("evaluaciones", [])
                                         if not isinstance(evs_dest, list):
                                             evs_dest = []

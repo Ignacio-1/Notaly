@@ -24,6 +24,11 @@ from .constants import (
     K_TIPO,
     K_SUBTIPO,
     K_OBSERVACION,
+    K_REGIMEN,
+    K_DESAPRUEBA_HASTA,
+    K_USAR_RECUPERATORIO,
+    REGIMEN_TRIMESTRAL,
+    DESAPRUEBA_HASTA_DEFAULT,
     COMPORTAMIENTO_POSITIVO,
     COMPORTAMIENTO_REGULAR,
     COMPORTAMIENTO_NEGATIVO,
@@ -35,6 +40,12 @@ from .constants import (
     formatear_nombre_completo,
     formatear_fecha,
     parsear_fecha_para_orden,
+    normalizar_regimen,
+    normalizar_desaprueba_hasta,
+    normalizar_usar_recuperatorio,
+    obtener_claves_periodos,
+    obtener_corte_aprobacion,
+    obtener_nota_minima_aprobacion,
 )
 
 
@@ -61,56 +72,79 @@ def calcular_promedio_crudo_trimestre(t_data: dict) -> float | None:
     return sum(notas_validas) / len(notas_validas)
 
 
-def calcular_nota_final_trimestre(t_data: dict) -> float | int | None:
+def calcular_nota_final_trimestre(
+    t_data: dict,
+    *,
+    desaprueba_hasta: int = DESAPRUEBA_HASTA_DEFAULT,
+    usar_recuperatorio: bool = True,
+) -> float | int | None:
     """
-    Calcula la nota FINAL de un trimestre según la regla de corte:
-    - Si promedio crudo >= 5.50 -> Aprobado: Nota final = promedio redondeado al entero más próximo (recuperatorio bloqueado/ignorado).
-    - Si promedio crudo < 5.50 y NO hay recuperación -> Desaprobado: Nota final = promedio redondeado.
-    - Si promedio crudo < 5.50 y SÍ hay recuperación cargada (1 a 10) -> Nota final = nota de recuperación (el promedio original se mantiene guardado como dato estadístico).
-    - Si no hay notas cargadas y hay recuperatorio cargado -> devuelve la nota de recuperación.
+    Calcula la nota FINAL de un período según el umbral configurable (default X=5 -> corte 5.50)
+    y la bandera de recuperatorio opcional (default True):
+    - Si promedio crudo >= (X + 0.50) -> Aprobado: Nota final = promedio redondeado (recuperatorio bloqueado/ignorado).
+    - Si promedio crudo < (X + 0.50) y recuperatorio está desactivado o vacío -> Desaprobado: Nota final = promedio redondeado.
+    - Si promedio crudo < (X + 0.50) y recuperatorio habilitado y cargado (1 a 10) -> Nota final = nota de recuperación.
+    - Si no hay notas cargadas y recuperatorio está habilitado y cargado -> devuelve la nota de recuperación.
     """
+    corte = obtener_corte_aprobacion(desaprueba_hasta)
+    usar_rec = normalizar_usar_recuperatorio(usar_recuperatorio, default=True)
     promedio_crudo = calcular_promedio_crudo_trimestre(t_data)
-    nota_recuperatorio = t_data.get(K_RECUPERATORIO)
-    recup_valido = nota_recuperatorio is not None and isinstance(nota_recuperatorio, (int, float))
+    nota_recuperatorio = t_data.get(K_RECUPERATORIO) if isinstance(t_data, dict) else None
+    recup_valido = (
+        usar_rec
+        and nota_recuperatorio is not None
+        and isinstance(nota_recuperatorio, (int, float))
+        and not isinstance(nota_recuperatorio, bool)
+    )
 
     if promedio_crudo is None:
         if recup_valido:
             return int(round(nota_recuperatorio))
         return None
 
-    # Regla de corte: < 5.50 es desaprobado; >= 5.50 es aprobado
-    if promedio_crudo >= 5.50:
+    # Regla de corte configurable: < (X + 0.50) desaprueba; >= (X + 0.50) aprueba
+    if promedio_crudo >= corte:
         return redondeo_especial(promedio_crudo)
 
-    # Promedio < 5.50 (desaprobado)
+    # Promedio < corte (desaprobado)
     if recup_valido:
         return int(round(nota_recuperatorio))
 
     return redondeo_especial(promedio_crudo)
 
 
-def procesar_calificaciones_alumno(trimestres_data: dict) -> dict:
+def procesar_calificaciones_alumno(
+    trimestres_data: dict,
+    *,
+    regimen: str = REGIMEN_TRIMESTRAL,
+    desaprueba_hasta: int = DESAPRUEBA_HASTA_DEFAULT,
+    usar_recuperatorio: bool = True,
+) -> dict:
     """
-    Procesa todas las calificaciones de un alumno y retorna un diccionario
-    con promedios crudos, notas finales redondeadas, y el promedio total.
+    Procesa todas las calificaciones activas de un alumno según el régimen evaluativo
+    ('trimestral': 3 períodos; 'cuatrimestral': 2 períodos), umbral de desaprobación
+    y recuperatorio opcional.
 
-    Args:
-        trimestres_data: Diccionario con los datos de los 3 trimestres del alumno.
-
-    Returns:
-        Diccionario con las claves:
-        - promedios_crudos_sin_redondear: lista de promedios crudos (float | None)
-        - promedios_crudos_redondeados: lista de promedios crudos redondeados (int | None)
-        - notas_finales_redondeadas: lista de notas finales redondeadas (int | None)
-        - nota_final_total_redondeada: promedio final total redondeado (int | None)
+    En régimen cuatrimestral las notas guardadas en 'Tercer trimestre' no se borran ni
+    se computan en el promedio anual.
     """
+    claves_periodos = obtener_claves_periodos(regimen)
+    umbral = normalizar_desaprueba_hasta(desaprueba_hasta)
+    usar_rec = normalizar_usar_recuperatorio(usar_recuperatorio, default=True)
+
     resultados_finales_trimestrales = []
     resultados_crudos_trimestrales = []
 
-    for nombre_trimestre in NOMBRES_TRIMESTRES:
-        datos_trimestre = trimestres_data.get(nombre_trimestre, {}) if isinstance(trimestres_data, dict) else {}
-        promedio_final = calcular_nota_final_trimestre(datos_trimestre)
-        promedio_crudo = calcular_promedio_crudo_trimestre(datos_trimestre)
+    for nombre_periodo in claves_periodos:
+        datos_periodo = (
+            trimestres_data.get(nombre_periodo, {}) if isinstance(trimestres_data, dict) else {}
+        )
+        promedio_final = calcular_nota_final_trimestre(
+            datos_periodo,
+            desaprueba_hasta=umbral,
+            usar_recuperatorio=usar_rec,
+        )
+        promedio_crudo = calcular_promedio_crudo_trimestre(datos_periodo)
         resultados_finales_trimestrales.append(promedio_final)
         resultados_crudos_trimestrales.append(promedio_crudo)
 
@@ -260,37 +294,68 @@ def resumen_asistencia_curso(curso_data: dict) -> dict:
     return resumen_asistencia_curso_filtrado(curso_data, None, None)
 
 
-def calcular_distribucion_notas(alumnos_detalle: list[dict] | None) -> dict:
+def generar_rangos_histograma(desaprueba_hasta: int = DESAPRUEBA_HASTA_DEFAULT) -> list[dict]:
+    """
+    Genera bloques contiguos y disjuntos sobre la escala 1..10 adaptados al umbral
+    `desaprueba_hasta = X` (1..9), garantizando que ningún bloque mezcle notas
+    desaprobadas (<= X) y aprobadas (>= X+1).
+    Para X = 5 preserva exactamente: '1-3' | '4-5' | '6-7' | '8-10'.
+    """
+    umbral = normalizar_desaprueba_hasta(desaprueba_hasta)
+
+    def _rango_item(lo: int, hi: int, aprobado: bool, nivel: str, etiqueta_base: str) -> dict:
+        key = f"{lo}" if lo == hi else f"{lo}-{hi}"
+        rango_txt = f"{lo}" if lo == hi else f"{lo} - {hi}"
+        return {
+            "key": key,
+            "min": lo,
+            "max": hi,
+            "aprobado": aprobado,
+            "nivel": nivel,
+            "titulo_pdf": f"{etiqueta_base} ({rango_txt})",
+        }
+
+    rangos: list[dict] = []
+
+    # Lado desaprobado [1..umbral]
+    if umbral == 1:
+        rangos.append(_rango_item(1, 1, False, "fail", "Desaprobado"))
+    else:
+        mid_d = (umbral + 1) // 2
+        rangos.append(_rango_item(1, mid_d, False, "fail", "Insuficiente"))
+        rangos.append(_rango_item(mid_d + 1, umbral, False, "warn", "Regular"))
+
+    # Lado aprobado [umbral+1..10]
+    a_start = umbral + 1
+    a_len = 10 - umbral
+    if a_len == 1:
+        rangos.append(_rango_item(10, 10, True, "pass", "Destacado"))
+    else:
+        mid_a = a_start + (a_len // 2) - 1
+        rangos.append(_rango_item(a_start, mid_a, True, "good", "Bueno"))
+        rangos.append(_rango_item(mid_a + 1, 10, True, "pass", "Destacado"))
+
+    return rangos
+
+
+def calcular_distribucion_notas(
+    alumnos_detalle: list[dict] | None,
+    *,
+    desaprueba_hasta: int = DESAPRUEBA_HASTA_DEFAULT,
+) -> dict:
     """
     Calcula la distribución de frecuencias y porcentajes por rangos de calidad
-    y por notas individuales (1-10) para un conjunto de alumnos calificados.
-    Función pura conforme a SPEC-018 (Sección 2.2).
-
-    Args:
-        alumnos_detalle: Lista de diccionarios con claves 'condicion' y 'nota_final'.
-
-    Returns:
-        Diccionario con la distribución:
-        - total_evaluados: int
-        - max_frecuencia_rango: int
-        - max_frecuencia_nota: int
-        - por_nota: dict[int, int] (claves 1 a 10)
-        - por_rango: dict[str, int] ("1-3", "4-5", "6-7", "8-10")
-        - porcentajes_rango: dict[str, float] ("1-3", "4-5", "6-7", "8-10")
+    adaptados al umbral `desaprueba_hasta` y por notas individuales (1-10).
+    Para X = 5 preserva exactamente las claves '1-3', '4-5', '6-7', '8-10'.
     """
+    umbral = normalizar_desaprueba_hasta(desaprueba_hasta)
+    rangos_meta = generar_rangos_histograma(umbral)
+
     por_nota = {i: 0 for i in range(1, 11)}
-    por_rango = {
-        "1-3": 0,
-        "4-5": 0,
-        "6-7": 0,
-        "8-10": 0,
-    }
-    porcentajes_rango = {
-        "1-3": 0.0,
-        "4-5": 0.0,
-        "6-7": 0.0,
-        "8-10": 0.0,
-    }
+    por_nota_aprobados = {i: 0 for i in range(1, 11)}
+    por_nota_desaprobados = {i: 0 for i in range(1, 11)}
+    por_rango = {r["key"]: 0 for r in rangos_meta}
+    porcentajes_rango = {r["key"]: 0.0 for r in rangos_meta}
 
     if not isinstance(alumnos_detalle, list) or not alumnos_detalle:
         return {
@@ -298,8 +363,12 @@ def calcular_distribucion_notas(alumnos_detalle: list[dict] | None) -> dict:
             "max_frecuencia_rango": 0,
             "max_frecuencia_nota": 0,
             "por_nota": por_nota,
+            "por_nota_aprobados": por_nota_aprobados,
+            "por_nota_desaprobados": por_nota_desaprobados,
             "por_rango": por_rango,
             "porcentajes_rango": porcentajes_rango,
+            "rangos_meta": rangos_meta,
+            "desaprueba_hasta": umbral,
         }
 
     total_evaluados = 0
@@ -314,22 +383,22 @@ def calcular_distribucion_notas(alumnos_detalle: list[dict] | None) -> dict:
         if condicion == "pendiente" or nota is None:
             continue
 
-        if not isinstance(nota, (int, float)):
+        if not isinstance(nota, (int, float)) or isinstance(nota, bool):
             continue
 
         nota_int = int(round(nota))
         if 1 <= nota_int <= 10:
             por_nota[nota_int] += 1
+            if condicion == "aprobado" or (condicion != "desaprobado" and nota_int > umbral):
+                por_nota_aprobados[nota_int] += 1
+            else:
+                por_nota_desaprobados[nota_int] += 1
             total_evaluados += 1
 
-            if 1 <= nota_int <= 3:
-                por_rango["1-3"] += 1
-            elif 4 <= nota_int <= 5:
-                por_rango["4-5"] += 1
-            elif 6 <= nota_int <= 7:
-                por_rango["6-7"] += 1
-            elif 8 <= nota_int <= 10:
-                por_rango["8-10"] += 1
+            for r in rangos_meta:
+                if r["min"] <= nota_int <= r["max"]:
+                    por_rango[r["key"]] += 1
+                    break
 
     if total_evaluados > 0:
         for rango_k in por_rango:
@@ -344,36 +413,51 @@ def calcular_distribucion_notas(alumnos_detalle: list[dict] | None) -> dict:
         "max_frecuencia_rango": max_frecuencia_rango,
         "max_frecuencia_nota": max_frecuencia_nota,
         "por_nota": por_nota,
+        "por_nota_aprobados": por_nota_aprobados,
+        "por_nota_desaprobados": por_nota_desaprobados,
         "por_rango": por_rango,
         "porcentajes_rango": porcentajes_rango,
+        "rangos_meta": rangos_meta,
+        "desaprueba_hasta": umbral,
     }
 
 
-def obtener_estadisticas_curso(curso_data: dict, periodo_idx: int = 0) -> dict:
+def obtener_estadisticas_curso(
+    curso_data: dict,
+    periodo_idx: int = 0,
+    *,
+    regimen: str | None = None,
+    desaprueba_hasta: int | None = None,
+    usar_recuperatorio: bool | None = None,
+) -> dict:
     """
-    Calcula las estadísticas de rendimiento académico para un curso en un período dado.
-    Función pura conforme a SPEC-005 (REQ-CALC-001 a REQ-CALC-005, CB-01 a CB-04).
-
-    Args:
-        curso_data: Diccionario del curso conteniendo la clave 'alumnos'.
-        periodo_idx: Entero de 0 a 3 (0: 1° Trim, 1: 2° Trim, 2: 3° Trim, 3: Resumen Anual).
-
-    Returns:
-        Diccionario con las métricas agregadas y desglose de alumnos:
-        - total_alumnos: int
-        - aprobados_cant: int
-        - aprobados_pct: float
-        - desaprobados_cant: int
-        - desaprobados_pct: float
-        - pendientes_cant: int
-        - pendientes_pct: float
-        - promedio_curso: float | None
-        - alumnos_detalle: list[dict]
+    Calcula las estadísticas de rendimiento académico para un curso en un período dado,
+    respetando el régimen (trimestral/cuatrimestral), el umbral configurable `desaprueba_hasta`
+    y la opción `usar_recuperatorio`.
     """
     if not isinstance(curso_data, dict):
         curso_data = {}
 
+    reg = normalizar_regimen(regimen if regimen is not None else curso_data.get(K_REGIMEN, REGIMEN_TRIMESTRAL))
+    umbral = normalizar_desaprueba_hasta(
+        desaprueba_hasta if desaprueba_hasta is not None else curso_data.get(K_DESAPRUEBA_HASTA, DESAPRUEBA_HASTA_DEFAULT)
+    )
+    usar_rec = normalizar_usar_recuperatorio(
+        usar_recuperatorio if usar_recuperatorio is not None else curso_data.get(K_USAR_RECUPERATORIO, True),
+        default=True,
+    )
+    nota_min_aprob = obtener_nota_minima_aprobacion(umbral)
+    claves_periodos = obtener_claves_periodos(reg)
+    criterio = {
+        "regimen": reg,
+        "desaprueba_hasta": umbral,
+        "aprueba_desde": nota_min_aprob,
+        "corte": obtener_corte_aprobacion(umbral),
+        "usar_recuperatorio": usar_rec,
+    }
+
     periodo_idx = max(0, min(int(periodo_idx), 3))
+    es_anual = periodo_idx >= len(claves_periodos)
     alumnos_dict = curso_data.get(K_ALUMNOS, {})
     if not isinstance(alumnos_dict, dict) or not alumnos_dict:
         return {
@@ -386,7 +470,8 @@ def obtener_estadisticas_curso(curso_data: dict, periodo_idx: int = 0) -> dict:
             "pendientes_pct": 0.0,
             "promedio_curso": None,
             "alumnos_detalle": [],
-            "histograma": calcular_distribucion_notas([]),
+            "histograma": calcular_distribucion_notas([], desaprueba_hasta=umbral),
+            "criterio": criterio,
         }
 
     def _clave_orden_id(item_tuple):
@@ -412,27 +497,41 @@ def obtener_estadisticas_curso(curso_data: dict, periodo_idx: int = 0) -> dict:
         if not isinstance(trimestres, dict):
             trimestres = {}
 
-        calcs = procesar_calificaciones_alumno(trimestres)
+        calcs = procesar_calificaciones_alumno(
+            trimestres,
+            regimen=reg,
+            desaprueba_hasta=umbral,
+            usar_recuperatorio=usar_rec,
+        )
 
-        if periodo_idx in (0, 1, 2):
-            trim_nom = NOMBRES_TRIMESTRES[periodo_idx]
+        if not es_anual:
+            trim_nom = claves_periodos[periodo_idx]
             t_data = trimestres.get(trim_nom, {})
             if not isinstance(t_data, dict):
                 t_data = {}
             nota_recup = t_data.get(K_RECUPERATORIO)
-            tiene_recup = nota_recup is not None and isinstance(nota_recup, (int, float))
+            tiene_recup = (
+                usar_rec
+                and nota_recup is not None
+                and isinstance(nota_recup, (int, float))
+                and not isinstance(nota_recup, bool)
+            )
             tiene_notas = (calcular_promedio_crudo_trimestre(t_data) is not None) or tiene_recup
             nota_final = calcs["notas_finales_redondeadas"][periodo_idx]
         else:
-            # periodo_idx == 3: Resumen Anual
+            # Resumen Anual sobre los períodos activos del régimen
             tiene_notas = False
-            for t_nom in NOMBRES_TRIMESTRES:
+            for t_nom in claves_periodos:
                 t_data = trimestres.get(t_nom, {})
                 if isinstance(t_data, dict):
                     nota_recup = t_data.get(K_RECUPERATORIO)
-                    if (calcular_promedio_crudo_trimestre(t_data) is not None) or (
-                        nota_recup is not None and isinstance(nota_recup, (int, float))
-                    ):
+                    tiene_recup_p = (
+                        usar_rec
+                        and nota_recup is not None
+                        and isinstance(nota_recup, (int, float))
+                        and not isinstance(nota_recup, bool)
+                    )
+                    if (calcular_promedio_crudo_trimestre(t_data) is not None) or tiene_recup_p:
                         tiene_notas = True
                         break
             nota_final = calcs["nota_final_total_redondeada"]
@@ -440,7 +539,7 @@ def obtener_estadisticas_curso(curso_data: dict, periodo_idx: int = 0) -> dict:
         if not tiene_notas or nota_final is None:
             condicion = "pendiente"
             nota_final_detalle = None
-        elif nota_final >= 6:
+        elif nota_final >= nota_min_aprob:
             condicion = "aprobado"
             nota_final_detalle = int(nota_final)
         else:
@@ -484,34 +583,30 @@ def obtener_estadisticas_curso(curso_data: dict, periodo_idx: int = 0) -> dict:
         "pendientes_pct": pendientes_pct,
         "promedio_curso": promedio_curso,
         "alumnos_detalle": alumnos_detalle,
-        "histograma": calcular_distribucion_notas(alumnos_detalle),
+        "histograma": calcular_distribucion_notas(alumnos_detalle, desaprueba_hasta=umbral),
+        "criterio": criterio,
     }
 
 
 def obtener_estadisticas_colegio(colegio_data: dict, periodo_idx: int = 0) -> dict:
     """
     Calcula las estadísticas globales e inter-cursos de un colegio para un período dado.
-    Función pura conforme a SPEC-005 (REQ-COL-001 a REQ-COL-005, CB-01, CB-05).
-
-    Args:
-        colegio_data: Diccionario del colegio conteniendo la clave 'cursos'.
-        periodo_idx: Entero de 0 a 3 (0: 1° Trim, 1: 2° Trim, 2: 3° Trim, 3: Resumen Anual).
-
-    Returns:
-        Diccionario con las métricas consolidadas del colegio y desglose por curso:
-        - total_alumnos: int
-        - total_cursos: int
-        - aprobados_cant: int
-        - aprobados_pct: float
-        - desaprobados_cant: int
-        - desaprobados_pct: float
-        - pendientes_cant: int
-        - pendientes_pct: float
-        - promedio_colegio: float | None
-        - por_curso: dict[str, dict]
+    Evalúa cada alumno con el umbral y configuración de recuperatorio de su propio curso
+    bajo el régimen institucional, informando si existen cursos con criterios distintos.
     """
     if not isinstance(colegio_data, dict):
         colegio_data = {}
+
+    regimen_col = normalizar_regimen(colegio_data.get(K_REGIMEN, REGIMEN_TRIMESTRAL))
+    umbral_col = normalizar_desaprueba_hasta(
+        colegio_data.get(K_DESAPRUEBA_HASTA, DESAPRUEBA_HASTA_DEFAULT)
+    )
+    criterio_col = {
+        "regimen": regimen_col,
+        "desaprueba_hasta": umbral_col,
+        "aprueba_desde": obtener_nota_minima_aprobacion(umbral_col),
+        "corte": obtener_corte_aprobacion(umbral_col),
+    }
 
     periodo_idx = max(0, min(int(periodo_idx), 3))
     cursos_dict = colegio_data.get(K_CURSOS, {})
@@ -527,10 +622,15 @@ def obtener_estadisticas_colegio(colegio_data: dict, periodo_idx: int = 0) -> di
             "pendientes_pct": 0.0,
             "promedio_colegio": None,
             "por_curso": {},
-            "histograma": calcular_distribucion_notas([]),
+            "histograma": calcular_distribucion_notas([], desaprueba_hasta=umbral_col),
+            "criterio": criterio_col,
+            "criterios_por_curso": {},
+            "umbrales_heterogeneos": False,
+            "criterios_heterogeneos": False,
         }
 
     por_curso = {}
+    criterios_por_curso = {}
     total_alumnos = 0
     aprobados_cant = 0
     desaprobados_cant = 0
@@ -540,8 +640,24 @@ def obtener_estadisticas_colegio(colegio_data: dict, periodo_idx: int = 0) -> di
 
     for nombre_curso in sorted(cursos_dict.keys()):
         cur_data = cursos_dict.get(nombre_curso, {})
-        stats_curso = obtener_estadisticas_curso(cur_data, periodo_idx)
+        cur_umbral = normalizar_desaprueba_hasta(
+            cur_data.get(K_DESAPRUEBA_HASTA, DESAPRUEBA_HASTA_DEFAULT)
+            if isinstance(cur_data, dict)
+            else DESAPRUEBA_HASTA_DEFAULT
+        )
+        cur_recup = normalizar_usar_recuperatorio(
+            cur_data.get(K_USAR_RECUPERATORIO, True) if isinstance(cur_data, dict) else True,
+            default=True,
+        )
+        stats_curso = obtener_estadisticas_curso(
+            cur_data,
+            periodo_idx,
+            regimen=regimen_col,
+            desaprueba_hasta=cur_umbral,
+            usar_recuperatorio=cur_recup,
+        )
         por_curso[nombre_curso] = stats_curso
+        criterios_por_curso[nombre_curso] = stats_curso["criterio"]
 
         total_alumnos += stats_curso["total_alumnos"]
         aprobados_cant += stats_curso["aprobados_cant"]
@@ -563,6 +679,23 @@ def obtener_estadisticas_colegio(colegio_data: dict, periodo_idx: int = 0) -> di
         else None
     )
 
+    umbrales_distintos = sorted({c["desaprueba_hasta"] for c in criterios_por_curso.values()})
+    umbrales_heterogeneos = len(umbrales_distintos) > 1
+    criterios_heterogeneos = (
+        len({(c["desaprueba_hasta"], c["usar_recuperatorio"]) for c in criterios_por_curso.values()}) > 1
+    )
+    umbral_histograma = umbrales_distintos[0] if len(umbrales_distintos) == 1 else umbral_col
+
+    if criterios_por_curso and not criterios_heterogeneos:
+        crit_unif = next(iter(criterios_por_curso.values()))
+        criterio_col = {
+            "regimen": regimen_col,
+            "desaprueba_hasta": crit_unif["desaprueba_hasta"],
+            "aprueba_desde": crit_unif["aprueba_desde"],
+            "corte": crit_unif["corte"],
+            "usar_recuperatorio": crit_unif["usar_recuperatorio"],
+        }
+
     return {
         "total_alumnos": total_alumnos,
         "total_cursos": len(por_curso),
@@ -574,7 +707,14 @@ def obtener_estadisticas_colegio(colegio_data: dict, periodo_idx: int = 0) -> di
         "pendientes_pct": pendientes_pct,
         "promedio_colegio": promedio_colegio,
         "por_curso": por_curso,
-        "histograma": calcular_distribucion_notas(todos_alumnos_detalle),
+        "histograma": calcular_distribucion_notas(
+            todos_alumnos_detalle,
+            desaprueba_hasta=umbral_histograma,
+        ),
+        "criterio": criterio_col,
+        "criterios_por_curso": criterios_por_curso,
+        "umbrales_heterogeneos": umbrales_heterogeneos,
+        "criterios_heterogeneos": criterios_heterogeneos,
     }
 
 

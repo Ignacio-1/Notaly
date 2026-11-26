@@ -8,6 +8,7 @@ from typing import Any, Callable
 
 import flet as ft
 
+from core.constants import DESAPRUEBA_HASTA_DEFAULT, obtener_nota_minima_aprobacion
 from mobile.components.notaly_sheet import (
     build_action_rows,
     close_dialog_safe,
@@ -44,11 +45,14 @@ class GradeEditorDialog(ft.AlertDialog):
         on_close: Callable[[], None] | None = None,
         page: ft.Page | None = None,
         tokens: ThemeTokens | None = None,
+        desaprueba_hasta: int = DESAPRUEBA_HASTA_DEFAULT,
     ) -> None:
         self.on_save = on_save
         self.on_close = on_close
         self.app_page = page
         self.tokens = resolve_tokens(tokens=tokens, page=page)
+        self.desaprueba_hasta = desaprueba_hasta
+        nota_min = obtener_nota_minima_aprobacion(desaprueba_hasta)
         tok = self.tokens
 
         val_str = ""
@@ -78,7 +82,7 @@ class GradeEditorDialog(ft.AlertDialog):
         self.error_text = ft.Text("", color=tok.fail_fg, size=12, visible=False)
 
         def _make_quick_btn(num: int) -> ft.Container:
-            if num >= 6:
+            if num >= nota_min:
                 bg, fg, brd = tok.pass_bg, tok.pass_fg, tok.pass_border
             else:
                 bg, fg, brd = tok.fail_bg, tok.fail_fg, tok.fail_border

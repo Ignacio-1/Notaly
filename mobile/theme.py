@@ -13,6 +13,8 @@ from typing import Any
 
 import flet as ft
 
+from core.constants import DESAPRUEBA_HASTA_DEFAULT, obtener_corte_aprobacion
+
 
 # ---------------------------------------------------------------------------
 # Tipografía base ("Roboto") y escala geométrica estricta (SPEC-029 RF-09..10)
@@ -373,10 +375,14 @@ def is_dark_tokens(tokens: Any) -> bool:
     return isinstance(bg, str) and bg.lower() == DARK_TOKENS.bg_canvas.lower()
 
 
-def get_grade_triad(value: Any, tokens: ThemeTokens) -> tuple[str, str, str]:
+def get_grade_triad(
+    value: Any,
+    tokens: ThemeTokens,
+    desaprueba_hasta: int = DESAPRUEBA_HASTA_DEFAULT,
+) -> tuple[str, str, str]:
     """
     Retorna la tríada indivisible (bg, fg, border) correspondiente a una nota
-    numérica según la regla constitucional de corte < 5.50.
+    numérica según el umbral configurable (por defecto 5 -> corte 5.50).
     """
     if value is None or str(value).strip() in ("", "--", "-"):
         return (tokens.empty_bg, tokens.empty_fg, tokens.empty_border)
@@ -384,7 +390,8 @@ def get_grade_triad(value: Any, tokens: ThemeTokens) -> tuple[str, str, str]:
         num = float(str(value).replace(",", "."))
     except (ValueError, TypeError):
         return (tokens.empty_bg, tokens.empty_fg, tokens.empty_border)
-    if num >= 5.50:
+    corte = obtener_corte_aprobacion(desaprueba_hasta)
+    if num >= corte:
         return (tokens.pass_bg, tokens.pass_fg, tokens.pass_border)
     return (tokens.fail_bg, tokens.fail_fg, tokens.fail_border)
 
@@ -393,10 +400,11 @@ def get_grade_tone(
     value: Any,
     is_dark: bool = False,
     tokens: ThemeTokens | None = None,
+    desaprueba_hasta: int = DESAPRUEBA_HASTA_DEFAULT,
 ) -> tuple[str, str]:
     """Devuelve el par semántico (bg, fg) para una nota o promedio."""
     tok = tokens if isinstance(tokens, ThemeTokens) else (DARK_TOKENS if is_dark else LIGHT_TOKENS)
-    bg, fg, _ = get_grade_triad(value, tok)
+    bg, fg, _ = get_grade_triad(value, tok, desaprueba_hasta=desaprueba_hasta)
     return (bg, fg)
 
 

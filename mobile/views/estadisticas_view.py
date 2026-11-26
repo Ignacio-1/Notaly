@@ -20,18 +20,28 @@ from core.constants import (
     COMPORTAMIENTO_NEGATIVO,
     COMPORTAMIENTO_POSITIVO,
     COMPORTAMIENTO_REGULAR,
+    DESAPRUEBA_HASTA_DEFAULT,
     K_APELLIDO,
     K_ASISTENCIAS,
+    K_DESAPRUEBA_HASTA,
     K_FECHA,
     K_NOMBRE,
     K_NOMBRE_PILA,
     K_OBSERVACION,
     K_SUBTIPO,
     K_TIPO,
+    REGIMEN_CUATRIMESTRAL,
+    REGIMEN_TRIMESTRAL,
+    formatear_criterio_resumen,
     formatear_fecha,
     formatear_nombre_completo,
+    normalizar_desaprueba_hasta,
+    normalizar_regimen,
+    obtener_corte_aprobacion,
+    obtener_etiqueta_periodo_por_indice,
+    obtener_nombre_regimen_visible,
 )
-from core.calculos import ordenar_fechas_cronologicamente
+from core.calculos import generar_rangos_histograma, ordenar_fechas_cronologicamente
 from mobile.components.comportamiento_dialog import get_comportamiento_style
 from mobile.components.export_estadisticas_dialog import ExportEstadisticasDialog
 from mobile.components.ledger_primitives import (
@@ -64,6 +74,11 @@ PERIODOS_CORTOS = [
     ("0", "1° Trim"),
     ("1", "2° Trim"),
     ("2", "3° Trim"),
+    ("3", "Anual"),
+]
+PERIODOS_CORTOS_CUATRIMESTRAL = [
+    ("0", "1° Cuat"),
+    ("1", "2° Cuat"),
     ("3", "Anual"),
 ]
 
@@ -176,8 +191,18 @@ class EstadisticasView(ft.Container):
             return "Sin nombre"
         return raw
 
+    def _get_regimen_actual(self) -> str:
+        col = getattr(self.state, "selected_colegio", None) or ""
+        if hasattr(self.state, "get_regimen_colegio"):
+            return normalizar_regimen(self.state.get_regimen_colegio(col))
+        return REGIMEN_TRIMESTRAL
+
     def _get_active_periodo(self) -> int:
-        return max(0, min(int(self.state.estadisticas_periodo), 3))
+        val = max(0, min(int(self.state.estadisticas_periodo), 3))
+        if self._get_regimen_actual() == REGIMEN_CUATRIMESTRAL and val == 2:
+            self.state.estadisticas_periodo = 0
+            return 0
+        return val
 
     def _inicializar_ui(self) -> None:
         tok = resolve_tokens(page=self.app_page, state=self.state)
@@ -439,7 +464,9 @@ class EstadisticasView(ft.Container):
             )
         else:
             periodo_idx = self._get_active_periodo()
-            periodo_nombre = NOMBRES_PERIODOS[periodo_idx]
+            periodo_nombre = obtener_etiqueta_periodo_por_indice(
+                periodo_idx, self._get_regimen_actual()
+            )
 
             if curso:
                 stats_rend = self.state.get_estadisticas_curso(
@@ -804,14 +831,47 @@ class EstadisticasView(ft.Container):
         )
 
     def _build_period_selector(self) -> UnderlineTabBar:
-        """Pestañas subrayadas de períodos cortos (1° Trim | 2° Trim | 3° Trim | Anual)."""
+        """Pestañas subrayadas de períodos cortos adaptadas al régimen del colegio."""
+        tabs = (
+            PERIODOS_CORTOS_CUATRIMESTRAL
+            if self._get_regimen_actual() == REGIMEN_CUATRIMESTRAL
+            else PERIODOS_CORTOS
+        )
         return UnderlineTabBar(
-            tabs=PERIODOS_CORTOS,
+            tabs=tabs,
             active_key=str(self._get_active_periodo()),
             on_change=lambda k: self._conmutar_periodo(int(k)),
             tokens=self.tokens,
             page=self.app_page,
             state=self.state,
+        )
+
+    def _build_criterio_banner(self, texto: str, *, alerta: bool = False) -> ft.Container:
+        """Aviso aclaratorio permanente del régimen y criterio de evaluación vigente."""
+        tok = self.tokens
+        return ft.Container(
+            bgcolor=tok.warn_bg if alerta else tok.surface_subtle,
+            border=ft.Border.all(1, tok.warn_border if alerta else tok.border_hairline),
+            border_radius=RADIUS_SM,
+            padding=ft.Padding.symmetric(horizontal=SPACE_MD, vertical=SPACE_XS),
+            content=ft.Row(
+                spacing=SPACE_XS,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                controls=[
+                    ft.Icon(
+                        ft.Icons.WARNING_AMBER_ROUNDED if alerta else ft.Icons.INFO_OUTLINE,
+                        size=15,
+                        color=tok.warn_fg if alerta else tok.accent_primary,
+                    ),
+                    ft.Text(
+                        texto,
+                        size=11,
+                        weight=ft.FontWeight.W_500 if alerta else ft.FontWeight.NORMAL,
+                        color=tok.warn_fg if alerta else tok.text_secondary,
+                        expand=True,
+                    ),
+                ],
+            ),
         )
 
     def _build_kpi_band(
@@ -872,7 +932,7 @@ class EstadisticasView(ft.Container):
         )
 
     def _build_kpi_row(self, stats: dict) -> ft.Container:
-        """Banda de 3 KPIs críticos (sin duplicar los totales absolutos de la dona)."""
+        """Banda de 3 KPIs críticos acompañada del aviso permanente del criterio activo."""
         tok = self.tokens
         tot = stats.get("total_alumnos", 0)
         ap_c = stats.get("aprobados_cant", 0)
@@ -887,7 +947,41 @@ class EstadisticasView(ft.Container):
         )
         prom_str = f"{prom:.2f}" if prom is not None else "--"
 
-        return self._build_kpi_band(
+        crit = stats.get("criterio") or {}
+        reg = normalizar_regimen(crit.get("regimen", self._get_regimen_actual()))
+        umbral = normalizar_desaprueba_hasta(crit.get("desaprueba_hasta"))
+        usar_rec = bool(crit.get("usar_recuperatorio", True))
+
+        if stats.get("criterios_heterogeneos"):
+            reg_lbl = obtener_nombre_regimen_visible(reg)
+            banner = self._build_criterio_banner(
+                f"Régimen {reg_lbl} · Cursos con criterios distintos: cada alumno se evalúa con el umbral de su propio curso.",
+                alerta=True,
+            )
+        elif "promedio_colegio" in stats:
+            resumen_c = formatear_criterio_resumen(
+                regimen=reg,
+                desaprueba_hasta=umbral,
+                usar_recuperatorio=usar_rec,
+                incluir_corte=True,
+            )
+            banner = self._build_criterio_banner(
+                f"Criterio institucional vigente: {resumen_c}",
+                alerta=False,
+            )
+        else:
+            resumen_c = formatear_criterio_resumen(
+                regimen=reg,
+                desaprueba_hasta=umbral,
+                usar_recuperatorio=usar_rec,
+                incluir_corte=True,
+            )
+            banner = self._build_criterio_banner(
+                f"Criterio vigente: {resumen_c}",
+                alerta=False,
+            )
+
+        kpi_band = self._build_kpi_band(
             [
                 ("Promedio", prom_str, f"{pluralizar(tot, 'alumno')}", tok.accent_primary),
                 ("Aprobación", f"{ap_p}%", f"{ap_c} aprob.", tok.pass_fg),
@@ -898,6 +992,13 @@ class EstadisticasView(ft.Container):
                     tok.fail_fg if des_c > 0 else tok.text_primary,
                 ),
             ]
+        )
+        return ft.Container(
+            content=ft.Column(
+                spacing=SPACE_SM,
+                tight=True,
+                controls=[banner, kpi_band],
+            )
         )
 
     def _build_donut_section(self, stats: dict) -> ft.Container:
@@ -1126,32 +1227,43 @@ class EstadisticasView(ft.Container):
             )
         else:
             bar_max_h = 100
-            color_rango = {
-                "1-3": tok.chart_fail,
-                "4-5": tok.chart_warn,
-                "6-7": tok.chart_good,
-                "8-10": tok.chart_pass,
+            crit = stats.get("criterio") or {}
+            umbral_hist = normalizar_desaprueba_hasta(
+                hist.get("desaprueba_hasta", crit.get("desaprueba_hasta"))
+            )
+            hetero_umb = bool(stats.get("umbrales_heterogeneos", False))
+            rangos_meta = hist.get("rangos_meta") or generar_rangos_histograma(umbral_hist)
+            por_nota_ap = hist.get("por_nota_aprobados")
+            por_nota_des = hist.get("por_nota_desaprobados")
+
+            nivel_a_color = {
+                "fail": tok.chart_fail,
+                "warn": tok.chart_warn,
+                "good": tok.chart_good,
+                "pass": tok.chart_pass,
             }
 
             def _color_para_nota(n: int) -> str:
-                if n <= 3:
-                    return tok.chart_fail
-                if n <= 5:
-                    return tok.chart_warn
-                if n <= 7:
-                    return tok.chart_good
-                return tok.chart_pass
+                for rm in rangos_meta:
+                    if int(rm["min"]) <= n <= int(rm["max"]):
+                        return nivel_a_color.get(str(rm.get("nivel", "")), tok.chart_pass)
+                return tok.chart_fail if n <= umbral_hist else tok.chart_pass
 
             columnas_barras: list[ft.Control] = []
             bar_radius = ft.BorderRadius(top_left=2, top_right=2, bottom_left=0, bottom_right=0)
 
             if es_modo_rangos:
                 max_frec = max_frec_rango if max_frec_rango > 0 else 1
-                for rango_k in ("1-3", "4-5", "6-7", "8-10"):
+                for rm in rangos_meta:
+                    rango_k = str(rm["key"])
                     cant = por_rango.get(rango_k, 0)
                     pct = pcts_rango.get(rango_k, 0.0)
                     bar_h = max(6, int((cant / max_frec) * bar_max_h)) if cant > 0 else 3
-                    bar_color = color_rango[rango_k] if cant > 0 else tok.border_hairline
+                    bar_color = (
+                        nivel_a_color.get(str(rm.get("nivel", "")), tok.chart_pass)
+                        if cant > 0
+                        else tok.border_hairline
+                    )
 
                     columnas_barras.append(
                         ft.Column(
@@ -1198,7 +1310,41 @@ class EstadisticasView(ft.Container):
                 for nota_i in range(1, 11):
                     cant = por_nota.get(nota_i, 0)
                     bar_h = max(6, int((cant / max_frec) * bar_max_h)) if cant > 0 else 3
-                    bar_color = _color_para_nota(nota_i) if cant > 0 else tok.border_hairline
+
+                    ap_i = int((por_nota_ap or {}).get(nota_i, 0) or 0) if hetero_umb else 0
+                    des_i = int((por_nota_des or {}).get(nota_i, 0) or 0) if hetero_umb else 0
+
+                    if hetero_umb and cant > 0 and ap_i > 0 and des_i > 0:
+                        h_ap = max(3, int(round(bar_h * (ap_i / cant))))
+                        h_des = max(3, bar_h - h_ap)
+                        bar_ctrl: ft.Control = ft.Column(
+                            spacing=0,
+                            tight=True,
+                            controls=[
+                                ft.Container(
+                                    width=16,
+                                    height=h_ap,
+                                    bgcolor=tok.chart_pass,
+                                    border_radius=bar_radius,
+                                ),
+                                ft.Container(
+                                    width=16,
+                                    height=h_des,
+                                    bgcolor=tok.chart_fail,
+                                ),
+                            ],
+                        )
+                    else:
+                        if hetero_umb and cant > 0:
+                            bar_color = tok.chart_pass if ap_i > 0 else tok.chart_fail
+                        else:
+                            bar_color = _color_para_nota(nota_i) if cant > 0 else tok.border_hairline
+                        bar_ctrl = ft.Container(
+                            width=16,
+                            height=bar_h,
+                            bgcolor=bar_color,
+                            border_radius=bar_radius,
+                        )
 
                     columnas_barras.append(
                         ft.Column(
@@ -1213,12 +1359,7 @@ class EstadisticasView(ft.Container):
                                     weight=ft.FontWeight.BOLD if cant > 0 else ft.FontWeight.NORMAL,
                                     color=tok.text_primary if cant > 0 else tok.text_secondary,
                                 ),
-                                ft.Container(
-                                    width=16,
-                                    height=bar_h,
-                                    bgcolor=bar_color,
-                                    border_radius=bar_radius,
-                                ),
+                                bar_ctrl,
                                 ft.Container(height=1, bgcolor=tok.border_hairline),
                                 tabular_text(
                                     f"{nota_i}",
@@ -1300,12 +1441,21 @@ class EstadisticasView(ft.Container):
             )
 
         rows: list[ft.Control] = []
+        criterios_por_curso = stats.get("criterios_por_curso") or {}
         for idx, (nombre_curso, c_stats) in enumerate(por_curso.items()):
             c_tot = c_stats.get("total_alumnos", 0)
             c_ap_c = c_stats.get("aprobados_cant", 0)
             c_ap_p = c_stats.get("aprobados_pct", 0.0)
             valor_progreso = (c_ap_p / 100.0) if c_tot > 0 else 0.0
             stripe = tok.pass_fg if c_ap_p >= 50 else tok.fail_fg
+
+            c_crit = criterios_por_curso.get(nombre_curso) or c_stats.get("criterio") or {}
+            u_c = normalizar_desaprueba_hasta(c_crit.get("desaprueba_hasta"))
+            rec_c = bool(c_crit.get("usar_recuperatorio", True))
+            criterio_curso_txt = (
+                f"Desaprueba 1-{u_c} · Aprueba {u_c + 1}-10 · "
+                f"{'Con recuperatorio' if rec_c else 'Sin recuperatorio'}"
+            )
 
             rows.append(
                 ft.Container(
@@ -1348,6 +1498,11 @@ class EstadisticasView(ft.Container):
                                         ),
                                     ),
                                 ],
+                            ),
+                            tabular_text(
+                                criterio_curso_txt,
+                                size=11,
+                                color=tok.text_secondary,
                             ),
                             ft.ProgressBar(
                                 value=valor_progreso,
@@ -1393,6 +1548,8 @@ class EstadisticasView(ft.Container):
         aprobados = [a for a in alumnos if a["condicion"] == "aprobado"]
         pendientes = [a for a in alumnos if a["condicion"] == "pendiente"]
         alumnos_curso = self._obtener_alumnos_curso_actual()
+        umbral_c = normalizar_desaprueba_hasta((stats.get("criterio") or {}).get("desaprueba_hasta"))
+        corte_c = obtener_corte_aprobacion(umbral_c)
 
         def _build_section(
             titulo_grupo: str,
@@ -1418,6 +1575,7 @@ class EstadisticasView(ft.Container):
                             dominant=False,
                             width=44,
                             height=36,
+                            desaprueba_hasta=umbral_c,
                         ),
                         tokens=tok,
                     )
@@ -1433,7 +1591,12 @@ class EstadisticasView(ft.Container):
         bloques: list[ft.Control] = []
         if desaprobados:
             bloques.append(
-                _build_section("Alumnos en riesgo", desaprobados, tok.fail_fg, "En riesgo (< 5.50)")
+                _build_section(
+                    "Alumnos en riesgo",
+                    desaprobados,
+                    tok.fail_fg,
+                    f"En riesgo (< {corte_c:.2f})",
+                )
             )
         if aprobados:
             bloques.append(_build_section("Aprobados", aprobados, tok.pass_fg, "Aprobado"))
@@ -2420,12 +2583,38 @@ class EstadisticasView(ft.Container):
         ap_pct = stats.get("aprobados_pct", 0.0)
         ap_c = stats.get("aprobados_cant", 0)
 
-        return self._build_kpi_band(
+        umbrales_blq = stats.get("umbrales_bloques") or []
+        if len(umbrales_blq) > 1:
+            escalas_txt = ", ".join(f"Aprueba {u + 1}-10" for u in umbrales_blq)
+            banner = self._build_criterio_banner(
+                f"Instancia independiente · Bloques con criterios distintos ({escalas_txt}): cada examen se evalúa según su bloque.",
+                alerta=True,
+            )
+        elif len(umbrales_blq) == 1:
+            u0 = int(umbrales_blq[0])
+            banner = self._build_criterio_banner(
+                f"Instancia independiente · Criterio activo: Desaprueba 1-{u0} · Aprueba {u0 + 1}-10.",
+                alerta=False,
+            )
+        else:
+            banner = self._build_criterio_banner(
+                "Instancia independiente: los exámenes y criterios de Intensificación no alteran las notas regulares.",
+                alerta=False,
+            )
+
+        kpi_band = self._build_kpi_band(
             [
                 ("En intensif.", f"{pct_int}%", f"{al_unicos} de {tot_al} al.", tok.accent_primary),
                 ("Asistencia", f"{asist_pct}%", pluralizar(tot_ex, "examen", "exámenes"), tok.justif_fg),
                 ("Aprobados", f"{ap_pct}%", f"{ap_c} aprob.", tok.pass_fg),
             ]
+        )
+        return ft.Container(
+            content=ft.Column(
+                spacing=SPACE_SM,
+                tight=True,
+                controls=[banner, kpi_band],
+            )
         )
 
     def _build_intensificacion_donut_section(self, stats: dict) -> ft.Container:
@@ -2555,14 +2744,20 @@ class EstadisticasView(ft.Container):
     def _build_intensificacion_notas_chart(self, stats: dict) -> ft.Container:
         """
         Gráfico vectorial nativo de distribución de notas 1–10:
-        1–5 en rojo (desaprobados) y 6–10 en verde (aprobados), con cantidades y porcentajes.
+        muestra aprobados (verde) y desaprobados (rojo) exactos por cada nota aun
+        con bloques de distintos umbrales.
         """
         tok = self.tokens
         dist = stats.get("distribucion_notas", {}) or {}
         total_calif = int(dist.get("total_calificados", 0) or 0)
         por_nota = dist.get("por_nota", {i: 0 for i in range(1, 11)})
+        por_nota_ap = dist.get("por_nota_aprobados")
+        por_nota_des = dist.get("por_nota_desaprobados")
         pct_nota = dist.get("porcentajes_nota", {i: 0.0 for i in range(1, 11)})
         max_frec = int(dist.get("max_frecuencia_nota", 0) or 0)
+        umbrales_blq = stats.get("umbrales_bloques") or []
+        hetero_int = bool(stats.get("umbrales_heterogeneos", False))
+        u_ref = int(umbrales_blq[0]) if len(umbrales_blq) == 1 else DESAPRUEBA_HASTA_DEFAULT
 
         if total_calif == 0:
             cuerpo: ft.Control = ft.Container(
@@ -2587,11 +2782,51 @@ class EstadisticasView(ft.Container):
                 cant = int(por_nota.get(nota_i, 0) or 0)
                 pct = float(pct_nota.get(nota_i, 0.0) or 0.0)
                 bar_h = max(6, int((cant / denom) * bar_max_h)) if cant > 0 else 3
-                bar_color = (
-                    (tok.chart_fail if nota_i <= 5 else tok.chart_pass)
-                    if cant > 0
-                    else tok.border_hairline
-                )
+
+                if por_nota_ap is not None or por_nota_des is not None:
+                    ap_i = int((por_nota_ap or {}).get(nota_i, 0) or 0)
+                    des_i = int((por_nota_des or {}).get(nota_i, 0) or 0)
+                else:
+                    des_i = cant if nota_i <= u_ref else 0
+                    ap_i = cant - des_i
+
+                if cant == 0:
+                    bar_ctrl: ft.Control = ft.Container(
+                        width=16, height=bar_h, bgcolor=tok.border_hairline, border_radius=bar_radius
+                    )
+                    lbl_color = tok.fail_fg if nota_i <= u_ref else tok.pass_fg
+                elif ap_i > 0 and des_i > 0:
+                    h_ap = max(3, int(round(bar_h * (ap_i / cant))))
+                    h_des = max(3, bar_h - h_ap)
+                    bar_ctrl = ft.Column(
+                        spacing=0,
+                        tight=True,
+                        controls=[
+                            ft.Container(
+                                width=16,
+                                height=h_ap,
+                                bgcolor=tok.chart_pass,
+                                border_radius=bar_radius,
+                            ),
+                            ft.Container(
+                                width=16,
+                                height=h_des,
+                                bgcolor=tok.chart_fail,
+                            ),
+                        ],
+                    )
+                    lbl_color = tok.text_primary
+                elif ap_i > 0:
+                    bar_ctrl = ft.Container(
+                        width=16, height=bar_h, bgcolor=tok.chart_pass, border_radius=bar_radius
+                    )
+                    lbl_color = tok.pass_fg
+                else:
+                    bar_ctrl = ft.Container(
+                        width=16, height=bar_h, bgcolor=tok.chart_fail, border_radius=bar_radius
+                    )
+                    lbl_color = tok.fail_fg
+
                 cols.append(
                     ft.Column(
                         expand=True,
@@ -2610,13 +2845,13 @@ class EstadisticasView(ft.Container):
                                 size=9,
                                 color=tok.text_secondary,
                             ),
-                            ft.Container(width=16, height=bar_h, bgcolor=bar_color, border_radius=bar_radius),
+                            bar_ctrl,
                             ft.Container(height=1, bgcolor=tok.border_hairline),
                             tabular_text(
                                 str(nota_i),
                                 size=11,
                                 weight=ft.FontWeight.BOLD,
-                                color=tok.fail_fg if nota_i <= 5 else tok.pass_fg,
+                                color=lbl_color,
                             ),
                         ],
                     )
@@ -2634,6 +2869,9 @@ class EstadisticasView(ft.Container):
                 ),
             )
 
+        lbl_des = "Desaprobado (según bloque)" if hetero_int else f"Desaprobado (1-{u_ref})"
+        lbl_apr = "Aprobado (según bloque)" if hetero_int else f"Aprobado ({u_ref + 1}-10)"
+
         leyenda = ft.Row(
             alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
@@ -2645,14 +2883,14 @@ class EstadisticasView(ft.Container):
                             spacing=SPACE_XS,
                             controls=[
                                 ft.Container(width=10, height=10, border_radius=2, bgcolor=tok.chart_fail),
-                                ft.Text("Desaprobado (1-5)", size=11, color=tok.text_secondary),
+                                ft.Text(lbl_des, size=11, color=tok.text_secondary),
                             ],
                         ),
                         ft.Row(
                             spacing=SPACE_XS,
                             controls=[
                                 ft.Container(width=10, height=10, border_radius=2, bgcolor=tok.chart_pass),
-                                ft.Text("Aprobado (6-10)", size=11, color=tok.text_secondary),
+                                ft.Text(lbl_apr, size=11, color=tok.text_secondary),
                             ],
                         ),
                     ],
@@ -2709,9 +2947,11 @@ class EstadisticasView(ft.Container):
             )
 
         rows: list[ft.Control] = []
+        hetero_int = bool(stats.get("umbrales_heterogeneos", False))
         for idx, ex in enumerate(examenes):
             res = str(ex.get("resultado", "pendiente"))
             nota = ex.get("nota")
+            u_ex = normalizar_desaprueba_hasta(ex.get(K_DESAPRUEBA_HASTA))
             if res == "aprobado":
                 stripe, sub_est = tok.pass_fg, "Aprobado"
             elif res == "desaprobado":
@@ -2721,7 +2961,10 @@ class EstadisticasView(ft.Container):
             else:
                 stripe, sub_est = tok.border_hairline, "Pendiente"
 
-            subtitulo = f"{ex.get('periodo_nombre', '')} · {ex.get('fecha_examen', '')} · {sub_est}".strip(" ·")
+            extra_esc = f" · Apr. {u_ex + 1}-10" if hetero_int else ""
+            subtitulo = (
+                f"{ex.get('periodo_nombre', '')} · {ex.get('fecha_examen', '')} · {sub_est}{extra_esc}"
+            ).strip(" ·")
             nota_str = str(nota) if nota is not None else ("Aus" if res == "ausente" else "--")
             rows.append(
                 NotalyListRow(
@@ -2737,6 +2980,7 @@ class EstadisticasView(ft.Container):
                         dominant=False,
                         width=46,
                         height=36,
+                        desaprueba_hasta=u_ex,
                     ),
                     tokens=tok,
                 )

@@ -789,6 +789,7 @@ class AsistenciasView(ft.Container):
             on_success=resultado_exportacion,
             page=self.app_page,
             tokens=self.tokens,
+            state=self.state,
         )
         open_dialog_safe(self.app_page, dlg)
 

@@ -20,7 +20,16 @@ from typing import Any, Callable
 import flet as ft
 
 from core import gestor_planillas
-from core.constants import FORMATO_FECHA, formatear_fecha
+from core.constants import (
+    DESAPRUEBA_HASTA_DEFAULT,
+    DESAPRUEBA_HASTA_MAX,
+    DESAPRUEBA_HASTA_MIN,
+    FORMATO_FECHA,
+    K_DESAPRUEBA_HASTA,
+    formatear_fecha,
+    normalizar_desaprueba_hasta,
+    obtener_corte_aprobacion,
+)
 from core.exportador import exportar_intensificacion_a_pdf
 from core.intensificacion import (
     obtener_nombre_alumno_intensificacion,
@@ -171,6 +180,18 @@ class BloqueIntensificacionDialog(NotalySheet):
         curso = self.state.selected_curso or ""
         self.alumnos_curso = self.state.get_alumnos(colegio, curso) or {}
         self.desaprobados_ids = self.state.get_alumnos_desaprobados_curso(colegio, curso)
+        self.umbral_curso = (
+            self.state.get_desaprueba_hasta_curso(colegio, curso)
+            if hasattr(self.state, "get_desaprueba_hasta_curso")
+            else DESAPRUEBA_HASTA_DEFAULT
+        )
+        self.desaprueba_hasta_val = (
+            normalizar_desaprueba_hasta(
+                bloque_existente.get(K_DESAPRUEBA_HASTA, self.umbral_curso)
+            )
+            if bloque_existente is not None
+            else self.umbral_curso
+        )
 
         # Selección inicial de alumnos
         self.selected_ids: list[str] = []
@@ -250,6 +271,84 @@ class BloqueIntensificacionDialog(NotalySheet):
 
         self.lbl_error = ft.Text("", size=12, color=tok.fail_fg, visible=False)
         self.lbl_contador = tabular_text("", size=12, color=tok.text_secondary)
+        self.lbl_umbral_val = tabular_text(
+            str(self.desaprueba_hasta_val),
+            size=15,
+            weight=ft.FontWeight.BOLD,
+            color=tok.text_primary,
+        )
+        self.lbl_umbral_escala = tabular_text(
+            f"Desaprueba: 1-{self.desaprueba_hasta_val} · Aprueba: {self.desaprueba_hasta_val + 1}-10",
+            size=12,
+            weight=ft.FontWeight.W_600,
+            color=tok.accent_primary,
+        )
+        self.btn_umbral_minus = ft.IconButton(
+            icon=ft.Icons.REMOVE,
+            icon_size=18,
+            width=44,
+            height=44,
+            icon_color=tok.text_primary,
+            tooltip="Reducir umbral",
+            disabled=(self.desaprueba_hasta_val <= DESAPRUEBA_HASTA_MIN),
+            on_click=lambda _e: self._cambiar_umbral(-1),
+        )
+        self.btn_umbral_plus = ft.IconButton(
+            icon=ft.Icons.ADD,
+            icon_size=18,
+            width=44,
+            height=44,
+            icon_color=tok.text_primary,
+            tooltip="Aumentar umbral",
+            disabled=(self.desaprueba_hasta_val >= DESAPRUEBA_HASTA_MAX),
+            on_click=lambda _e: self._cambiar_umbral(1),
+        )
+        self.umbral_box = ft.Container(
+            bgcolor=tok.surface_subtle,
+            border=ft.Border.all(1, tok.border_hairline),
+            border_radius=RADIUS_SM,
+            padding=ft.Padding.symmetric(horizontal=SPACE_MD, vertical=SPACE_SM),
+            content=ft.Column(
+                spacing=SPACE_XS,
+                tight=True,
+                controls=[
+                    ft.Row(
+                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                        controls=[
+                            ft.Text(
+                                "Desaprueba hasta",
+                                size=13,
+                                weight=ft.FontWeight.W_600,
+                                color=tok.text_primary,
+                                expand=True,
+                            ),
+                            ft.Row(
+                                spacing=SPACE_XS,
+                                tight=True,
+                                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                                controls=[
+                                    self.btn_umbral_minus,
+                                    ft.Container(
+                                        width=36,
+                                        alignment=ft.Alignment.CENTER,
+                                        content=self.lbl_umbral_val,
+                                    ),
+                                    self.btn_umbral_plus,
+                                ],
+                            ),
+                        ],
+                    ),
+                    self.lbl_umbral_escala,
+                    ft.Text(
+                        "Criterio independiente de este bloque; no modifica las notas regulares del curso.",
+                        size=11,
+                        color=tok.text_secondary,
+                    ),
+                ],
+            ),
+        )
+
         self.selector_container = ft.Column(
             spacing=0,
             tight=True,
@@ -281,6 +380,7 @@ class BloqueIntensificacionDialog(NotalySheet):
         body_controls.extend(
             [
                 self.tf_temas,
+                self.umbral_box,
                 ft.Divider(height=1, thickness=1, color=tok.border_hairline),
                 ft.Row(
                     alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
@@ -300,9 +400,10 @@ class BloqueIntensificacionDialog(NotalySheet):
         if self.tipo == "grupo" and len(self.desaprobados_ids) > 0:
             body_controls.append(self.btn_sel_desaprobados)
         elif self.tipo == "individual" and len(self.desaprobados_ids) > 0:
+            corte_cur = obtener_corte_aprobacion(self.umbral_curso)
             body_controls.append(
                 ft.Text(
-                    f"Resaltados en rojo: {pluralizar(len(self.desaprobados_ids), 'alumno desaprobado', 'alumnos desaprobados')} (promedio anual < 6). Puedes elegir cualquier estudiante.",
+                    f"Resaltados en rojo: {pluralizar(len(self.desaprobados_ids), 'alumno desaprobado', 'alumnos desaprobados')} (promedio anual < {corte_cur:.2f}). Puedes elegir cualquier estudiante.",
                     size=11,
                     color=tok.text_secondary,
                 )
@@ -376,6 +477,18 @@ class BloqueIntensificacionDialog(NotalySheet):
         )
         open_dialog_safe(self.app_page, dp)
 
+    def _cambiar_umbral(self, delta: int) -> None:
+        nuevo = max(
+            DESAPRUEBA_HASTA_MIN,
+            min(DESAPRUEBA_HASTA_MAX, self.desaprueba_hasta_val + delta),
+        )
+        self.desaprueba_hasta_val = nuevo
+        self.lbl_umbral_val.value = str(nuevo)
+        self.lbl_umbral_escala.value = f"Desaprueba: 1-{nuevo} · Aprueba: {nuevo + 1}-10"
+        self.btn_umbral_minus.disabled = nuevo <= DESAPRUEBA_HASTA_MIN
+        self.btn_umbral_plus.disabled = nuevo >= DESAPRUEBA_HASTA_MAX
+        self._safe_update()
+
     def _seleccionar_desaprobados(self) -> None:
         for aid in _ordenar_ids_alumnos(self.alumnos_curso):
             if aid in self.desaprobados_ids and aid not in self.selected_ids:
@@ -442,7 +555,7 @@ class BloqueIntensificacionDialog(NotalySheet):
                 if es_desap:
                     sub_ctrl.append(
                         ft.Text(
-                            "Desaprobado anual (< 6)",
+                            f"Desaprobado anual (<= {self.umbral_curso})",
                             size=11,
                             weight=ft.FontWeight.W_600,
                             color=tok.fail_fg,
@@ -498,6 +611,7 @@ class BloqueIntensificacionDialog(NotalySheet):
                 temas=self.tf_temas.value or "",
                 nombre_grupo=self.tf_nombre_grupo.value or "",
                 alumno_ids=list(self.selected_ids),
+                desaprueba_hasta=self.desaprueba_hasta_val,
             )
         else:
             ok, msg, _ = self.state.add_bloque_intensificacion(
@@ -507,6 +621,7 @@ class BloqueIntensificacionDialog(NotalySheet):
                 alumno_ids=list(self.selected_ids),
                 temas=self.tf_temas.value or "",
                 nombre_grupo=self.tf_nombre_grupo.value or "",
+                desaprueba_hasta=self.desaprueba_hasta_val,
             )
 
         if not ok:

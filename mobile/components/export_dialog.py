@@ -20,7 +20,16 @@ from core.calculos import (
     obtener_estadisticas_asistencia_curso,
     ordenar_fechas_cronologicamente,
 )
-from core.constants import K_ALUMNOS, K_ASISTENCIAS, K_PERIODOS_INTENSIFICACION
+from core.constants import (
+    K_ALUMNOS,
+    K_ASISTENCIAS,
+    K_PERIODOS_INTENSIFICACION,
+    K_REGIMEN,
+    REGIMEN_CUATRIMESTRAL,
+    REGIMEN_TRIMESTRAL,
+    normalizar_regimen,
+    obtener_etiqueta_periodo_por_indice,
+)
 from core.intensificacion import tiene_datos_intensificacion_curso
 from core.exportador import (
     exportar_a_csv,
@@ -72,6 +81,14 @@ class ExportDialog(NotalySheet):
         tok = self.tokens
         self.periodo_activo = int(periodo_activo) if str(periodo_activo).isdigit() else 0
         self._user_on_dismiss = kwargs.get("on_dismiss")
+        if self.state is not None and hasattr(self.state, "get_regimen_colegio"):
+            self.regimen = normalizar_regimen(
+                self.state.get_regimen_colegio(self.colegio_nombre)
+            )
+        else:
+            self.regimen = normalizar_regimen(
+                kwargs.get("regimen", self.curso_data.get(K_REGIMEN))
+            )
 
         opciones_formato: list[tuple[str, str, str | None]] = [
             ("pdf", "Documento PDF (.pdf)", "Lista formateada para impresión"),
@@ -298,15 +315,27 @@ class ExportDialog(NotalySheet):
 
         self.periodo_container: ft.Container | None = None
         if tipo_exportacion == "notas":
-            nombres_periodos = [
-                "1° Trimestre",
-                "2° Trimestre",
-                "3° Trimestre",
-                "Resumen Anual",
-            ]
-            periodo_val_inicial = str(min(3, max(0, self.periodo_activo)))
+            if self.regimen == REGIMEN_CUATRIMESTRAL:
+                opciones_per = [
+                    ("0", "1° Cuatrimestre", None),
+                    ("1", "2° Cuatrimestre", None),
+                    ("3", "Resumen Anual", None),
+                ]
+                periodo_val_inicial = (
+                    "0"
+                    if self.periodo_activo == 2
+                    else str(min(3, max(0, self.periodo_activo)))
+                )
+            else:
+                opciones_per = [
+                    ("0", "1° Trimestre", None),
+                    ("1", "2° Trimestre", None),
+                    ("2", "3° Trimestre", None),
+                    ("3", "Resumen Anual", None),
+                ]
+                periodo_val_inicial = str(min(3, max(0, self.periodo_activo)))
             self.periodo_selector = EditorialRadioList(
-                options=[(str(i), nom, None) for i, nom in enumerate(nombres_periodos)],
+                options=opciones_per,
                 value=periodo_val_inicial,
                 tokens=tok,
             )
@@ -540,21 +569,23 @@ class ExportDialog(NotalySheet):
                     if hasattr(self, "periodo_selector") and self.periodo_selector
                     else "0"
                 )
-                mapa_periodos = {
-                    "0": "1° Trimestre",
-                    "1": "2° Trimestre",
-                    "2": "3° Trimestre",
-                    "3": "Resumen Anual",
-                }
-                nombre_periodo = mapa_periodos.get(
-                    str(periodo_val), "el período seleccionado"
-                )
+                try:
+                    p_num = int(str(periodo_val))
+                    nombre_periodo = obtener_etiqueta_periodo_por_indice(p_num, self.regimen)
+                except (ValueError, TypeError):
+                    nombre_periodo = "el período seleccionado"
 
+                kwargs_reg = (
+                    {"regimen": self.regimen}
+                    if self.regimen != REGIMEN_TRIMESTRAL
+                    else {}
+                )
                 texto = generar_texto_notas_whatsapp(
                     curso_data=self.curso_data,
                     periodo=periodo_val,
                     nombre_curso=self.curso_nombre,
                     nombre_colegio=self.colegio_nombre,
+                    **kwargs_reg,
                 )
 
                 copiado = self._copiar_texto_al_portapapeles(texto)
@@ -600,6 +631,11 @@ class ExportDialog(NotalySheet):
             error_msg = None
             es_paginado = self.modo_pdf_selector.value == "paginado"
 
+            kwargs_reg = (
+                {"regimen": self.regimen}
+                if self.regimen != REGIMEN_TRIMESTRAL
+                else {}
+            )
             if self.tipo_exportacion == "notas":
                 if formato == "pdf":
                     titulo_pdf = f"{self.colegio_nombre} - {self.curso_nombre}"
@@ -620,13 +656,16 @@ class ExportDialog(NotalySheet):
                         nombre_colegio=self.colegio_nombre,
                         paginado=es_paginado,
                         periodos_intensificacion_ids=periodos_anexo,
+                        **kwargs_reg,
                     )
                 elif formato == "csv":
-                    exito, error_msg = exportar_a_csv(self.curso_data, ruta_str)
+                    exito, error_msg = exportar_a_csv(
+                        self.curso_data, ruta_str, **kwargs_reg
+                    )
                 elif formato == "txt":
                     titulo_txt = f"{self.colegio_nombre} - {self.curso_nombre}"
                     exito, error_msg = exportar_a_texto(
-                        self.curso_data, ruta_str, titulo_txt
+                        self.curso_data, ruta_str, titulo_txt, **kwargs_reg
                     )
             else:
                 if formato == "pdf":
@@ -660,6 +699,7 @@ class ExportDialog(NotalySheet):
                             nombre_colegio=self.colegio_nombre,
                             nombre_curso=self.curso_nombre,
                             rango_fechas_str=rango_str,
+                            **kwargs_reg,
                         )
                     else:
                         titulo_pdf = (
@@ -673,6 +713,7 @@ class ExportDialog(NotalySheet):
                             paginado=es_paginado,
                             fecha_desde=fecha_desde,
                             fecha_hasta=fecha_hasta,
+                            **kwargs_reg,
                         )
                 elif formato == "csv":
                     exito, error_msg = exportar_asistencias_a_csv(

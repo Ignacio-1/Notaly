@@ -13,6 +13,7 @@ from typing import Any, Callable
 import flet as ft
 
 from core import gestor_planillas
+from core.constants import REGIMEN_TRIMESTRAL, normalizar_regimen
 from core.exportador import (
     exportar_estadisticas_a_pdf,
     exportar_estadisticas_asistencia_a_pdf,
@@ -289,12 +290,18 @@ class ExportEstadisticasDialog(NotalySheet):
                 ruta_archivo = carpeta_destino / nombre_archivo
                 ruta_str = str(ruta_archivo)
 
+                reg_col = (
+                    normalizar_regimen(self.state.get_regimen_colegio(self.colegio_nombre))
+                    if (self.state and hasattr(self.state, "get_regimen_colegio"))
+                    else REGIMEN_TRIMESTRAL
+                )
                 exito, error_msg = exportar_estadisticas_asistencia_a_pdf(
                     datos_estadisticas=self.datos_estadisticas,
                     file_path=ruta_str,
                     nombre_colegio=self.colegio_nombre,
                     nombre_curso=self.curso_nombre,
                     rango_fechas_str=self.rango_fechas_str,
+                    regimen=reg_col,
                 )
 
                 if not exito:

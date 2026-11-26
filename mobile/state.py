@@ -44,7 +44,25 @@ from core.constants import (
     ESTADOS_ASISTENCIA,
     NUM_PRINCIPALES,
     NUM_EXTRAS,
+    K_REGIMEN,
+    K_DESAPRUEBA_HASTA,
+    K_USAR_RECUPERATORIO,
+    REGIMEN_TRIMESTRAL,
+    REGIMEN_CUATRIMESTRAL,
+    DESAPRUEBA_HASTA_DEFAULT,
+    MIN_NOTAS_PERIODO,
+    MAX_NOTAS_PERIODO,
+    DEFAULT_NOTAS_PERIODO,
+    TRIM_3,
+    crear_nombres_columnas_default,
+    crear_trimestre_vacio,
     crear_trimestres_vacios,
+    normalizar_regimen,
+    normalizar_desaprueba_hasta,
+    normalizar_usar_recuperatorio,
+    obtener_claves_periodos,
+    obtener_notas_periodo_ordenadas,
+    aplicar_notas_periodo_ordenadas,
     K_COMPORTAMIENTOS,
     K_FECHA,
     K_TIPO,
@@ -488,8 +506,51 @@ class AppState:
             colegios = [c for c in colegios if query in c.lower()]
         return sorted(colegios)
 
-    def add_colegio(self, nombre: str, direccion: str = "", horarios: str = "") -> tuple[bool, str]:
-        """Crea un nuevo colegio con dirección y horarios opcionales."""
+    def get_regimen_colegio(self, nombre: str | None = None) -> str:
+        """Retorna el régimen institucional ('trimestral' o 'cuatrimestral'). Default legacy: 'trimestral'."""
+        col = nombre or self.selected_colegio
+        if not col or col not in self.data.get(K_COLEGIOS, {}):
+            return REGIMEN_TRIMESTRAL
+        return normalizar_regimen(self.data[K_COLEGIOS][col].get(K_REGIMEN))
+
+    def get_desaprueba_hasta_colegio(self, nombre: str | None = None) -> int:
+        """Retorna el umbral de desaprobación por defecto del colegio (1..9, default 5)."""
+        col = nombre or self.selected_colegio
+        if not col or col not in self.data.get(K_COLEGIOS, {}):
+            return DESAPRUEBA_HASTA_DEFAULT
+        return normalizar_desaprueba_hasta(self.data[K_COLEGIOS][col].get(K_DESAPRUEBA_HASTA))
+
+    def contar_notas_tercer_trimestre_colegio(self, nombre: str | None = None) -> int:
+        """Cuenta cuántos alumnos del colegio tienen al menos una nota cargada en el 3° Trimestre."""
+        col = nombre or self.selected_colegio
+        if not col or col not in self.data.get(K_COLEGIOS, {}):
+            return 0
+        total = 0
+        cursos_dict = self.data[K_COLEGIOS][col].get(K_CURSOS, {}) or {}
+        for cur_data in cursos_dict.values():
+            if not isinstance(cur_data, dict):
+                continue
+            for al_data in (cur_data.get(K_ALUMNOS, {}) or {}).values():
+                if not isinstance(al_data, dict):
+                    continue
+                t3 = (al_data.get(K_TRIMESTRES, {}) or {}).get(TRIM_3, {}) or {}
+                princ = t3.get(K_PRINCIPALES) or []
+                ext = t3.get(K_EXTRAS) or []
+                rec = t3.get(K_RECUPERATORIO)
+                if any(v is not None for v in princ) or any(v is not None for v in ext) or rec is not None:
+                    total += 1
+        return total
+
+    def add_colegio(
+        self,
+        nombre: str,
+        direccion: str = "",
+        horarios: str = "",
+        *,
+        regimen: str = REGIMEN_TRIMESTRAL,
+        desaprueba_hasta: int = DESAPRUEBA_HASTA_DEFAULT,
+    ) -> tuple[bool, str]:
+        """Crea un nuevo colegio con dirección, horarios, régimen y umbral por defecto."""
         nombre = nombre.strip()
         if not nombre:
             return False, "El nombre del colegio no puede estar vacío."
@@ -500,6 +561,8 @@ class AppState:
             K_CURSOS: {},
             K_DIRECCION: (direccion or "").strip(),
             K_HORARIOS: (horarios or "").strip(),
+            K_REGIMEN: normalizar_regimen(regimen),
+            K_DESAPRUEBA_HASTA: normalizar_desaprueba_hasta(desaprueba_hasta),
         }
         self.save_data()
         return True, "Colegio creado exitosamente."
@@ -510,8 +573,14 @@ class AppState:
         nuevo_nombre: str,
         direccion: str = "",
         horarios: str = "",
+        *,
+        regimen: str | None = None,
+        desaprueba_hasta: int | None = None,
     ) -> tuple[bool, str]:
-        """Actualiza el nombre, dirección y horarios de un colegio existente de forma atómica."""
+        """
+        Actualiza el nombre, dirección, horarios, régimen y umbral default de un colegio.
+        Cambiar el régimen NUNCA borra las notas del 3° trimestre (quedan resguardadas ocultas).
+        """
         nombre_actual = (nombre_actual or "").strip()
         nuevo_nombre = (nuevo_nombre or "").strip()
         direccion = (direccion or "").strip()
@@ -531,6 +600,16 @@ class AppState:
         col_dict = self.data[K_COLEGIOS][nombre_actual]
         col_dict[K_DIRECCION] = direccion
         col_dict[K_HORARIOS] = horarios
+        if regimen is not None:
+            reg_norm = normalizar_regimen(regimen)
+            col_dict[K_REGIMEN] = reg_norm
+            if reg_norm == REGIMEN_CUATRIMESTRAL and self.selected_colegio in (nombre_actual, nuevo_nombre):
+                if self.active_trimestre == 2:
+                    self.active_trimestre = 0
+                if self.estadisticas_periodo == 2:
+                    self.estadisticas_periodo = 0
+        if desaprueba_hasta is not None:
+            col_dict[K_DESAPRUEBA_HASTA] = normalizar_desaprueba_hasta(desaprueba_hasta)
 
         # Si cambió el nombre (incluso por diferencias de mayúsculas/minúsculas o palabras distintas)
         if nuevo_nombre != nombre_actual:
@@ -538,6 +617,7 @@ class AppState:
             if self.selected_colegio == nombre_actual:
                 self.selected_colegio = nuevo_nombre
 
+        self.curso_roster_version += 1
         self.save_data()
         self.notify()
         return True, "Colegio actualizado exitosamente."
@@ -552,6 +632,8 @@ class AppState:
             K_NOMBRE: col,
             K_DIRECCION: col_dict.get(K_DIRECCION, ""),
             K_HORARIOS: col_dict.get(K_HORARIOS, ""),
+            K_REGIMEN: normalizar_regimen(col_dict.get(K_REGIMEN)),
+            K_DESAPRUEBA_HASTA: normalizar_desaprueba_hasta(col_dict.get(K_DESAPRUEBA_HASTA)),
             K_CURSOS: col_dict.get(K_CURSOS, {}),
         }
 
@@ -603,8 +685,16 @@ class AppState:
         nombre_curso: str,
         cantidad_alumnos: int = 0,
         horario: str = "",
+        *,
+        cantidad_notas: int = DEFAULT_NOTAS_PERIODO,
+        desaprueba_hasta: int | None = None,
+        usar_recuperatorio: bool = True,
     ) -> tuple[bool, str]:
-        """Crea un nuevo curso dentro de un colegio con una cantidad inicial opcional de alumnos y horario."""
+        """
+        Crea un nuevo curso dentro de un colegio con cantidad inicial de alumnos, horario,
+        cantidad inicial de notas por período (1..8), umbral de desaprobación (heredado del
+        colegio si se omite) y bandera opcional de recuperatorio.
+        """
         nombre_curso = nombre_curso.strip()
         if not nombre_curso:
             return False, "El nombre del curso no puede estar vacío."
@@ -619,18 +709,32 @@ class AppState:
         if cantidad_alumnos < 0:
             return False, "La cantidad de alumnos no puede ser negativa."
 
+        try:
+            n_notas = int(cantidad_notas)
+        except (ValueError, TypeError):
+            n_notas = DEFAULT_NOTAS_PERIODO
+        n_notas = max(MIN_NOTAS_PERIODO, min(MAX_NOTAS_PERIODO, n_notas))
+
         colegio_data = self.data.setdefault(K_COLEGIOS, {}).setdefault(nombre_colegio, {K_CURSOS: {}})
         cursos_dict = colegio_data.setdefault(K_CURSOS, {})
 
         if nombre_curso in cursos_dict:
             return False, f"El curso '{nombre_curso}' ya existe en este colegio."
 
+        umbral_default_col = normalizar_desaprueba_hasta(colegio_data.get(K_DESAPRUEBA_HASTA))
+        umbral_curso = (
+            umbral_default_col
+            if desaprueba_hasta is None
+            else normalizar_desaprueba_hasta(desaprueba_hasta, default=umbral_default_col)
+        )
+        recup_curso = normalizar_usar_recuperatorio(usar_recuperatorio, default=True)
+
         alumnos_dict = {}
         if cantidad_alumnos > 0:
             alumnos_dict = {
                 str(i): {
                     K_NOMBRE: "",
-                    K_TRIMESTRES: crear_trimestres_vacios(),
+                    K_TRIMESTRES: crear_trimestres_vacios(num_notas=n_notas),
                 }
                 for i in range(1, cantidad_alumnos + 1)
             }
@@ -639,13 +743,84 @@ class AppState:
             K_ALUMNOS: alumnos_dict,
             K_ASISTENCIAS: {},
             K_NOMBRES_COLUMNAS: {
-                t: list(NOMBRES_COLUMNAS_DEFAULT) for t in NOMBRES_TRIMESTRES
+                t: crear_nombres_columnas_default(n_notas) for t in NOMBRES_TRIMESTRES
             },
             K_HORARIO: (horario or "").strip(),
             K_CLASES: {},
+            K_DESAPRUEBA_HASTA: umbral_curso,
+            K_USAR_RECUPERATORIO: recup_curso,
         }
         self.save_data()
         return True, "Curso creado exitosamente."
+
+    def get_desaprueba_hasta_curso(self, colegio: str | None = None, curso: str | None = None) -> int:
+        """Retorna el umbral de desaprobación (1..9) del curso. Default legacy: 5."""
+        curso_dict = self.get_curso_data(colegio, curso)
+        return normalizar_desaprueba_hasta(curso_dict.get(K_DESAPRUEBA_HASTA), default=DESAPRUEBA_HASTA_DEFAULT)
+
+    def get_usar_recuperatorio_curso(self, colegio: str | None = None, curso: str | None = None) -> bool:
+        """Indica si el curso utiliza instancia de Recuperatorio. Default legacy: True."""
+        curso_dict = self.get_curso_data(colegio, curso)
+        return normalizar_usar_recuperatorio(curso_dict.get(K_USAR_RECUPERATORIO), default=True)
+
+    def get_config_evaluativa_curso(self, colegio: str | None = None, curso: str | None = None) -> dict:
+        """Retorna la configuración evaluativa consolidada del curso y su colegio."""
+        c_col = colegio or self.selected_colegio
+        c_cur = curso or self.selected_curso
+        reg = self.get_regimen_colegio(c_col)
+        claves = obtener_claves_periodos(reg)
+        return {
+            K_REGIMEN: reg,
+            K_DESAPRUEBA_HASTA: self.get_desaprueba_hasta_curso(c_col, c_cur),
+            K_USAR_RECUPERATORIO: self.get_usar_recuperatorio_curso(c_col, c_cur),
+            "notas_por_periodo": {
+                k: len(self.get_nombres_columnas(c_col, c_cur, k)) for k in claves
+            },
+        }
+
+    def contar_notas_recuperatorio_curso(self, colegio: str | None = None, curso: str | None = None) -> int:
+        """Cuenta cuántas calificaciones de recuperatorio existen cargadas en el curso."""
+        curso_dict = self.get_curso_data(colegio, curso)
+        if not curso_dict:
+            return 0
+        total = 0
+        for al_data in (curso_dict.get(K_ALUMNOS, {}) or {}).values():
+            if not isinstance(al_data, dict):
+                continue
+            trims = al_data.get(K_TRIMESTRES, {}) or {}
+            for t_key in NOMBRES_TRIMESTRES:
+                t_val = trims.get(t_key, {}) or {}
+                if t_val.get(K_RECUPERATORIO) is not None:
+                    total += 1
+        return total
+
+    def update_curso_config(
+        self,
+        colegio: str | None = None,
+        curso: str | None = None,
+        *,
+        desaprueba_hasta: int | None = None,
+        usar_recuperatorio: bool | None = None,
+        horario: str | None = None,
+    ) -> tuple[bool, str]:
+        """
+        Actualiza umbral de desaprobación, uso de recuperatorio y/u horario de un curso.
+        Desactivar el recuperatorio NUNCA elimina las notas de recuperatorio previas.
+        """
+        c_col = colegio or self.selected_colegio
+        c_cur = curso or self.selected_curso
+        curso_dict = self.get_curso_data(c_col, c_cur)
+        if not curso_dict:
+            return False, "Curso no encontrado."
+        if desaprueba_hasta is not None:
+            curso_dict[K_DESAPRUEBA_HASTA] = normalizar_desaprueba_hasta(desaprueba_hasta)
+        if usar_recuperatorio is not None:
+            curso_dict[K_USAR_RECUPERATORIO] = normalizar_usar_recuperatorio(usar_recuperatorio, default=True)
+        if horario is not None:
+            curso_dict[K_HORARIO] = (horario or "").strip()
+        self.curso_roster_version += 1
+        self.save_data()
+        return True, "Configuración del curso actualizada."
 
     def rename_curso(self, nombre_colegio: str, nombre_viejo: str, nombre_nuevo: str) -> tuple[bool, str]:
         """Renombra un curso."""
@@ -1098,62 +1273,156 @@ class AppState:
         # Retornar dict ordenado por ID numérico
         return {str(k): alumnos[str(k)] for k in sorted(alumnos.keys(), key=lambda x: int(x) if x.isdigit() else 9999)}
 
+    def _resolver_clave_trimestre(self, trimestre: str | int | None = None) -> str:
+        """Resuelve un índice o nombre de período a la clave interna histórica."""
+        if isinstance(trimestre, int) and 0 <= trimestre < len(NOMBRES_TRIMESTRES):
+            return NOMBRES_TRIMESTRES[trimestre]
+        if isinstance(trimestre, str) and trimestre in NOMBRES_TRIMESTRES:
+            return trimestre
+        trim_idx = self.active_trimestre if 0 <= self.active_trimestre < len(NOMBRES_TRIMESTRES) else 0
+        return NOMBRES_TRIMESTRES[trim_idx]
+
     def get_nombres_columnas(self, colegio: str | None = None, curso: str | None = None, trimestre: str | int | None = None) -> list[str]:
         """
-        Retorna los nombres de las 4 columnas (P1, P2, P3, Extra) para el trimestre dado (o el activo).
-        Soporta tanto la estructura de diccionario por trimestre como lista plana.
+        Retorna los nombres de las columnas configuradas (1 a 8, por defecto 4) para el período dado.
+        Soporta tanto estructura de diccionario por período como lista plana legacy.
         """
         curso_dict = self.get_curso_data(colegio, curso)
         raw_cols = curso_dict.get(K_NOMBRES_COLUMNAS)
-
-        # Determinar nombre del trimestre
-        if isinstance(trimestre, int) and 0 <= trimestre < len(NOMBRES_TRIMESTRES):
-            trim_nom = NOMBRES_TRIMESTRES[trimestre]
-        elif isinstance(trimestre, str) and trimestre in NOMBRES_TRIMESTRES:
-            trim_nom = trimestre
-        else:
-            trim_idx = self.active_trimestre if 0 <= self.active_trimestre < len(NOMBRES_TRIMESTRES) else 0
-            trim_nom = NOMBRES_TRIMESTRES[trim_idx]
+        trim_nom = self._resolver_clave_trimestre(trimestre)
 
         if isinstance(raw_cols, dict):
-            cols = raw_cols.get(trim_nom, NOMBRES_COLUMNAS_DEFAULT)
-        elif isinstance(raw_cols, list) and len(raw_cols) >= 4:
+            cols = raw_cols.get(trim_nom)
+        elif isinstance(raw_cols, list) and len(raw_cols) >= MIN_NOTAS_PERIODO:
             cols = raw_cols
         else:
-            cols = NOMBRES_COLUMNAS_DEFAULT
+            cols = None
 
-        # Asegurar que siempre tenga 4 elementos
-        resultado = list(cols)
-        while len(resultado) < 4:
-            resultado.append(NOMBRES_COLUMNAS_DEFAULT[len(resultado)])
-        return resultado[:4]
+        if not isinstance(cols, list) or len(cols) < MIN_NOTAS_PERIODO:
+            return list(NOMBRES_COLUMNAS_DEFAULT)
+
+        recortadas = list(cols[:MAX_NOTAS_PERIODO])
+        defaults = crear_nombres_columnas_default(len(recortadas))
+        return [str(c).strip() or defaults[i] for i, c in enumerate(recortadas)]
 
     def set_nombres_columnas(self, nombres: list[str], colegio: str | None = None, curso: str | None = None, trimestre: str | int | None = None) -> None:
-        """Actualiza los nombres de las columnas del curso para el trimestre activo."""
+        """Actualiza los nombres (y cantidad 1..8) de las columnas del curso para el período indicado."""
         curso_dict = self.get_curso_data(colegio, curso)
         if not curso_dict:
             return
 
-        if isinstance(trimestre, int) and 0 <= trimestre < len(NOMBRES_TRIMESTRES):
-            trim_nom = NOMBRES_TRIMESTRES[trimestre]
-        elif isinstance(trimestre, str) and trimestre in NOMBRES_TRIMESTRES:
-            trim_nom = trimestre
-        else:
-            trim_idx = self.active_trimestre if 0 <= self.active_trimestre < len(NOMBRES_TRIMESTRES) else 0
-            trim_nom = NOMBRES_TRIMESTRES[trim_idx]
-
+        trim_nom = self._resolver_clave_trimestre(trimestre)
         raw_cols = curso_dict.setdefault(K_NOMBRES_COLUMNAS, {})
         if not isinstance(raw_cols, dict):
             curso_dict[K_NOMBRES_COLUMNAS] = {t: list(NOMBRES_COLUMNAS_DEFAULT) for t in NOMBRES_TRIMESTRES}
             raw_cols = curso_dict[K_NOMBRES_COLUMNAS]
 
-        cleaned = [n.strip() or NOMBRES_COLUMNAS_DEFAULT[i] for i, n in enumerate(nombres[:4])]
-        while len(cleaned) < 4:
-            cleaned.append(NOMBRES_COLUMNAS_DEFAULT[len(cleaned)])
+        lista_in = list(nombres or [])[:MAX_NOTAS_PERIODO]
+        if not lista_in:
+            lista_in = [NOMBRES_COLUMNAS_DEFAULT[0]]
+        n_nuevo = max(MIN_NOTAS_PERIODO, min(MAX_NOTAS_PERIODO, len(lista_in)))
+        defaults = crear_nombres_columnas_default(n_nuevo)
+        cleaned = [str(lista_in[i]).strip() or defaults[i] for i in range(n_nuevo)]
 
-        raw_cols[trim_nom] = cleaned[:4]
+        old_len = len(self.get_nombres_columnas(colegio, curso, trim_nom))
+        raw_cols[trim_nom] = cleaned
+
+        if n_nuevo != old_len:
+            for al_data in (curso_dict.get(K_ALUMNOS, {}) or {}).values():
+                if not isinstance(al_data, dict):
+                    continue
+                t_data = al_data.setdefault(K_TRIMESTRES, {}).setdefault(trim_nom, crear_trimestre_vacio(old_len))
+                vals = obtener_notas_periodo_ordenadas(t_data, num_notas=old_len)
+                if n_nuevo > len(vals):
+                    vals.extend([None] * (n_nuevo - len(vals)))
+                aplicar_notas_periodo_ordenadas(t_data, vals[:n_nuevo])
+
+        self.curso_roster_version += 1
         self.has_unsaved_changes = True
         self.notify()
+
+    def contar_alumnos_con_nota_en_columna(
+        self,
+        col_idx: int,
+        colegio: str | None = None,
+        curso: str | None = None,
+        trimestre: str | int | None = None,
+    ) -> int:
+        """Cuenta cuántos alumnos tienen calificación cargada en la columna `col_idx` del período."""
+        curso_dict = self.get_curso_data(colegio, curso)
+        if not curso_dict or col_idx < 0:
+            return 0
+        trim_nom = self._resolver_clave_trimestre(trimestre)
+        n_cols = len(self.get_nombres_columnas(colegio, curso, trim_nom))
+        if col_idx >= n_cols:
+            return 0
+        total = 0
+        for al_data in (curso_dict.get(K_ALUMNOS, {}) or {}).values():
+            if not isinstance(al_data, dict):
+                continue
+            t_data = (al_data.get(K_TRIMESTRES, {}) or {}).get(trim_nom, {}) or {}
+            vals = obtener_notas_periodo_ordenadas(t_data, num_notas=n_cols)
+            if col_idx < len(vals) and vals[col_idx] is not None:
+                total += 1
+        return total
+
+    def aplicar_cambios_columnas_periodo(
+        self,
+        columnas_config: list[dict],
+        colegio: str | None = None,
+        curso: str | None = None,
+        trimestre: str | int | None = None,
+    ) -> tuple[bool, str]:
+        """
+        Aplica renombrado, adición (máx 8) y eliminación (mín 1) de columnas del período,
+        remapeando las notas de todos los alumnos según `orig_idx` sin alterar recuperatorios
+        ni las demás columnas existentes.
+        """
+        curso_dict = self.get_curso_data(colegio, curso)
+        if not curso_dict:
+            return False, "Curso no encontrado."
+        if not isinstance(columnas_config, list) or len(columnas_config) < MIN_NOTAS_PERIODO:
+            return False, f"Debe existir al menos {MIN_NOTAS_PERIODO} nota por período."
+        if len(columnas_config) > MAX_NOTAS_PERIODO:
+            return False, f"El máximo permitido es {MAX_NOTAS_PERIODO} notas por período."
+
+        trim_nom = self._resolver_clave_trimestre(trimestre)
+        old_cols = self.get_nombres_columnas(colegio, curso, trim_nom)
+        old_len = len(old_cols)
+
+        n_nuevo = len(columnas_config)
+        defaults = crear_nombres_columnas_default(n_nuevo)
+        nuevos_nombres: list[str] = []
+        orig_indices: list[int | None] = []
+        for i, item in enumerate(columnas_config):
+            nom = str((item or {}).get("nombre", "")).strip() or defaults[i]
+            orig = (item or {}).get("orig_idx")
+            if isinstance(orig, int) and not isinstance(orig, bool) and 0 <= orig < old_len:
+                orig_indices.append(orig)
+            else:
+                orig_indices.append(None)
+            nuevos_nombres.append(nom)
+
+        raw_cols = curso_dict.setdefault(K_NOMBRES_COLUMNAS, {})
+        if not isinstance(raw_cols, dict):
+            curso_dict[K_NOMBRES_COLUMNAS] = {t: list(NOMBRES_COLUMNAS_DEFAULT) for t in NOMBRES_TRIMESTRES}
+            raw_cols = curso_dict[K_NOMBRES_COLUMNAS]
+        raw_cols[trim_nom] = nuevos_nombres
+
+        for al_data in (curso_dict.get(K_ALUMNOS, {}) or {}).values():
+            if not isinstance(al_data, dict):
+                continue
+            t_data = al_data.setdefault(K_TRIMESTRES, {}).setdefault(trim_nom, crear_trimestre_vacio(old_len))
+            old_vals = obtener_notas_periodo_ordenadas(t_data, num_notas=old_len)
+            new_vals = [
+                old_vals[orig_i] if (orig_i is not None and 0 <= orig_i < len(old_vals)) else None
+                for orig_i in orig_indices
+            ]
+            aplicar_notas_periodo_ordenadas(t_data, new_vals)
+
+        self.curso_roster_version += 1
+        self.save_data()
+        return True, "Notas del período actualizadas."
 
     def add_alumno(self, apellido_o_nombre: str, nombre_pila: str = "", colegio: str | None = None, curso: str | None = None) -> tuple[bool, str]:
         """Agrega un nuevo alumno al curso admitiendo apellido y nombre por separado o nombre compuesto."""
@@ -1183,11 +1452,16 @@ class AppState:
             if numeric_ids:
                 next_id = max(numeric_ids) + 1
 
+        trimestres_init = {
+            t: crear_trimestre_vacio(len(self.get_nombres_columnas(colegio, curso, t)))
+            for t in NOMBRES_TRIMESTRES
+        }
+
         alumnos[str(next_id)] = {
             K_NOMBRE: nombre_completo,
             K_APELLIDO: ap,
             K_NOMBRE_PILA: nom,
-            K_TRIMESTRES: crear_trimestres_vacios(),
+            K_TRIMESTRES: trimestres_init,
         }
         self.curso_roster_version += 1
         self.save_data()
@@ -1421,18 +1695,23 @@ class AppState:
                 valor_guardado = None
 
         trimestre_nombre = NOMBRES_TRIMESTRES[trimestre_idx]
+        n_cols_periodo = len(self.get_nombres_columnas(colegio, curso, trimestre_nombre))
         t_data = curso_dict[K_ALUMNOS][id_al][K_TRIMESTRES].setdefault(
-            trimestre_nombre, {
-                K_PRINCIPALES: [None] * NUM_PRINCIPALES,
-                K_EXTRAS: [None] * NUM_EXTRAS,
-                K_RECUPERATORIO: None,
-            }
+            trimestre_nombre,
+            crear_trimestre_vacio(n_cols_periodo),
         )
 
+        max_extras = MAX_NOTAS_PERIODO - NUM_PRINCIPALES
         if tipo == "P" and 0 <= index < NUM_PRINCIPALES:
-            t_data[K_PRINCIPALES][index] = valor_guardado
-        elif tipo == "E" and 0 <= index < NUM_EXTRAS:
-            t_data[K_EXTRAS][index] = valor_guardado
+            princ = t_data.setdefault(K_PRINCIPALES, [])
+            while len(princ) <= index:
+                princ.append(None)
+            princ[index] = valor_guardado
+        elif tipo == "E" and 0 <= index < max_extras:
+            ext = t_data.setdefault(K_EXTRAS, [])
+            while len(ext) <= index:
+                ext.append(None)
+            ext[index] = valor_guardado
         elif tipo == "R":
             t_data[K_RECUPERATORIO] = valor_guardado
 
@@ -2243,13 +2522,14 @@ class AppState:
     ) -> dict:
         """
         Retorna las estadísticas y desglose de alumnos de un curso para un período dado.
-        Delega en la función pura core.calculos.obtener_estadisticas_curso.
+        Delega en la función pura core.calculos.obtener_estadisticas_curso con el régimen del colegio.
         """
         col = colegio or self.selected_colegio
         cur = curso or self.selected_curso
         curso_data = self.get_curso_data(col, cur)
         p_idx = self.estadisticas_periodo if periodo_idx is None else periodo_idx
-        return obtener_estadisticas_curso(curso_data, p_idx)
+        reg = self.get_regimen_colegio(col)
+        return obtener_estadisticas_curso(curso_data, p_idx, regimen=reg)
 
     def get_estadisticas_asistencia_curso(
         self,
@@ -2511,10 +2791,12 @@ class AppState:
         nombre_grupo: str = "",
         colegio: str | None = None,
         curso: str | None = None,
+        desaprueba_hasta: int | None = None,
     ) -> tuple[bool, str, dict | None]:
         """
         Agrega un bloque 'individual' o 'grupo' al período indicado.
         Exige fecha obligatoria en formato dd-mm-aaaa y al menos un alumno.
+        El umbral `desaprueba_hasta` (1..9) se prellena con el del curso si se omite.
         """
         import uuid
 
@@ -2537,6 +2819,12 @@ class AppState:
         c_col = colegio or self.selected_colegio
         c_cur = curso or self.selected_curso
         alumnos_curso = self.get_alumnos(c_col, c_cur)
+        umbral_default = self.get_desaprueba_hasta_curso(c_col, c_cur)
+        umbral_blq = (
+            umbral_default
+            if desaprueba_hasta is None
+            else normalizar_desaprueba_hasta(desaprueba_hasta, default=umbral_default)
+        )
 
         evaluaciones = [self._crear_evaluacion_inicial(aid, alumnos_curso) for aid in ids_limpios]
         bloque = {
@@ -2545,6 +2833,7 @@ class AppState:
             "nombre_grupo": (nombre_grupo or "").strip() if tipo_norm == "grupo" else "",
             "fecha_examen": fec_o_err,
             "temas": (temas or "").strip(),
+            K_DESAPRUEBA_HASTA: umbral_blq,
             "evaluaciones": evaluaciones,
         }
         per.setdefault("bloques", []).append(bloque)
@@ -2561,10 +2850,12 @@ class AppState:
         alumno_ids: list[str] | None = None,
         colegio: str | None = None,
         curso: str | None = None,
+        desaprueba_hasta: int | None = None,
     ) -> tuple[bool, str]:
         """
-        Actualiza fecha, temas, nombre de grupo e integrantes de un bloque existente.
-        Preserva íntegramente las evaluaciones previas de los integrantes que permanecen.
+        Actualiza fecha, temas, nombre de grupo, umbral e integrantes de un bloque existente.
+        Preserva íntegramente las evaluaciones previas de los integrantes que permanecen
+        y recalcula sus resultados si cambia el umbral del bloque.
         """
         per = self.get_periodo_intensificacion(periodo_id, colegio, curso)
         if not per:
@@ -2587,6 +2878,9 @@ class AppState:
         bloque_obj["temas"] = (temas or "").strip()
         if bloque_obj.get("tipo") == "grupo":
             bloque_obj["nombre_grupo"] = (nombre_grupo or "").strip()
+
+        if desaprueba_hasta is not None:
+            bloque_obj[K_DESAPRUEBA_HASTA] = normalizar_desaprueba_hasta(desaprueba_hasta)
 
         if alumno_ids is not None:
             ids_nuevos = [str(aid).strip() for aid in alumno_ids if str(aid).strip()]
@@ -2617,6 +2911,16 @@ class AppState:
                 else:
                     nuevas_evals.append(self._crear_evaluacion_inicial(aid, alumnos_curso))
             bloque_obj["evaluaciones"] = nuevas_evals
+
+        # Recalcular resultados de todas las evaluaciones del bloque con el umbral vigente
+        umbral_actual = normalizar_desaprueba_hasta(bloque_obj.get(K_DESAPRUEBA_HASTA))
+        for ev in bloque_obj.get("evaluaciones", []) or []:
+            if isinstance(ev, dict):
+                ev["resultado"] = calcular_resultado_evaluacion(
+                    ev.get("asistencia"),
+                    ev.get("nota"),
+                    desaprueba_hasta=umbral_actual,
+                )
 
         self.save_data()
         return True, "Bloque actualizado exitosamente."
@@ -2683,21 +2987,23 @@ class AppState:
     ) -> tuple[bool, str, dict | None]:
         """
         Actualiza asistencia ('P', 'A' o None), nota entera 1–10 u observaciones
-        de una evaluación de intensificación con autoguardado debounced.
+        de una evaluación de intensificación con autoguardado debounced y umbral del bloque.
         """
         per = self.get_periodo_intensificacion(periodo_id, colegio, curso)
         if not per:
             return False, "Período no encontrado.", None
 
+        bloque_obj = None
         ev_obj = None
         for b in per.get("bloques", []) or []:
             if isinstance(b, dict) and str(b.get("id", "")) == str(bloque_id):
+                bloque_obj = b
                 for ev in b.get("evaluaciones", []) or []:
                     if isinstance(ev, dict) and str(ev.get("id", "")) == str(evaluacion_id):
                         ev_obj = ev
                         break
                 break
-        if ev_obj is None:
+        if ev_obj is None or bloque_obj is None:
             return False, "Evaluación no encontrada.", None
 
         if asistencia is not ...:
@@ -2727,9 +3033,11 @@ class AppState:
         if observaciones is not ...:
             ev_obj["observaciones"] = str(observaciones or "")
 
+        umbral_blq = normalizar_desaprueba_hasta(bloque_obj.get(K_DESAPRUEBA_HASTA))
         ev_obj["resultado"] = calcular_resultado_evaluacion(
             ev_obj.get("asistencia"),
             ev_obj.get("nota"),
+            desaprueba_hasta=umbral_blq,
         )
 
         if auto_save:
@@ -2743,10 +3051,13 @@ class AppState:
         colegio: str | None = None,
         curso: str | None = None,
     ) -> set[str]:
-        """Retorna el conjunto de IDs de alumnos con promedio anual < 6 (solo lectura)."""
+        """Retorna el conjunto de IDs de alumnos desaprobados según el criterio activo del curso."""
         c_col = colegio or self.selected_colegio
         c_cur = curso or self.selected_curso
-        return obtener_alumnos_desaprobados_anual(self.get_curso_data(c_col, c_cur))
+        return obtener_alumnos_desaprobados_anual(
+            self.get_curso_data(c_col, c_cur),
+            regimen=self.get_regimen_colegio(c_col),
+        )
 
     def get_candidatos_importacion_intensificacion(
         self,
@@ -2771,6 +3082,7 @@ class AppState:
         nombre_grupo: str = "",
         colegio: str | None = None,
         curso: str | None = None,
+        desaprueba_hasta: int | None = None,
     ) -> tuple[bool, str, list[dict]]:
         """
         Importa alumnos seleccionados al período destino con fecha obligatoria dd-mm-aaaa
@@ -2795,6 +3107,7 @@ class AppState:
                     temas=temas,
                     colegio=colegio,
                     curso=curso,
+                    desaprueba_hasta=desaprueba_hasta,
                 )
                 if not ok:
                     return False, msg, creados
@@ -2810,6 +3123,7 @@ class AppState:
                 nombre_grupo=nombre_grupo,
                 colegio=colegio,
                 curso=curso,
+                desaprueba_hasta=desaprueba_hasta,
             )
             if not ok:
                 return False, msg, []

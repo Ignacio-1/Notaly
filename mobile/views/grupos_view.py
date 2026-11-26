@@ -12,7 +12,10 @@ from typing import Any, Callable
 
 import flet as ft
 
-from core.constants import NOTA_MINIMA_APROBACION
+from core.constants import (
+    DESAPRUEBA_HASTA_DEFAULT,
+    obtener_corte_aprobacion,
+)
 from core.grupos import formatear_resumen_grupos_texto
 from mobile.components.calificar_grupo_dialog import CalificarGrupoDialog
 from mobile.components.grupos_sorteador_dialog import (
@@ -48,13 +51,18 @@ from mobile.theme import (
 )
 
 
-def _stripe_for_group_grade(nota: Any, tok: ThemeTokens) -> str:
-    """Retorna color del filete izquierdo (`3px`) según nota del grupo."""
+def _stripe_for_group_grade(
+    nota: Any,
+    tok: ThemeTokens,
+    desaprueba_hasta: int = DESAPRUEBA_HASTA_DEFAULT,
+) -> str:
+    """Retorna color del filete izquierdo (`3px`) según nota del grupo y umbral del curso."""
     if nota is None or str(nota).strip() in ("", "-", "--"):
         return tok.border_hairline
     try:
         val = float(str(nota).replace(",", "."))
-        return tok.pass_fg if val >= NOTA_MINIMA_APROBACION else tok.fail_fg
+        corte = obtener_corte_aprobacion(desaprueba_hasta)
+        return tok.pass_fg if val >= corte else tok.fail_fg
     except (ValueError, TypeError):
         return tok.border_hairline
 
@@ -359,6 +367,11 @@ class GruposView(ft.Container):
         curso = self.state.selected_curso or ""
         tok = self.tokens
         alumnos_dict = self.state.get_alumnos(colegio, curso)
+        umbral_curso = (
+            self.state.get_desaprueba_hasta_curso(colegio, curso)
+            if hasattr(self.state, "get_desaprueba_hasta_curso")
+            else DESAPRUEBA_HASTA_DEFAULT
+        )
         grupos = trabajo.get("grupos") or []
         trabajo_id = str(trabajo.get("id"))
 
@@ -381,6 +394,7 @@ class GruposView(ft.Container):
                 dominant=True,
                 width=58,
                 height=44,
+                desaprueba_hasta=umbral_curso,
                 tooltip="Calificar grupo",
                 on_click=lambda _, grp=g: self._abrir_calificar_grupo(trabajo_id, grp),
             )
@@ -498,7 +512,7 @@ class GruposView(ft.Container):
                     )
                 )
 
-            stripe = _stripe_for_group_grade(nota, tok)
+            stripe = _stripe_for_group_grade(nota, tok, desaprueba_hasta=umbral_curso)
 
             section = ft.Container(
                 bgcolor=tok.surface_primary,

@@ -169,10 +169,15 @@ class CalificarGrupoDialog(NotalySheet):
 
     def _refresh_keypad_styles(self) -> None:
         tok = self.tokens
+        umbral = (
+            self.app_state.get_desaprueba_hasta_curso()
+            if hasattr(self.app_state, "get_desaprueba_hasta_curso")
+            else 5
+        )
         for btn in self.grade_keys:
             n = int(btn.data)
             is_selected = self.nota_actual == n
-            sem_bg, sem_fg, sem_brd = get_grade_triad(n, tok)
+            sem_bg, sem_fg, sem_brd = get_grade_triad(n, tok, desaprueba_hasta=umbral)
             if is_selected:
                 btn.bgcolor = tok.accent_primary
                 btn.border = ft.Border.all(2, tok.accent_primary)

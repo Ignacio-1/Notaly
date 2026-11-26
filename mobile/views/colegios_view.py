@@ -12,10 +12,24 @@ from typing import Any, Callable
 
 import flet as ft
 
-from core.constants import K_DIRECCION, K_HORARIOS
+from core.constants import (
+    DESAPRUEBA_HASTA_DEFAULT,
+    K_COLEGIOS,
+    K_DESAPRUEBA_HASTA,
+    K_DIRECCION,
+    K_HORARIOS,
+    K_REGIMEN,
+    REGIMEN_CUATRIMESTRAL,
+    REGIMEN_TRIMESTRAL,
+    normalizar_desaprueba_hasta,
+    normalizar_regimen,
+    obtener_nombre_regimen_visible,
+)
 from mobile.components.ledger_primitives import EmptyStateView, NotalyListRow
 from mobile.components.notaly_sheet import (
+    NotalyCompactDialog,
     NotalySheet,
+    close_dialog_safe,
     open_dialog_safe,
     sheet_action_button,
     sheet_menu_item,
@@ -31,9 +45,11 @@ from mobile.components.student_dialog import (
 from mobile.components.ui_header import NotalyTopHeader
 from mobile.state import AppState
 from mobile.theme import (
+    RADIUS_SM,
     SPACE_LG,
     SPACE_MD,
     SPACE_SM,
+    SPACE_XS,
     ThemeTokens,
     constrain_tablet_content,
     extract_initials,
@@ -227,6 +243,8 @@ class ColegiosView(ft.Container):
             info = self.state.get_colegio_data(nombre) or {}
             direccion = (info.get(K_DIRECCION, "") or "").strip()
             horarios = (info.get(K_HORARIOS, "") or "").strip()
+            regimen_lbl = obtener_nombre_regimen_visible(info.get(K_REGIMEN))
+            umbral_col = normalizar_desaprueba_hasta(info.get(K_DESAPRUEBA_HASTA))
 
             partes_meta = [p for p in (direccion, horarios) if p]
             meta_compacta = " · ".join(partes_meta) if partes_meta else None
@@ -236,6 +254,19 @@ class ColegiosView(ft.Container):
                 f"{'registrado' if num_cursos == 1 else 'registrados'}"
             )
             av_bg, av_fg = get_avatar_palette(idx, is_dark=is_dark)
+
+            reg_badge = ft.Container(
+                bgcolor=tok.surface_subtle,
+                border=ft.Border.all(1, tok.border_hairline),
+                border_radius=RADIUS_SM,
+                padding=ft.Padding.symmetric(horizontal=6, vertical=2),
+                content=tabular_text(
+                    f"{regimen_lbl[:4]}. · {umbral_col + 1}-10",
+                    size=10,
+                    weight=ft.FontWeight.W_600,
+                    color=tok.text_secondary,
+                ),
+            )
 
             btn_menu = ft.IconButton(
                 icon=ft.Icons.MORE_VERT,
@@ -255,7 +286,7 @@ class ColegiosView(ft.Container):
                     initials=extract_initials(nombre),
                     monogram_bg=av_bg,
                     monogram_fg=av_fg,
-                    trailing=btn_menu,
+                    trailing=[reg_badge, btn_menu],
                     horizontal_padding=gutter,
                     show_divider=False,
                     tokens=tok,
@@ -266,7 +297,13 @@ class ColegiosView(ft.Container):
     def _abrir_menu_colegio(self, col: str) -> None:
         tok = resolve_tokens(page=self.app_page, state=self.state)
         num_cursos = len(self.state.get_cursos(col))
-        subtitulo = f"{pluralizar(num_cursos, 'curso')} {'registrado' if num_cursos == 1 else 'registrados'}"
+        info = self.state.get_colegio_data(col) or {}
+        regimen_lbl = obtener_nombre_regimen_visible(info.get(K_REGIMEN))
+        umbral_col = normalizar_desaprueba_hasta(info.get(K_DESAPRUEBA_HASTA))
+        subtitulo = (
+            f"{pluralizar(num_cursos, 'curso')} {'registrado' if num_cursos == 1 else 'registrados'}"
+            f" · {regimen_lbl} · Aprueba {umbral_col + 1}-10"
+        )
 
         def _exec_and_close(fn: Callable[[], Any]) -> None:
             sheet.close()
@@ -346,8 +383,20 @@ class ColegiosView(ft.Container):
         self.on_navigate("cursos")
 
     def _abrir_modal_crear(self, _e: Any = None) -> None:
-        def confirmar_creacion(nuevo_nombre: str, direccion: str, horarios: str) -> bool:
-            exito, msg = self.state.add_colegio(nuevo_nombre, direccion, horarios)
+        def confirmar_creacion(
+            nuevo_nombre: str,
+            direccion: str,
+            horarios: str,
+            regimen: str = REGIMEN_TRIMESTRAL,
+            desaprueba_hasta: int = DESAPRUEBA_HASTA_DEFAULT,
+        ) -> bool:
+            exito, msg = self.state.add_colegio(
+                nuevo_nombre,
+                direccion,
+                horarios,
+                regimen=regimen,
+                desaprueba_hasta=desaprueba_hasta,
+            )
             if exito:
                 self._build_ui()
                 self._safe_update()
@@ -368,13 +417,23 @@ class ColegiosView(ft.Container):
         data = self.state.get_colegio_data(nombre_actual) or {}
         dir_actual = data.get(K_DIRECCION, "")
         hor_actual = data.get(K_HORARIOS, "")
+        reg_actual = normalizar_regimen(data.get(K_REGIMEN))
+        umbral_actual = normalizar_desaprueba_hasta(data.get(K_DESAPRUEBA_HASTA))
 
-        def confirmar_edicion(nuevo_nombre: str, nueva_dir: str, nuevos_hor: str) -> bool:
+        def _aplicar_actualizacion(
+            nuevo_nombre: str,
+            nueva_dir: str,
+            nuevos_hor: str,
+            nuevo_reg: str,
+            nuevo_umbral: int,
+        ) -> bool:
             exito, msg = self.state.update_colegio(
                 nombre_actual=nombre_actual,
                 nuevo_nombre=nuevo_nombre,
                 direccion=nueva_dir,
                 horarios=nuevos_hor,
+                regimen=nuevo_reg,
+                desaprueba_hasta=nuevo_umbral,
             )
             if exito:
                 self._build_ui()
@@ -383,11 +442,92 @@ class ColegiosView(ft.Container):
             self._mostrar_snackbar(msg, error=True)
             return False
 
+        def confirmar_edicion(
+            nuevo_nombre: str,
+            nueva_dir: str,
+            nuevos_hor: str,
+            nuevo_reg: str = reg_actual,
+            nuevo_umbral: int = umbral_actual,
+        ) -> bool | str:
+            nuevo_reg_norm = normalizar_regimen(nuevo_reg)
+            # Validar duplicado contra todos los colegios reales (sin filtro de búsqueda)
+            if nuevo_nombre.lower() != nombre_actual.lower():
+                colegios_todos = (
+                    self.state.data.get(K_COLEGIOS, {}).keys()
+                    if isinstance(getattr(self.state, "data", None), dict)
+                    else self.state.get_colegios()
+                )
+                existentes = {c.lower() for c in colegios_todos}
+                if nuevo_nombre.lower() in existentes:
+                    return False
+
+            if nuevo_reg_norm != reg_actual and self.app_page is not None:
+                tok = resolve_tokens(page=self.app_page, state=self.state)
+                if nuevo_reg_norm == REGIMEN_CUATRIMESTRAL:
+                    cant_t3 = (
+                        self.state.contar_notas_tercer_trimestre_colegio(nombre_actual)
+                        if hasattr(self.state, "contar_notas_tercer_trimestre_colegio")
+                        else 0
+                    )
+                    extra_t3 = (
+                        f"\n\nActualmente hay {pluralizar(cant_t3, 'alumno')} con calificaciones en el 3° Trimestre que quedarán resguardadas."
+                        if cant_t3 > 0
+                        else ""
+                    )
+                    mensaje = (
+                        "Vas a cambiar esta institución de Trimestral a Cuatrimestral.\n\n"
+                        "Las notas de 1° y 2° Trimestre pasarán a mostrarse como 1° y 2° Cuatrimestre. "
+                        "Las calificaciones del 3° Trimestre NO se borran: quedarán resguardadas ocultas y "
+                        "reaparecerán intactas si vuelves al régimen Trimestral."
+                        + extra_t3
+                    )
+                else:
+                    mensaje = (
+                        "Vas a cambiar esta institución de Cuatrimestral a Trimestral.\n\n"
+                        "Se habilitará el 3° Trimestre en todos los cursos del colegio, recuperando "
+                        "automáticamente cualquier nota previa que existiera en ese período."
+                    )
+
+                def _cerrar_conf(_e=None) -> None:
+                    try:
+                        self.app_page.pop_dialog()
+                    except Exception:
+                        pass
+                    self._safe_update()
+
+                def _confirmar_cambio(_e=None) -> None:
+                    _cerrar_conf()
+                    _aplicar_actualizacion(
+                        nuevo_nombre, nueva_dir, nuevos_hor, nuevo_reg_norm, nuevo_umbral
+                    )
+
+                dlg_conf = NotalyCompactDialog(
+                    page=self.app_page,
+                    title="Confirmar cambio de régimen",
+                    body=ft.Text(mensaje, size=13, color=tok.text_secondary),
+                    actions=[
+                        sheet_action_button("Cancelar", _cerrar_conf, tokens=tok, primary=False),
+                        sheet_action_button("Confirmar cambio", _confirmar_cambio, tokens=tok, primary=True),
+                    ],
+                    tokens=tok,
+                    state=self.state,
+                    modal=True,
+                )
+                close_dialog_safe(self.app_page, dlg)
+                open_dialog_safe(self.app_page, dlg_conf)
+                return "replaced"
+
+            return _aplicar_actualizacion(
+                nuevo_nombre, nueva_dir, nuevos_hor, nuevo_reg_norm, nuevo_umbral
+            )
+
         dlg = ColegioFormDialog(
             titulo="Editar colegio",
             nombre_actual=nombre_actual,
             direccion_actual=dir_actual,
             horarios_actual=hor_actual,
+            regimen_actual=reg_actual,
+            desaprueba_hasta_actual=umbral_actual,
             modo_edicion=True,
             on_confirm=confirmar_edicion,
             page=self.app_page,

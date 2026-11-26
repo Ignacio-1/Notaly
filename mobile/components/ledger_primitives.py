@@ -18,6 +18,7 @@ from typing import Any, Callable, Sequence
 
 import flet as ft
 
+from core.constants import DESAPRUEBA_HASTA_DEFAULT, normalizar_desaprueba_hasta
 from mobile.components.notaly_sheet import sheet_action_button
 from mobile.theme import (
     FONT_MONO,
@@ -518,12 +519,14 @@ class GradeCell(ft.Container):
         on_click: Callable[[Any], Any] | None = None,
         tooltip: str | None = None,
         data: Any = None,
+        desaprueba_hasta: int = DESAPRUEBA_HASTA_DEFAULT,
     ) -> None:
         self.tokens = resolve_tokens(tokens=tokens, page=page, state=state)
         self._dominant = dominant
         self._is_active = is_active
         self._disabled_state = disabled
         self._elevated_empty = elevated_empty
+        self._desaprueba_hasta = normalizar_desaprueba_hasta(desaprueba_hasta)
 
         self.text_control = tabular_text(
             _format_grade_value(value, dominant),
@@ -555,6 +558,7 @@ class GradeCell(ft.Container):
             is_active=is_active,
             disabled=disabled,
             elevated_empty=elevated_empty,
+            desaprueba_hasta=self._desaprueba_hasta,
             update=False,
         )
 
@@ -565,11 +569,12 @@ class GradeCell(ft.Container):
         is_active: bool | None = None,
         disabled: bool | None = None,
         elevated_empty: bool | None = None,
+        desaprueba_hasta: int | None = None,
         tokens: ThemeTokens | None = None,
         on_click: Callable[[Any], Any] | None = ...,
         update: bool = False,
     ) -> None:
-        """Actualiza valor, foco y semántica in-place sin reconstruir el casillero."""
+        """Actualiza valor, foco, umbral y semántica in-place sin reconstruir el casillero."""
         if isinstance(tokens, ThemeTokens):
             self.tokens = tokens
         if is_active is not None:
@@ -578,6 +583,8 @@ class GradeCell(ft.Container):
             self._disabled_state = disabled
         if elevated_empty is not None:
             self._elevated_empty = elevated_empty
+        if desaprueba_hasta is not None:
+            self._desaprueba_hasta = normalizar_desaprueba_hasta(desaprueba_hasta)
         if value is not ...:
             self.text_control.value = _format_grade_value(value, self._dominant)
         if on_click is not ...:
@@ -585,7 +592,11 @@ class GradeCell(ft.Container):
             self.ink = on_click is not None and not self._disabled_state
 
         raw_val = self.text_control.value
-        sem_bg, sem_fg, sem_border = get_grade_triad(raw_val, self.tokens)
+        sem_bg, sem_fg, sem_border = get_grade_triad(
+            raw_val,
+            self.tokens,
+            desaprueba_hasta=self._desaprueba_hasta,
+        )
 
         if self._disabled_state:
             self.bgcolor = self.tokens.bg_canvas

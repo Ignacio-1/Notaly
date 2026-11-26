@@ -16,6 +16,7 @@ from typing import Any
 
 from .calculos import procesar_calificaciones_alumno
 from .constants import (
+    DESAPRUEBA_HASTA_DEFAULT,
     INTENSIF_ASIST_AUSENTE,
     INTENSIF_ASIST_PRESENTE,
     INTENSIF_RES_APROBADO,
@@ -25,14 +26,22 @@ from .constants import (
     K_ALUMNOS,
     K_APELLIDO,
     K_CURSOS,
+    K_DESAPRUEBA_HASTA,
     K_NOMBRE,
     K_NOMBRE_PILA,
     K_PERIODOS_INTENSIFICACION,
+    K_REGIMEN,
     K_TRIMESTRES,
+    K_USAR_RECUPERATORIO,
     NOTA_MAXIMA,
     NOTA_MINIMA_APROBACION,
+    REGIMEN_TRIMESTRAL,
     formatear_fecha,
     formatear_nombre_completo,
+    normalizar_desaprueba_hasta,
+    normalizar_regimen,
+    normalizar_usar_recuperatorio,
+    obtener_nota_minima_aprobacion,
     parsear_fecha_para_orden,
 )
 
@@ -110,15 +119,20 @@ def validar_nota_intensificacion(valor: Any) -> int | None:
     raise ValueError("La nota debe ser un número entero entre 1 y 10.")
 
 
-def calcular_resultado_evaluacion(asistencia: str | None, nota: int | None) -> str:
+def calcular_resultado_evaluacion(
+    asistencia: str | None,
+    nota: int | None,
+    *,
+    desaprueba_hasta: int = DESAPRUEBA_HASTA_DEFAULT,
+) -> str:
     """
     Calcula el resultado automático de una evaluación de intensificación:
     - Asistencia 'A' -> 'ausente' (la nota no aplica y debe permanecer bloqueada/None).
     - Asistencia None -> 'pendiente'.
     - Asistencia 'P':
       * nota None -> 'pendiente'
-      * nota >= 6 -> 'aprobado'
-      * nota <= 5 -> 'desaprobado'
+      * nota >= (X + 1) -> 'aprobado' (default X=5 -> >= 6)
+      * nota <= X -> 'desaprobado' (default X=5 -> <= 5)
     """
     asist = str(asistencia).strip().upper() if asistencia is not None else ""
     if asist == INTENSIF_ASIST_AUSENTE:
@@ -131,9 +145,10 @@ def calcular_resultado_evaluacion(asistencia: str | None, nota: int | None) -> s
         nota_int = int(nota)
     except (ValueError, TypeError):
         return INTENSIF_RES_PENDIENTE
-    if nota_int >= NOTA_MINIMA_APROBACION:
+    nota_min_aprob = obtener_nota_minima_aprobacion(desaprueba_hasta)
+    if nota_int >= nota_min_aprob:
         return INTENSIF_RES_APROBADO
-    if 1 <= nota_int < NOTA_MINIMA_APROBACION:
+    if 1 <= nota_int < nota_min_aprob:
         return INTENSIF_RES_DESAPROBADO
     return INTENSIF_RES_PENDIENTE
 
@@ -159,10 +174,16 @@ def obtener_nombre_alumno_intensificacion(
     return fb or "Sin nombre"
 
 
-def obtener_alumnos_desaprobados_anual(curso_data: dict | None) -> set[str]:
+def obtener_alumnos_desaprobados_anual(
+    curso_data: dict | None,
+    *,
+    regimen: str | None = None,
+    desaprueba_hasta: int | None = None,
+    usar_recuperatorio: bool | None = None,
+) -> set[str]:
     """
     Identifica los IDs de alumnos del curso cuyo promedio anual redondeado
-    es estrictamente menor a 6 (regla oficial de desaprobación de Notaly).
+    es desaprobado (<= desaprueba_hasta del curso; default <= 5, es decir < 6).
     Solo lectura sobre `curso_data["alumnos"]` para resaltado en el selector.
     """
     desaprobados: set[str] = set()
@@ -172,15 +193,30 @@ def obtener_alumnos_desaprobados_anual(curso_data: dict | None) -> set[str]:
     if not isinstance(alumnos, dict):
         return desaprobados
 
+    reg = normalizar_regimen(regimen if regimen is not None else curso_data.get(K_REGIMEN, REGIMEN_TRIMESTRAL))
+    umbral = normalizar_desaprueba_hasta(
+        desaprueba_hasta if desaprueba_hasta is not None else curso_data.get(K_DESAPRUEBA_HASTA, DESAPRUEBA_HASTA_DEFAULT)
+    )
+    usar_rec = normalizar_usar_recuperatorio(
+        usar_recuperatorio if usar_recuperatorio is not None else curso_data.get(K_USAR_RECUPERATORIO, True),
+        default=True,
+    )
+    nota_min_aprob = obtener_nota_minima_aprobacion(umbral)
+
     for al_id, al_data in alumnos.items():
         if not isinstance(al_data, dict):
             continue
         trimestres = al_data.get(K_TRIMESTRES, {})
         if not isinstance(trimestres, dict):
             continue
-        calcs = procesar_calificaciones_alumno(trimestres)
+        calcs = procesar_calificaciones_alumno(
+            trimestres,
+            regimen=reg,
+            desaprueba_hasta=umbral,
+            usar_recuperatorio=usar_rec,
+        )
         nota_anual = calcs.get("nota_final_total_redondeada")
-        if nota_anual is not None and nota_anual < NOTA_MINIMA_APROBACION:
+        if nota_anual is not None and nota_anual < nota_min_aprob:
             desaprobados.add(str(al_id))
     return desaprobados
 
@@ -192,7 +228,7 @@ def obtener_candidatos_importacion(
     """
     Extrae de un período fuente los registros elegibles para importar a otro período:
     todos aquellos cuyo resultado sea 'desaprobado', 'ausente' o 'pendiente'
-    (excluye estrictamente a los 'aprobado').
+    (excluye estrictamente a los 'aprobado'), respetando el umbral propio de cada bloque.
     """
     if not isinstance(periodo_origen, dict):
         return []
@@ -204,6 +240,9 @@ def obtener_candidatos_importacion(
     for blq in bloques:
         if not isinstance(blq, dict):
             continue
+        blq_umbral = normalizar_desaprueba_hasta(
+            blq.get(K_DESAPRUEBA_HASTA, DESAPRUEBA_HASTA_DEFAULT)
+        )
         evaluaciones = blq.get("evaluaciones", [])
         if not isinstance(evaluaciones, list):
             continue
@@ -216,7 +255,7 @@ def obtener_candidatos_importacion(
             nota = ev.get("nota")
             if asist == INTENSIF_ASIST_AUSENTE:
                 nota = None
-            res = calcular_resultado_evaluacion(asist, nota)
+            res = calcular_resultado_evaluacion(asist, nota, desaprueba_hasta=blq_umbral)
             if res == INTENSIF_RES_APROBADO:
                 continue
             al_id = str(ev.get("alumno_id") or "").strip()
@@ -236,6 +275,7 @@ def obtener_candidatos_importacion(
                     "nota_anterior": nota,
                     "fecha_anterior": fecha_orig,
                     "temas_anteriores": temas_orig,
+                    "desaprueba_hasta": blq_umbral,
                 }
             )
     return candidatos
@@ -283,30 +323,67 @@ def tiene_datos_intensificacion_colegio(colegio_data: dict | None) -> bool:
     return any(tiene_datos_intensificacion_curso(c_data) for c_data in cursos.values())
 
 
-def calcular_distribucion_notas_intensificacion(notas: list[int]) -> dict:
+def calcular_distribucion_notas_intensificacion(
+    notas: list[Any],
+    *,
+    desaprueba_hasta: int = DESAPRUEBA_HASTA_DEFAULT,
+    umbrales_bloques: list[int] | None = None,
+) -> dict:
     """
-    Calcula la distribución exacta de frecuencias y porcentajes por nota entera 1–10.
-    Notas 1–5 corresponden a desaprobados; 6–10 a aprobados.
+    Calcula la distribución exacta de frecuencias y porcentajes por nota entera 1–10,
+    desglosando además aprobados y desaprobados exactos por cada nota aun cuando
+    coexistan bloques con distintos umbrales de desaprobación.
+    Acepta `list[int]` (clasificados contra `desaprueba_hasta`) o `list[tuple[int, str]]`.
     """
+    umbral_def = normalizar_desaprueba_hasta(desaprueba_hasta)
     por_nota: dict[int, int] = {i: 0 for i in range(1, NOTA_MAXIMA + 1)}
+    por_nota_aprobados: dict[int, int] = {i: 0 for i in range(1, NOTA_MAXIMA + 1)}
+    por_nota_desaprobados: dict[int, int] = {i: 0 for i in range(1, NOTA_MAXIMA + 1)}
     porcentajes_nota: dict[int, float] = {i: 0.0 for i in range(1, NOTA_MAXIMA + 1)}
 
     total_calificados = 0
-    for n in notas:
-        if isinstance(n, int) and not isinstance(n, bool) and 1 <= n <= NOTA_MAXIMA:
-            por_nota[n] += 1
+    for item in notas or []:
+        n_val = None
+        res_item = None
+        if isinstance(item, tuple) and len(item) >= 2:
+            n_val, res_item = item[0], item[1]
+        elif isinstance(item, dict):
+            n_val, res_item = item.get("nota"), item.get("resultado")
+        else:
+            n_val = item
+
+        if isinstance(n_val, int) and not isinstance(n_val, bool) and 1 <= n_val <= NOTA_MAXIMA:
+            por_nota[n_val] += 1
             total_calificados += 1
+            if res_item == INTENSIF_RES_APROBADO:
+                por_nota_aprobados[n_val] += 1
+            elif res_item == INTENSIF_RES_DESAPROBADO:
+                por_nota_desaprobados[n_val] += 1
+            elif n_val > umbral_def:
+                por_nota_aprobados[n_val] += 1
+            else:
+                por_nota_desaprobados[n_val] += 1
 
     if total_calificados > 0:
         for i in range(1, NOTA_MAXIMA + 1):
             porcentajes_nota[i] = round((por_nota[i] / total_calificados) * 100.0, 1)
 
     max_frec = max(por_nota.values()) if total_calificados > 0 else 0
+    umbrales_norm = (
+        sorted({normalizar_desaprueba_hasta(u) for u in umbrales_bloques})
+        if umbrales_bloques
+        else [umbral_def]
+    )
     return {
         "total_calificados": total_calificados,
         "max_frecuencia_nota": max_frec,
         "por_nota": por_nota,
+        "por_nota_aprobados": por_nota_aprobados,
+        "por_nota_desaprobados": por_nota_desaprobados,
         "porcentajes_nota": porcentajes_nota,
+        "desaprueba_hasta": umbrales_norm[0] if len(umbrales_norm) == 1 else umbral_def,
+        "umbrales_bloques": umbrales_norm,
+        "umbrales_heterogeneos": len(umbrales_norm) > 1,
     }
 
 
@@ -316,13 +393,8 @@ def calcular_estadisticas_intensificacion_curso(
 ) -> dict:
     """
     Calcula las estadísticas de Período de Intensificación para un curso
-    (filtrable a un período específico o todos).
-
-    Fórmulas constitucionales de SPEC-034:
-    - `% en intensificación` = alumnos únicos en intensificación / total alumnos del curso.
-    - Porcentajes de Asistencia, Aprobados, Desaprobados, Ausentes y Pendientes
-      calculados sobre `total_examenes` (los 4 estados disjuntos suman 100%).
-    - Distribución de notas `1–10` sobre `total_calificados`.
+    (filtrable a un período específico o todos), respetando el umbral `desaprueba_hasta`
+    propio de cada bloque (default 5 para bloques previos de SPEC-034).
     """
     if not isinstance(curso_data, dict):
         curso_data = {}
@@ -336,6 +408,8 @@ def calcular_estadisticas_intensificacion_curso(
     alumnos_unicos_set: set[str] = set()
     examenes_detalle: list[dict] = []
     notas_calificadas: list[int] = []
+    notas_registros: list[tuple[int, str]] = []
+    umbrales_bloques_set: set[int] = set()
 
     presentes_cant = 0
     aprobados_cant = 0
@@ -357,6 +431,10 @@ def calcular_estadisticas_intensificacion_curso(
             nom_grupo = str(blq.get("nombre_grupo") or "").strip()
             fecha_ex = formatear_fecha(str(blq.get("fecha_examen") or "").strip())
             temas = str(blq.get("temas") or "").strip()
+            blq_umbral = normalizar_desaprueba_hasta(
+                blq.get(K_DESAPRUEBA_HASTA, DESAPRUEBA_HASTA_DEFAULT)
+            )
+            umbrales_bloques_set.add(blq_umbral)
             evaluaciones = blq.get("evaluaciones", [])
             if not isinstance(evaluaciones, list):
                 continue
@@ -386,7 +464,11 @@ def calcular_estadisticas_intensificacion_curso(
                     except ValueError:
                         nota_val = None
 
-                resultado = calcular_resultado_evaluacion(asist, nota_val)
+                resultado = calcular_resultado_evaluacion(
+                    asist,
+                    nota_val,
+                    desaprueba_hasta=blq_umbral,
+                )
                 if asist == INTENSIF_ASIST_PRESENTE:
                     presentes_cant += 1
 
@@ -401,6 +483,7 @@ def calcular_estadisticas_intensificacion_curso(
 
                 if nota_val is not None:
                     notas_calificadas.append(nota_val)
+                    notas_registros.append((nota_val, resultado))
 
                 examenes_detalle.append(
                     {
@@ -411,6 +494,7 @@ def calcular_estadisticas_intensificacion_curso(
                         "nombre_grupo": nom_grupo,
                         "fecha_examen": fecha_ex,
                         "temas": temas,
+                        "desaprueba_hasta": blq_umbral,
                         "evaluacion_id": str(ev.get("id") or ""),
                         "alumno_id": al_id,
                         "alumno_nombre": al_nom,
@@ -452,6 +536,11 @@ def calcular_estadisticas_intensificacion_curso(
         else None
     )
 
+    curso_umbral_def = normalizar_desaprueba_hasta(
+        curso_data.get(K_DESAPRUEBA_HASTA, DESAPRUEBA_HASTA_DEFAULT)
+    )
+    umbrales_ordenados = sorted(umbrales_bloques_set) if umbrales_bloques_set else [curso_umbral_def]
+
     return {
         "total_alumnos_curso": total_alumnos_curso,
         "alumnos_unicos": alumnos_unicos,
@@ -469,7 +558,13 @@ def calcular_estadisticas_intensificacion_curso(
         "pendientes_cant": pendientes_cant,
         "pendientes_pct": pendientes_pct,
         "promedio_notas": promedio_notas,
-        "distribucion_notas": calcular_distribucion_notas_intensificacion(notas_calificadas),
+        "umbrales_bloques": umbrales_ordenados,
+        "umbrales_heterogeneos": len(umbrales_ordenados) > 1,
+        "distribucion_notas": calcular_distribucion_notas_intensificacion(
+            notas_registros,
+            desaprueba_hasta=umbrales_ordenados[0],
+            umbrales_bloques=umbrales_ordenados,
+        ),
         "examenes_detalle": examenes_detalle,
     }
 
@@ -477,7 +572,7 @@ def calcular_estadisticas_intensificacion_curso(
 def calcular_estadisticas_intensificacion_colegio(colegio_data: dict | None) -> dict:
     """
     Calcula las estadísticas consolidadas de Período de Intensificación a nivel institucional
-    (Colegio) y la tabla comparativa por curso.
+    (Colegio) y la tabla comparativa por curso, respetando el umbral propio de cada bloque.
     """
     if not isinstance(colegio_data, dict):
         colegio_data = {}
@@ -501,6 +596,8 @@ def calcular_estadisticas_intensificacion_colegio(colegio_data: dict | None) -> 
             "pendientes_cant": 0,
             "pendientes_pct": 0.0,
             "promedio_notas": None,
+            "umbrales_bloques": [DESAPRUEBA_HASTA_DEFAULT],
+            "umbrales_heterogeneos": False,
             "distribucion_notas": calcular_distribucion_notas_intensificacion([]),
             "por_curso": {},
         }
@@ -515,6 +612,8 @@ def calcular_estadisticas_intensificacion_colegio(colegio_data: dict | None) -> 
     ausentes_cant = 0
     pendientes_cant = 0
     todas_notas: list[int] = []
+    todas_notas_registros: list[tuple[int, str]] = []
+    umbrales_colegio: set[int] = set()
 
     for nombre_curso in sorted(cursos_dict.keys()):
         c_data = cursos_dict.get(nombre_curso, {})
@@ -530,9 +629,15 @@ def calcular_estadisticas_intensificacion_colegio(colegio_data: dict | None) -> 
         ausentes_cant += c_stats["ausentes_cant"]
         pendientes_cant += c_stats["pendientes_cant"]
 
+        if c_stats["total_examenes"] > 0:
+            for u in c_stats.get("umbrales_bloques", []):
+                umbrales_colegio.add(normalizar_desaprueba_hasta(u))
+
         for ex in c_stats["examenes_detalle"]:
             if ex.get("nota") is not None:
-                todas_notas.append(int(ex["nota"]))
+                n_int = int(ex["nota"])
+                todas_notas.append(n_int)
+                todas_notas_registros.append((n_int, str(ex.get("resultado") or INTENSIF_RES_PENDIENTE)))
 
     pct_en_intensif = (
         min(100.0, round((alumnos_unicos / total_alumnos_colegio) * 100.0, 1))
@@ -559,6 +664,11 @@ def calcular_estadisticas_intensificacion_colegio(colegio_data: dict | None) -> 
         else None
     )
 
+    col_umbral_def = normalizar_desaprueba_hasta(
+        colegio_data.get(K_DESAPRUEBA_HASTA, DESAPRUEBA_HASTA_DEFAULT)
+    )
+    umbrales_ordenados = sorted(umbrales_colegio) if umbrales_colegio else [col_umbral_def]
+
     return {
         "total_cursos": len(por_curso),
         "total_alumnos_colegio": total_alumnos_colegio,
@@ -576,6 +686,12 @@ def calcular_estadisticas_intensificacion_colegio(colegio_data: dict | None) -> 
         "pendientes_cant": pendientes_cant,
         "pendientes_pct": pendientes_pct,
         "promedio_notas": promedio_notas,
-        "distribucion_notas": calcular_distribucion_notas_intensificacion(todas_notas),
+        "umbrales_bloques": umbrales_ordenados,
+        "umbrales_heterogeneos": len(umbrales_ordenados) > 1,
+        "distribucion_notas": calcular_distribucion_notas_intensificacion(
+            todas_notas_registros,
+            desaprueba_hasta=umbrales_ordenados[0],
+            umbrales_bloques=umbrales_ordenados,
+        ),
         "por_curso": por_curso,
     }

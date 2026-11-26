@@ -25,7 +25,9 @@ from core.constants import (
     INTENSIF_RES_AUSENTE,
     INTENSIF_RES_DESAPROBADO,
     INTENSIF_RES_PENDIENTE,
+    K_DESAPRUEBA_HASTA,
     formatear_fecha,
+    normalizar_desaprueba_hasta,
 )
 from core.intensificacion import obtener_nombre_alumno_intensificacion
 from mobile.components.intensificacion_dialogs import (
@@ -494,6 +496,21 @@ class IntensificacionView(ft.Container):
                 ],
             )
         ]
+        u_blq = normalizar_desaprueba_hasta(bloque.get(K_DESAPRUEBA_HASTA))
+        header_controls.append(
+            ft.Row(
+                spacing=SPACE_XS,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                controls=[
+                    ft.Icon(ft.Icons.TUNE_OUTLINED, size=13, color=tok.text_secondary),
+                    tabular_text(
+                        f"Criterio del bloque: Desaprueba 1-{u_blq} · Aprueba {u_blq + 1}-10",
+                        size=11,
+                        color=tok.text_secondary,
+                    ),
+                ],
+            )
+        )
         if temas:
             header_controls.append(
                 ft.Row(

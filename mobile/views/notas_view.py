@@ -16,6 +16,7 @@ import flet as ft
 
 from core.calculos import procesar_calificaciones_alumno
 from core.constants import (
+    DESAPRUEBA_HASTA_DEFAULT,
     K_APELLIDO,
     K_NOMBRE,
     K_NOMBRE_PILA,
@@ -23,7 +24,14 @@ from core.constants import (
     NOTA_MINIMA_APROBACION,
     NUM_EXTRAS,
     NUM_PRINCIPALES,
+    REGIMEN_CUATRIMESTRAL,
+    REGIMEN_TRIMESTRAL,
+    formatear_criterio_resumen,
     formatear_nombre_completo,
+    obtener_corte_aprobacion,
+    obtener_etiqueta_periodo_por_indice,
+    obtener_notas_periodo_ordenadas,
+    obtener_prefijo_periodo,
     separar_nombre_completo,
 )
 from mobile.components.comportamiento_dialog import ComportamientoDialog
@@ -38,6 +46,7 @@ from mobile.components.planificacion_dialog import PlanificacionCursoDialog
 from mobile.components.planillas_curso_dialog import PlanillasCursoDialog
 from mobile.components.student_dialog import (
     ConfirmDeleteDialog,
+    CursoConfigDialog,
     CustomizeColumnsDialog,
     StudentFormDialog,
 )
@@ -78,10 +87,15 @@ def _round_grade_str(val: float | int | str | None, empty: str = "--") -> str:
         return str(val)
 
 
-def format_tabular_trimester_summary(notas_trimestres: list[Any] | tuple[Any, ...]) -> str:
-    """Construye el resumen continuo tabular '1°T X · 2°T Y · 3°T Z' sin cápsulas."""
+def format_tabular_trimester_summary(
+    notas_trimestres: list[Any] | tuple[Any, ...],
+    regimen: str = REGIMEN_TRIMESTRAL,
+) -> str:
+    """Construye el resumen continuo tabular sin cápsulas adaptado al régimen activo."""
     t1 = _round_grade_str(notas_trimestres[0] if len(notas_trimestres) > 0 else None)
     t2 = _round_grade_str(notas_trimestres[1] if len(notas_trimestres) > 1 else None)
+    if regimen == REGIMEN_CUATRIMESTRAL:
+        return f"1°C {t1} · 2°C {t2}"
     t3 = _round_grade_str(notas_trimestres[2] if len(notas_trimestres) > 2 else None)
     return f"1°T {t1} · 2°T {t2} · 3°T {t3}"
 
@@ -167,6 +181,7 @@ class NotasView(ft.Container):
         self.resumen_trimestres_labels: dict[str, ft.Text] = {}
         self.expanded_period_labels: dict[str, ft.Text] = {}
         self.slots_controls_by_student: dict[str, dict[str, Any]] = {}
+        self.slots_grid_containers: dict[str, ft.Container] = {}
         self.expanded_containers: dict[str, ft.Container] = {}
         self.chevron_icons: dict[str, ft.Icon] = {}
         self._card_scroll_keys: dict[str, Any] = {}
@@ -175,6 +190,8 @@ class NotasView(ft.Container):
         self.paneles_anuales: dict[str, dict[str, Any]] = {}
         self.sub_header_container: ft.Container | None = None
         self.collapsible_header: ft.Container | None = None
+        self.criterio_bar: ft.Container | None = None
+        self.criterio_bar_text: ft.Text | None = None
         self.dock_container: ft.Container | None = None
 
         self.dock_label_active: ft.Text | None = None
@@ -208,10 +225,32 @@ class NotasView(ft.Container):
             self.save_indicator.set_status(status)
             self._safe_update()
 
+    def _get_criterio_curso(self) -> tuple[str, int, bool]:
+        """Retorna (regimen, desaprueba_hasta, usar_recuperatorio) del curso actual."""
+        colegio = self.state.selected_colegio or ""
+        curso = self.state.selected_curso or ""
+        reg = (
+            self.state.get_regimen_colegio(colegio)
+            if hasattr(self.state, "get_regimen_colegio")
+            else REGIMEN_TRIMESTRAL
+        )
+        umbral = (
+            self.state.get_desaprueba_hasta_curso(colegio, curso)
+            if hasattr(self.state, "get_desaprueba_hasta_curso")
+            else DESAPRUEBA_HASTA_DEFAULT
+        )
+        usar_rec = (
+            self.state.get_usar_recuperatorio_curso(colegio, curso)
+            if hasattr(self.state, "get_usar_recuperatorio_curso")
+            else True
+        )
+        return reg, umbral, usar_rec
+
     def _color_por_nota(self, nota: int | float | None) -> tuple[str, str]:
-        """Retorna (bgcolor, fgcolor) accesibles según calificación y tema."""
+        """Retorna (bgcolor, fgcolor) accesibles según calificación, umbral y tema."""
         tok = resolve_tokens(page=self.app_page, state=self.state)
-        bg, fg, _ = get_grade_triad(nota, tok)
+        _, umbral, _ = self._get_criterio_curso()
+        bg, fg, _ = get_grade_triad(nota, tok, desaprueba_hasta=umbral)
         return bg, fg
 
     def _stripe_color_for_alumno(
@@ -221,6 +260,7 @@ class NotasView(ft.Container):
         is_expanded: bool,
         es_anual: bool,
         tok: ThemeTokens,
+        desaprueba_hasta: int | None = None,
     ) -> str:
         """Determina el color del filete lateral izquierdo (`3px`) del alumno."""
         if is_expanded and not es_anual:
@@ -228,23 +268,50 @@ class NotasView(ft.Container):
         ref_nota = nota_anual if es_anual else nota_trim
         if ref_nota is None:
             return tok.border_hairline
+        if desaprueba_hasta is None:
+            _, desaprueba_hasta, _ = self._get_criterio_curso()
+        corte = obtener_corte_aprobacion(desaprueba_hasta)
         try:
             val = float(str(ref_nota).replace(",", "."))
-            return tok.pass_fg if val >= NOTA_MINIMA_APROBACION else tok.fail_fg
+            return tok.pass_fg if val >= corte else tok.fail_fg
         except (ValueError, TypeError):
             return tok.border_hairline
 
-    def _get_slot_meta(self, slot_idx: int, nombres_cols: list[str]) -> tuple[str, int, str, str]:
-        """Retorna (tipo, sub_index, nombre_columna, cell_key)."""
-        if slot_idx == 0:
-            return "P", 0, nombres_cols[0] if len(nombres_cols) > 0 else "P1", "P0"
-        if slot_idx == 1:
-            return "P", 1, nombres_cols[1] if len(nombres_cols) > 1 else "P2", "P1"
-        if slot_idx == 2:
-            return "P", 2, nombres_cols[2] if len(nombres_cols) > 2 else "P3", "P2"
-        if slot_idx == 3:
-            return "E", 0, nombres_cols[3] if len(nombres_cols) > 3 else "Extra", "E0"
-        return "R", 0, "Recup", "R0"
+    def _get_slot_meta(
+        self,
+        slot_idx: int,
+        nombres_cols: list[str],
+        usar_recuperatorio: bool = True,
+    ) -> tuple[str, int, str, str]:
+        """Retorna (tipo, sub_index, nombre_columna, cell_key) para 1..8 notas + Recup opcional."""
+        n_notas = max(1, len(nombres_cols))
+        if 0 <= slot_idx < n_notas:
+            col_name = nombres_cols[slot_idx]
+            if slot_idx < 3:
+                return "P", slot_idx, col_name, f"P{slot_idx}"
+            return "E", slot_idx - 3, col_name, f"E{slot_idx - 3}"
+        if usar_recuperatorio:
+            return "R", 0, "Recup", "R0"
+        idx_clamped = max(0, min(slot_idx, n_notas - 1))
+        col_name = nombres_cols[idx_clamped] if nombres_cols else "P1"
+        if idx_clamped < 3:
+            return "P", idx_clamped, col_name, f"P{idx_clamped}"
+        return "E", idx_clamped - 3, col_name, f"E{idx_clamped - 3}"
+
+    @staticmethod
+    def _build_slots_grid(slots_widgets: list[ft.Control], num_notas: int) -> ft.Control:
+        """Organiza 1..8 casilleros + Recup en 1 fila (<=4 notas) o 2 filas balanceadas (>4 notas)."""
+        if num_notas <= 4 or len(slots_widgets) <= 4:
+            return ft.Row(spacing=SPACE_XS, controls=slots_widgets)
+        split_at = 4 if len(slots_widgets) >= 7 else (len(slots_widgets) + 1) // 2
+        return ft.Column(
+            spacing=SPACE_SM,
+            tight=True,
+            controls=[
+                ft.Row(spacing=SPACE_XS, controls=slots_widgets[:split_at]),
+                ft.Row(spacing=SPACE_XS, controls=slots_widgets[split_at:]),
+            ],
+        )
 
     def _sync_list_bottom_padding(self) -> None:
         """Ajusta padding.bottom (`>= 176dp` con dock visible, `>= 88dp` oculto)."""
@@ -276,9 +343,16 @@ class NotasView(ft.Container):
         if self.expanded_student_id:
             self.active_grade_index = 0
 
+        reg, umbral, usar_rec = self._get_criterio_curso()
+        if reg == REGIMEN_CUATRIMESTRAL and self.state.active_trimestre == 2:
+            self.state.active_trimestre = 0
+
         trim_idx = self.state.active_trimestre if 0 <= self.state.active_trimestre < 3 else 0
         es_anual = self.state.active_trimestre >= 3
         nombres_cols = self.state.get_nombres_columnas(colegio, curso, trim_idx)
+        max_slot_idx = len(nombres_cols) if usar_rec else max(0, len(nombres_cols) - 1)
+        if self.active_grade_index > max_slot_idx:
+            self.active_grade_index = 0 if self.expanded_student_id else -1
 
         # Nivel fijo 1: cabecera editorial consolidada dentro de SafeArea superior
         header = NotalyTopHeader(
@@ -322,9 +396,13 @@ class NotasView(ft.Container):
 
         # Sub-header integrado al scroll: períodos planos subrayados + barra de herramientas
         self.top_trimester_tabs = []
-        labels = ["1° Trim", "2° Trim", "3° Trim", "Anual"]
-        for idx, lbl in enumerate(labels):
-            is_active = self.state.active_trimestre == idx
+        periodos_tabs = (
+            [(0, "1° Cuat"), (1, "2° Cuat"), (3, "Anual")]
+            if reg == REGIMEN_CUATRIMESTRAL
+            else [(0, "1° Trim"), (1, "2° Trim"), (2, "3° Trim"), (3, "Anual")]
+        )
+        for p_idx, lbl in periodos_tabs:
+            is_active = self.state.active_trimestre == p_idx
             tab_txt = ft.Text(
                 lbl,
                 size=12,
@@ -335,6 +413,7 @@ class NotasView(ft.Container):
             )
             self.top_trimester_tabs.append(
                 ft.Container(
+                    data=p_idx,
                     expand=True,
                     height=44,
                     border_radius=RADIUS_NONE,
@@ -345,7 +424,7 @@ class NotasView(ft.Container):
                     ),
                     alignment=ft.Alignment.CENTER,
                     ink=True,
-                    on_click=lambda _e, t_idx=idx: self._seleccionar_trimestre(t_idx),
+                    on_click=lambda _e, t_idx=p_idx: self._seleccionar_trimestre(t_idx),
                     content=tab_txt,
                 )
             )
@@ -382,7 +461,7 @@ class NotasView(ft.Container):
             width=44,
             height=44,
             icon_color=tok.text_secondary,
-            tooltip="Personalizar Columnas",
+            tooltip="Configurar notas del período",
             on_click=lambda _e: self._abrir_modal_columnas(),
         )
         btn_ordenar_az = ft.IconButton(
@@ -465,12 +544,45 @@ class NotasView(ft.Container):
             ),
         )
 
+        criterio_resumen = formatear_criterio_resumen(
+            regimen=reg,
+            desaprueba_hasta=umbral,
+            usar_recuperatorio=usar_rec,
+        )
+        self.criterio_bar_text = ft.Text(
+            f"Criterio: {criterio_resumen}",
+            size=11,
+            weight=ft.FontWeight.W_500,
+            color=tok.text_secondary,
+            expand=True,
+            max_lines=1,
+            overflow=ft.TextOverflow.ELLIPSIS,
+        )
+        self.criterio_bar = ft.Container(
+            bgcolor=tok.surface_subtle,
+            border=ft.Border.only(top=ft.BorderSide(1, tok.border_hairline)),
+            padding=ft.Padding.symmetric(horizontal=gutter, vertical=SPACE_XS),
+            height=44,
+            ink=True,
+            tooltip="Configuración e Información del Curso",
+            on_click=lambda _e: self._abrir_modal_config_curso(),
+            content=ft.Row(
+                spacing=SPACE_XS,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                controls=[
+                    ft.Icon(ft.Icons.TUNE_OUTLINED, size=15, color=tok.accent_primary),
+                    self.criterio_bar_text,
+                    ft.Icon(ft.Icons.CHEVRON_RIGHT, size=16, color=tok.text_secondary),
+                ],
+            ),
+        )
+
         self.sub_header_container = ft.Container(
             bgcolor=tok.surface_primary,
             border=ft.Border.only(bottom=ft.BorderSide(1, tok.border_hairline)),
             content=ft.Column(
                 spacing=0,
-                controls=[trim_selector_bar, actions_bar],
+                controls=[trim_selector_bar, actions_bar, self.criterio_bar],
             ),
             visible=True,
         )
@@ -510,18 +622,24 @@ class NotasView(ft.Container):
     def _construir_panel_anual_alumno(self, id_str: str, calcs: dict) -> tuple[ft.Container, dict]:
         """Construye el panel anual de solo lectura usando GradeCell y surface_elevated."""
         tok = self.tokens
-        t1 = calcs["notas_finales_redondeadas"][0]
-        t2 = calcs["notas_finales_redondeadas"][1]
-        t3 = calcs["notas_finales_redondeadas"][2]
+        reg, umbral, _ = self._get_criterio_curso()
+        corte = obtener_corte_aprobacion(umbral)
+        es_cuat = reg == REGIMEN_CUATRIMESTRAL
+
+        nfr = calcs["notas_finales_redondeadas"]
+        t1 = nfr[0] if len(nfr) > 0 else None
+        t2 = nfr[1] if len(nfr) > 1 else None
+        t3 = nfr[2] if len(nfr) > 2 else None
         total = calcs["nota_final_total_redondeada"]
 
-        promedios_validos = [t for t in [t1, t2, t3] if t is not None]
+        notas_activas = [t1, t2] if es_cuat else [t1, t2, t3]
+        promedios_validos = [t for t in notas_activas if t is not None]
         promedio_crudo_total = (
             (sum(promedios_validos) / len(promedios_validos)) if promedios_validos else None
         )
 
         if promedio_crudo_total is not None:
-            if promedio_crudo_total >= 5.50:
+            if promedio_crudo_total >= corte:
                 estado_str = "Aprobado"
                 estado_bg = tok.pass_bg
                 estado_fg = tok.pass_fg
@@ -544,6 +662,7 @@ class NotasView(ft.Container):
                 elevated_empty=True,
                 height=38,
                 expand=True,
+                desaprueba_hasta=umbral,
             )
             box = ft.Container(
                 expand=True,
@@ -562,9 +681,10 @@ class NotasView(ft.Container):
             )
             return box, cell
 
-        box_t1, t1_cell = _make_trim_box("1° Trim", t1)
-        box_t2, t2_cell = _make_trim_box("2° Trim", t2)
+        box_t1, t1_cell = _make_trim_box("1° Cuat" if es_cuat else "1° Trim", t1)
+        box_t2, t2_cell = _make_trim_box("2° Cuat" if es_cuat else "2° Trim", t2)
         box_t3, t3_cell = _make_trim_box("3° Trim", t3)
+        period_boxes = [box_t1, box_t2] if es_cuat else [box_t1, box_t2, box_t3]
 
         promedio_anual_cell = GradeCell(
             value=str(total) if total is not None else "--",
@@ -573,6 +693,7 @@ class NotasView(ft.Container):
             elevated_empty=True,
             width=52,
             height=40,
+            desaprueba_hasta=umbral,
         )
 
         estado_icon_widget = ft.Icon(icon=estado_icon, size=14, color=estado_fg)
@@ -633,7 +754,7 @@ class NotasView(ft.Container):
             content=ft.Column(
                 spacing=SPACE_SM,
                 controls=[
-                    ft.Row(spacing=SPACE_XS, controls=[box_t1, box_t2, box_t3]),
+                    ft.Row(spacing=SPACE_XS, controls=period_boxes),
                     resumen_anual_row,
                 ],
             ),
@@ -669,17 +790,30 @@ class NotasView(ft.Container):
             return
 
         tok = resolve_tokens(page=self.app_page, state=self.state)
-        calcs = procesar_calificaciones_alumno(al_data.get("trimestres", {}))
-        t1, t2, t3 = calcs["notas_finales_redondeadas"][:3]
+        reg, umbral, usar_rec = self._get_criterio_curso()
+        corte = obtener_corte_aprobacion(umbral)
+        es_cuat = reg == REGIMEN_CUATRIMESTRAL
+
+        calcs = procesar_calificaciones_alumno(
+            al_data.get("trimestres", {}),
+            regimen=reg,
+            desaprueba_hasta=umbral,
+            usar_recuperatorio=usar_rec,
+        )
+        nfr = calcs["notas_finales_redondeadas"]
+        t1 = nfr[0] if len(nfr) > 0 else None
+        t2 = nfr[1] if len(nfr) > 1 else None
+        t3 = nfr[2] if len(nfr) > 2 else None
         total = calcs["nota_final_total_redondeada"]
 
-        promedios_validos = [t for t in [t1, t2, t3] if t is not None]
+        notas_activas = [t1, t2] if es_cuat else [t1, t2, t3]
+        promedios_validos = [t for t in notas_activas if t is not None]
         promedio_crudo_total = (
             (sum(promedios_validos) / len(promedios_validos)) if promedios_validos else None
         )
 
         if promedio_crudo_total is not None:
-            if promedio_crudo_total >= 5.50:
+            if promedio_crudo_total >= corte:
                 estado_str = "Aprobado"
                 estado_bg = tok.pass_bg
                 estado_fg = tok.pass_fg
@@ -699,21 +833,25 @@ class NotasView(ft.Container):
             value=str(t1) if t1 is not None else "--",
             elevated_empty=True,
             tokens=tok,
+            desaprueba_hasta=umbral,
         )
         ref_anual["t2_container"].set_state(
             value=str(t2) if t2 is not None else "--",
             elevated_empty=True,
             tokens=tok,
+            desaprueba_hasta=umbral,
         )
         ref_anual["t3_container"].set_state(
             value=str(t3) if t3 is not None else "--",
             elevated_empty=True,
             tokens=tok,
+            desaprueba_hasta=umbral,
         )
         ref_anual["promedio_anual_container"].set_state(
             value=str(total) if total is not None else "--",
             elevated_empty=True,
             tokens=tok,
+            desaprueba_hasta=umbral,
         )
 
         ref_anual["estado_text"].value = estado_str
@@ -724,6 +862,10 @@ class NotasView(ft.Container):
             ref_anual["estado_icon"].color = estado_fg
 
     def _seleccionar_trimestre(self, trim_idx: int) -> None:
+        reg, umbral, usar_rec = self._get_criterio_curso()
+        if reg == REGIMEN_CUATRIMESTRAL and trim_idx == 2:
+            trim_idx = 0
+
         self.state.active_trimestre = trim_idx
         dock_estaba_abierto = bool(self.dock_container and self.dock_container.visible)
         if not dock_estaba_abierto:
@@ -738,8 +880,9 @@ class NotasView(ft.Container):
             return
 
         # 1. Actualizar pestañas de período subrayadas in-place
-        for idx, tab in enumerate(self.top_trimester_tabs):
-            is_act = idx == trim_idx
+        for tab in self.top_trimester_tabs:
+            tab_idx = tab.data
+            is_act = tab_idx == trim_idx
             tab.border = (
                 ft.Border.only(bottom=ft.BorderSide(2, tok.accent_primary))
                 if is_act
@@ -770,7 +913,12 @@ class NotasView(ft.Container):
                 if sid in self.chevron_icons:
                     self.chevron_icons[sid].visible = False
 
-                calcs = procesar_calificaciones_alumno(alumnos.get(sid, {}).get("trimestres", {}))
+                calcs = procesar_calificaciones_alumno(
+                    alumnos.get(sid, {}).get("trimestres", {}),
+                    regimen=reg,
+                    desaprueba_hasta=umbral,
+                    usar_recuperatorio=usar_rec,
+                )
                 total = calcs["nota_final_total_redondeada"]
                 row_cell = self.alumnos_celdas.get(sid, {}).get("row_fin_cell")
                 if row_cell is not None:
@@ -778,8 +926,11 @@ class NotasView(ft.Container):
                         value=str(total) if total is not None else "--",
                         elevated_empty=True,
                         tokens=tok,
+                        desaprueba_hasta=umbral,
                     )
-                stripe = self._stripe_color_for_alumno(None, total, False, True, tok)
+                stripe = self._stripe_color_for_alumno(
+                    None, total, False, True, tok, desaprueba_hasta=umbral
+                )
                 self.tarjetas_alumnos[sid].border = ft.Border.only(
                     left=ft.BorderSide(3, stripe),
                     bottom=ft.BorderSide(1, tok.border_hairline),
@@ -790,13 +941,27 @@ class NotasView(ft.Container):
             self._safe_update()
             return
 
-        # Regreso a trimestre editable (T1, T2, T3)
+        # Regreso a período editable (T1..T3 o C1..C2)
+        nombres_cols = self.state.get_nombres_columnas(colegio, curso, trim_idx)
+        total_slots = len(nombres_cols) + (1 if usar_rec else 0)
+        max_slot_idx = max(0, total_slots - 1)
+        if self.active_grade_index > max_slot_idx:
+            self.active_grade_index = 0 if dock_estaba_abierto else -1
+
         if self.dock_container:
             self.dock_container.visible = bool(
                 dock_estaba_abierto
                 and self.active_grade_index >= 0
                 and self.expanded_student_id is not None
             )
+
+        etiqueta_per = obtener_etiqueta_periodo_por_indice(trim_idx, reg)
+        expected_keys = [
+            self._get_slot_meta(s_idx, nombres_cols, usar_rec)[3]
+            for s_idx in range(total_slots)
+        ]
+        corte = obtener_corte_aprobacion(umbral)
+        nombre_trim = NOMBRES_TRIMESTRES[trim_idx] if trim_idx < 3 else NOMBRES_TRIMESTRES[0]
 
         for sid in self.tarjetas_alumnos:
             if sid in self.paneles_anuales:
@@ -813,19 +978,73 @@ class NotasView(ft.Container):
                     tok.accent_primary if is_exp else tok.text_secondary
                 )
             if sid in self.expanded_period_labels:
-                self.expanded_period_labels[sid].value = f"{trim_idx + 1}° Trimestre"
+                self.expanded_period_labels[sid].value = etiqueta_per
 
-        nombres_cols = self.state.get_nombres_columnas(colegio, curso, trim_idx)
-        for sid, slots_map in self.slots_controls_by_student.items():
-            for s_idx in range(5):
-                tipo, sub_i, col_name, cell_key = self._get_slot_meta(s_idx, nombres_cols)
-                if cell_key in slots_map:
-                    ref = slots_map[cell_key]
-                    ref["tipo"] = tipo
-                    ref["sub_idx"] = sub_i
-                    ref["col_name"] = col_name
-                    if ref.get("label_widget") is not None:
-                        ref["label_widget"].value = col_name
+            # Reconstruir in-place el grid de slots si cambió la cantidad de notas entre períodos
+            slots_map_actual = self.slots_controls_by_student.get(sid, {})
+            if list(slots_map_actual.keys()) != expected_keys and sid in self.slots_grid_containers:
+                al_data = alumnos.get(sid, {})
+                trimestres_al = al_data.get("trimestres", {})
+                trim_data = trimestres_al.get(nombre_trim, {})
+                calcs_al = procesar_calificaciones_alumno(
+                    trimestres_al,
+                    regimen=reg,
+                    desaprueba_hasta=umbral,
+                    usar_recuperatorio=usar_rec,
+                )
+                proms_sin = calcs_al["promedios_crudos_sin_redondear"]
+                prom_crudo_sin = proms_sin[trim_idx] if trim_idx < len(proms_sin) else None
+                hab_rec = usar_rec and prom_crudo_sin is not None and prom_crudo_sin < corte
+                notas_ord = obtener_notas_periodo_ordenadas(trim_data, len(nombres_cols))
+                raw_vals = list(notas_ord) + ([trim_data.get("recuperatorio")] if usar_rec else [])
+                nombre_al = (al_data.get("nombre") or "").strip() or "Sin nombre"
+
+                new_slots_map: dict[str, Any] = {}
+                new_widgets: list[ft.Control] = []
+                for s_idx in range(total_slots):
+                    tipo, sub_i, col_name, cell_key = self._get_slot_meta(
+                        s_idx, nombres_cols, usar_rec
+                    )
+                    val_act = raw_vals[s_idx] if s_idx < len(raw_vals) else None
+                    is_act_s = self.active_grade_index == s_idx and is_exp
+                    desh = (tipo == "R") and (not hab_rec)
+                    w, ref_d = self._crear_slot_control(
+                        id_al=sid,
+                        nombre_alumno=nombre_al,
+                        col_name=col_name,
+                        val_actual=val_act,
+                        trim_idx=trim_idx,
+                        tipo=tipo,
+                        sub_idx=sub_i,
+                        slot_index=s_idx,
+                        is_active=is_act_s,
+                        deshabilitado=desh,
+                        desaprueba_hasta=umbral,
+                    )
+                    new_slots_map[cell_key] = ref_d
+                    new_widgets.append(w)
+
+                # Actualizar mapas in-place sin destruir el ListView
+                for old_k in list(slots_map_actual.keys()):
+                    self.alumnos_celdas.get(sid, {}).pop(old_k, None)
+                self.slots_controls_by_student[sid] = new_slots_map
+                if sid in self.alumnos_celdas:
+                    self.alumnos_celdas[sid].update(new_slots_map)
+                self.slots_grid_containers[sid].content = self._build_slots_grid(
+                    new_widgets, len(nombres_cols)
+                )
+            else:
+                for s_idx in range(total_slots):
+                    tipo, sub_i, col_name, cell_key = self._get_slot_meta(
+                        s_idx, nombres_cols, usar_rec
+                    )
+                    if cell_key in slots_map_actual:
+                        ref = slots_map_actual[cell_key]
+                        ref["tipo"] = tipo
+                        ref["sub_idx"] = sub_i
+                        ref["col_name"] = col_name
+                        if ref.get("label_widget") is not None:
+                            ref["label_widget"].value = col_name
 
         for sid in self.tarjetas_alumnos:
             self._actualizar_fila_alumno_ui(sid)
@@ -855,10 +1074,17 @@ class NotasView(ft.Container):
         self.resumen_trimestres_labels = {}
         self.expanded_period_labels = {}
         self.slots_controls_by_student = {}
+        self.slots_grid_containers = {}
         self.expanded_containers = {}
         self.chevron_icons = {}
         self._card_scroll_keys = {}
         self.paneles_anuales = {}
+
+        reg, umbral, usar_rec = self._get_criterio_curso()
+        corte = obtener_corte_aprobacion(umbral)
+        total_slots = len(nombres_cols) + (1 if usar_rec else 0)
+        etiqueta_per = obtener_etiqueta_periodo_por_indice(trim_idx, reg)
+        lbl_prom_periodo = "Prom. Cuatrimestre:" if reg == REGIMEN_CUATRIMESTRAL else "Prom. Trimestre:"
 
         if not alumnos:
             empty_msg = EmptyStateView(
@@ -899,14 +1125,17 @@ class NotasView(ft.Container):
                 self.name_drafts[id_str] = {"apellido": ap_act, "nombre": nom_act}
 
             trimestres = al_data.get("trimestres", {})
-            calcs = procesar_calificaciones_alumno(trimestres)
+            calcs = procesar_calificaciones_alumno(
+                trimestres,
+                regimen=reg,
+                desaprueba_hasta=umbral,
+                usar_recuperatorio=usar_rec,
+            )
             total = calcs["nota_final_total_redondeada"]
-            prom_crudo_red = (
-                calcs["promedios_crudos_redondeados"][trim_idx] if trim_idx < 3 else None
-            )
-            nota_final_red = (
-                calcs["notas_finales_redondeadas"][trim_idx] if trim_idx < 3 else None
-            )
+            pcr_list = calcs["promedios_crudos_redondeados"]
+            nfr_list = calcs["notas_finales_redondeadas"]
+            prom_crudo_red = pcr_list[trim_idx] if trim_idx < len(pcr_list) else None
+            nota_final_red = nfr_list[trim_idx] if trim_idx < len(nfr_list) else None
 
             panel_anual, ref_anual = self._construir_panel_anual_alumno(id_str, calcs)
             self.paneles_anuales[id_str] = ref_anual
@@ -927,6 +1156,7 @@ class NotasView(ft.Container):
                 dominant=False,
                 width=48,
                 height=38,
+                desaprueba_hasta=umbral,
             )
             fin_cell = GradeCell(
                 value=str(nota_final_red) if nota_final_red is not None else "--",
@@ -934,6 +1164,7 @@ class NotasView(ft.Container):
                 dominant=True,
                 width=52,
                 height=40,
+                desaprueba_hasta=umbral,
             )
             row_fin_val = total if es_modo_anual else nota_final_red
             row_fin_cell = GradeCell(
@@ -943,35 +1174,29 @@ class NotasView(ft.Container):
                 elevated_empty=es_modo_anual,
                 width=48,
                 height=40,
+                desaprueba_hasta=umbral,
             )
 
-            # 5 slots interactivos de notas (P0, P1, P2, E0, R0)
+            # Slots dinámicos (1..8 notas + Recup condicional)
             slots_map: dict[str, Any] = {}
             slots_widgets: list[ft.Control] = []
             nombre_trim = NOMBRES_TRIMESTRES[trim_idx] if trim_idx < 3 else NOMBRES_TRIMESTRES[0]
             trim_data = trimestres.get(nombre_trim, {})
-            principales = trim_data.get("principales", [None] * NUM_PRINCIPALES)
-            extras = trim_data.get("extras", [None] * NUM_EXTRAS)
+            notas_ordenadas = obtener_notas_periodo_ordenadas(trim_data, len(nombres_cols))
             recuperatorio = trim_data.get("recuperatorio")
+            raw_valores = list(notas_ordenadas) + ([recuperatorio] if usar_rec else [])
 
-            raw_valores = [
-                principales[0] if len(principales) > 0 else None,
-                principales[1] if len(principales) > 1 else None,
-                principales[2] if len(principales) > 2 else None,
-                extras[0] if len(extras) > 0 else None,
-                recuperatorio,
-            ]
+            pcsr_list = calcs["promedios_crudos_sin_redondear"]
+            prom_crudo_sin_red = pcsr_list[trim_idx] if trim_idx < len(pcsr_list) else None
+            habilita_recup = usar_rec and prom_crudo_sin_red is not None and prom_crudo_sin_red < corte
 
-            prom_crudo_sin_red = (
-                calcs["promedios_crudos_sin_redondear"][trim_idx] if trim_idx < 3 else None
-            )
-            habilita_recup = prom_crudo_sin_red is not None and prom_crudo_sin_red < 5.50
-
-            for s_idx in range(5):
-                tipo, sub_i, col_name, cell_key = self._get_slot_meta(s_idx, nombres_cols)
-                val_actual = raw_valores[s_idx]
+            for s_idx in range(total_slots):
+                tipo, sub_i, col_name, cell_key = self._get_slot_meta(
+                    s_idx, nombres_cols, usar_rec
+                )
+                val_actual = raw_valores[s_idx] if s_idx < len(raw_valores) else None
                 is_active_slot = self.active_grade_index == s_idx and is_open
-                deshabilitado = s_idx == 4 and not habilita_recup
+                deshabilitado = (tipo == "R") and (not habilita_recup)
 
                 cell_widget, ref_dict = self._crear_slot_control(
                     id_al=id_str,
@@ -984,15 +1209,20 @@ class NotasView(ft.Container):
                     slot_index=s_idx,
                     is_active=is_active_slot,
                     deshabilitado=deshabilitado,
+                    desaprueba_hasta=umbral,
                 )
                 slots_map[cell_key] = ref_dict
                 slots_widgets.append(cell_widget)
 
             self.slots_controls_by_student[id_str] = slots_map
+            slots_grid_container = ft.Container(
+                content=self._build_slots_grid(slots_widgets, len(nombres_cols))
+            )
+            self.slots_grid_containers[id_str] = slots_grid_container
 
-            # Barra superior interna expandida (sin selector duplicado de trimestres)
+            # Barra superior interna expandida (sin selector duplicado de períodos)
             lbl_periodo_exp = ft.Text(
-                f"{trim_idx + 1}° Trimestre",
+                etiqueta_per,
                 size=11,
                 weight=ft.FontWeight.W_600,
                 color=tok.text_secondary,
@@ -1023,7 +1253,7 @@ class NotasView(ft.Container):
                         tight=True,
                         vertical_alignment=ft.CrossAxisAlignment.CENTER,
                         controls=[
-                            ft.Text("Prom. Trimestre:", size=12, color=tok.text_secondary),
+                            ft.Text(lbl_prom_periodo, size=12, color=tok.text_secondary),
                             prom_cell,
                         ],
                     ),
@@ -1096,11 +1326,7 @@ class NotasView(ft.Container):
             )
 
             self.alumnos_celdas[id_str] = {
-                "P0": slots_map["P0"],
-                "P1": slots_map["P1"],
-                "P2": slots_map["P2"],
-                "E0": slots_map["E0"],
-                "R0": slots_map["R0"],
+                **slots_map,
                 "prom_container": prom_cell,
                 "prom_text": prom_cell.text_control,
                 "fin_container": fin_cell,
@@ -1127,7 +1353,7 @@ class NotasView(ft.Container):
                     spacing=SPACE_MD,
                     controls=[
                         cabecera_desplegada_row,
-                        ft.Row(spacing=SPACE_XS, controls=slots_widgets),
+                        slots_grid_container,
                         resumen_trimestre_row,
                         fila_comportamiento,
                     ],
@@ -1144,7 +1370,12 @@ class NotasView(ft.Container):
             self.chevron_icons[id_str] = chevron_icon
 
             stripe = self._stripe_color_for_alumno(
-                nota_final_red, total, is_open and not es_modo_anual, es_modo_anual, tok
+                nota_final_red,
+                total,
+                is_open and not es_modo_anual,
+                es_modo_anual,
+                tok,
+                desaprueba_hasta=umbral,
             )
 
             scroll_key = build_scroll_key(f"alumno_{id_str}")
@@ -1221,8 +1452,9 @@ class NotasView(ft.Container):
         slot_index: int,
         is_active: bool,
         deshabilitado: bool = False,
+        desaprueba_hasta: int = DESAPRUEBA_HASTA_DEFAULT,
     ) -> tuple[ft.Control, dict]:
-        """Crea el casillero `GradeCell` editorial interactivo del trimestre."""
+        """Crea el casillero `GradeCell` editorial interactivo del período."""
         tok = self.tokens
         val_fmt = _round_grade_str(val_actual) if not deshabilitado else "--"
         cell = GradeCell(
@@ -1233,6 +1465,7 @@ class NotasView(ft.Container):
             dominant=False,
             height=44,
             expand=True,
+            desaprueba_hasta=desaprueba_hasta,
         )
         label_text_widget = ft.Text(
             col_name,
@@ -1274,6 +1507,7 @@ class NotasView(ft.Container):
             self._actualizar_slots_ui(id_al)
             self._safe_update()
 
+        ref_dict["on_click"] = on_slot_click
         cell.on_click = on_slot_click if not deshabilitado else None
         cell.ink = not deshabilitado
 
@@ -1296,12 +1530,15 @@ class NotasView(ft.Container):
         pw = getattr(self.app_page, "width", None) if self.app_page else None
         gutter = responsive_gutter(pw if isinstance(pw, (int, float)) else None)
 
+        reg, _, usar_rec = self._get_criterio_curso()
         active_nombre = ""
         active_id = self.expanded_student_id
         if active_id and active_id in alumnos:
             active_nombre = alumnos[active_id].get("nombre", "")
 
-        _, _, slot_col_name, _ = self._get_slot_meta(self.active_grade_index, nombres_cols)
+        _, _, slot_col_name, _ = self._get_slot_meta(
+            self.active_grade_index, nombres_cols, usar_rec
+        )
         nombre_corto = self._extraer_nombre_corto(active_nombre)
 
         self.dock_label_active = ft.Text(
@@ -1316,8 +1553,9 @@ class NotasView(ft.Container):
             overflow=ft.TextOverflow.ELLIPSIS,
         )
 
+        pref = obtener_prefijo_periodo(reg)
         self.dock_badge_trimestre = tabular_text(
-            f"T{trim_idx + 1}" if trim_idx < 3 else "Anual",
+            f"{pref}{trim_idx + 1}" if trim_idx < 3 else "Anual",
             size=11,
             weight=ft.FontWeight.BOLD,
             color=tok.accent_primary,
@@ -1417,17 +1655,20 @@ class NotasView(ft.Container):
         trim_idx = self.state.active_trimestre if 0 <= self.state.active_trimestre < 3 else 0
         colegio = self.state.selected_colegio or ""
         curso = self.state.selected_curso or ""
+        _, _, usar_rec = self._get_criterio_curso()
         nombres_cols = self.state.get_nombres_columnas(colegio, curso, trim_idx)
+        max_slot_idx = len(nombres_cols) if usar_rec else max(0, len(nombres_cols) - 1)
 
         val_int = int(math.floor(float(valor) + 0.5))
         slot_actual = self.active_grade_index if self.active_grade_index >= 0 else 0
+        slot_actual = min(slot_actual, max_slot_idx)
         self.active_grade_index = slot_actual
-        tipo, sub_idx, _, _ = self._get_slot_meta(slot_actual, nombres_cols)
+        tipo, sub_idx, _, _ = self._get_slot_meta(slot_actual, nombres_cols, usar_rec)
         self.state.set_nota(id_al, trim_idx, tipo, sub_idx, val_int)
 
         self._actualizar_fila_alumno_ui(id_al)
 
-        if self.active_grade_index < 4:
+        if self.active_grade_index < max_slot_idx:
             self.active_grade_index += 1
         else:
             alumnos_keys = list(self.state.get_alumnos(colegio, curso).keys())
@@ -1473,11 +1714,14 @@ class NotasView(ft.Container):
         trim_idx = self.state.active_trimestre if 0 <= self.state.active_trimestre < 3 else 0
         colegio = self.state.selected_colegio or ""
         curso = self.state.selected_curso or ""
+        _, _, usar_rec = self._get_criterio_curso()
         nombres_cols = self.state.get_nombres_columnas(colegio, curso, trim_idx)
+        max_slot_idx = len(nombres_cols) if usar_rec else max(0, len(nombres_cols) - 1)
 
         slot_actual = self.active_grade_index if self.active_grade_index >= 0 else 0
+        slot_actual = min(slot_actual, max_slot_idx)
         self.active_grade_index = slot_actual
-        tipo, sub_idx, _, _ = self._get_slot_meta(slot_actual, nombres_cols)
+        tipo, sub_idx, _, _ = self._get_slot_meta(slot_actual, nombres_cols, usar_rec)
         self.state.set_nota(id_al, trim_idx, tipo, sub_idx, None)
 
         self._actualizar_fila_alumno_ui(id_al)
@@ -1492,6 +1736,10 @@ class NotasView(ft.Container):
 
         colegio = self.state.selected_colegio or ""
         curso = self.state.selected_curso or ""
+        trim_idx = self.state.active_trimestre if 0 <= self.state.active_trimestre < 3 else 0
+        _, _, usar_rec = self._get_criterio_curso()
+        nombres_cols = self.state.get_nombres_columnas(colegio, curso, trim_idx)
+        max_slot_idx = len(nombres_cols) if usar_rec else max(0, len(nombres_cols) - 1)
         alumnos_keys = list(self.state.get_alumnos(colegio, curso).keys())
 
         if self.active_grade_index < 0:
@@ -1500,7 +1748,7 @@ class NotasView(ft.Container):
                 self._actualizar_slots_ui(self.expanded_student_id)
             self._actualizar_dock_labels()
             self._safe_update()
-        elif self.active_grade_index < 4:
+        elif self.active_grade_index < max_slot_idx:
             self.active_grade_index += 1
             if self.expanded_student_id:
                 self._actualizar_slots_ui(self.expanded_student_id)
@@ -1526,6 +1774,7 @@ class NotasView(ft.Container):
 
         colegio = self.state.selected_colegio or ""
         curso = self.state.selected_curso or ""
+        reg, _, usar_rec = self._get_criterio_curso()
         alumnos = self.state.get_alumnos(colegio, curso)
         trim_idx = self.state.active_trimestre if 0 <= self.state.active_trimestre < 3 else 0
         nombres_cols = self.state.get_nombres_columnas(colegio, curso, trim_idx)
@@ -1533,7 +1782,9 @@ class NotasView(ft.Container):
         active_id = self.expanded_student_id
         active_nombre = alumnos.get(active_id, {}).get("nombre", "") if active_id else ""
         nombre_corto = self._extraer_nombre_corto(active_nombre)
-        _, _, slot_col_name, _ = self._get_slot_meta(self.active_grade_index, nombres_cols)
+        _, _, slot_col_name, _ = self._get_slot_meta(
+            self.active_grade_index, nombres_cols, usar_rec
+        )
 
         if active_id:
             self.dock_label_active.value = f"Ingresar {slot_col_name} · #{active_id} {nombre_corto}"
@@ -1541,7 +1792,8 @@ class NotasView(ft.Container):
             self.dock_label_active.value = "Selecciona un alumno para calificar"
 
         if self.dock_badge_trimestre:
-            self.dock_badge_trimestre.value = f"T{trim_idx + 1}" if trim_idx < 3 else "Anual"
+            pref = obtener_prefijo_periodo(reg)
+            self.dock_badge_trimestre.value = f"{pref}{trim_idx + 1}" if trim_idx < 3 else "Anual"
 
     def _actualizar_slots_ui(self, id_al: str) -> None:
         """Actualiza borde de foco `2px accent_primary` preservando color semántico de fondo."""
@@ -1549,6 +1801,7 @@ class NotasView(ft.Container):
             return
 
         tok = resolve_tokens(page=self.app_page, state=self.state)
+        _, umbral, _ = self._get_criterio_curso()
         slots_dict = self.slots_controls_by_student[id_al]
         for ref in slots_dict.values():
             s_idx = ref.get("slot_index", 0)
@@ -1565,6 +1818,8 @@ class NotasView(ft.Container):
                 is_active=is_active and not desh,
                 disabled=desh,
                 tokens=tok,
+                desaprueba_hasta=umbral,
+                on_click=ref.get("on_click"),
             )
             if ref.get("label_widget") is not None:
                 ref["label_widget"].color = tok.accent_primary if is_active else tok.text_secondary
@@ -1586,26 +1841,31 @@ class NotasView(ft.Container):
             return
 
         tok = resolve_tokens(page=self.app_page, state=self.state)
+        reg, umbral, usar_rec = self._get_criterio_curso()
+        corte = obtener_corte_aprobacion(umbral)
         trim_idx = self.state.active_trimestre if 0 <= self.state.active_trimestre < 3 else 0
         nombre_trim = NOMBRES_TRIMESTRES[trim_idx]
+        nombres_cols = self.state.get_nombres_columnas(colegio, curso, trim_idx)
         trim_data = al_data.get("trimestres", {}).get(nombre_trim, {})
-        principales = trim_data.get("principales", [None] * NUM_PRINCIPALES)
-        extras = trim_data.get("extras", [None] * NUM_EXTRAS)
+        notas_ordenadas = obtener_notas_periodo_ordenadas(trim_data, len(nombres_cols))
         recuperatorio = trim_data.get("recuperatorio")
 
-        calcs = procesar_calificaciones_alumno(al_data.get("trimestres", {}))
-        prom_crudo_red = calcs["promedios_crudos_redondeados"][trim_idx]
-        nota_final_red = calcs["notas_finales_redondeadas"][trim_idx]
-        prom_crudo_sin_red = calcs["promedios_crudos_sin_redondear"][trim_idx]
-        habilita_recup = prom_crudo_sin_red is not None and prom_crudo_sin_red < 5.50
+        calcs = procesar_calificaciones_alumno(
+            al_data.get("trimestres", {}),
+            regimen=reg,
+            desaprueba_hasta=umbral,
+            usar_recuperatorio=usar_rec,
+        )
+        pcr_list = calcs["promedios_crudos_redondeados"]
+        nfr_list = calcs["notas_finales_redondeadas"]
+        pcsr_list = calcs["promedios_crudos_sin_redondear"]
+        prom_crudo_red = pcr_list[trim_idx] if trim_idx < len(pcr_list) else None
+        nota_final_red = nfr_list[trim_idx] if trim_idx < len(nfr_list) else None
+        prom_crudo_sin_red = pcsr_list[trim_idx] if trim_idx < len(pcsr_list) else None
+        habilita_recup = usar_rec and prom_crudo_sin_red is not None and prom_crudo_sin_red < corte
 
-        notas_map = {
-            "P0": principales[0] if len(principales) > 0 else None,
-            "P1": principales[1] if len(principales) > 1 else None,
-            "P2": principales[2] if len(principales) > 2 else None,
-            "E0": extras[0] if len(extras) > 0 else None,
-        }
-        for key, val in notas_map.items():
+        for s_idx, val in enumerate(notas_ordenadas):
+            _, _, _, key = self._get_slot_meta(s_idx, nombres_cols, usar_rec)
             if key in celdas:
                 ref = celdas[key]
                 ref["valor"] = val
@@ -1618,16 +1878,17 @@ class NotasView(ft.Container):
                     is_active=is_act,
                     disabled=False,
                     tokens=tok,
+                    desaprueba_hasta=umbral,
                 )
 
-        if "R0" in celdas:
+        if usar_rec and "R0" in celdas:
             ref_r = celdas["R0"]
             ref_r["valor"] = recuperatorio
             deshabilitado = not habilita_recup
             ref_r["deshabilitado"] = deshabilitado
             is_act_r = (
                 not deshabilitado
-                and ref_r.get("slot_index", 4) == self.active_grade_index
+                and ref_r.get("slot_index", len(nombres_cols)) == self.active_grade_index
                 and str(self.expanded_student_id) == id_str
             )
             ref_r["container"].set_state(
@@ -1635,15 +1896,19 @@ class NotasView(ft.Container):
                 is_active=is_act_r,
                 disabled=deshabilitado,
                 tokens=tok,
+                desaprueba_hasta=umbral,
+                on_click=ref_r.get("on_click"),
             )
 
         celdas["prom_container"].set_state(
             value=str(prom_crudo_red) if prom_crudo_red is not None else "--",
             tokens=tok,
+            desaprueba_hasta=umbral,
         )
         celdas["fin_container"].set_state(
             value=str(nota_final_red) if nota_final_red is not None else "--",
             tokens=tok,
+            desaprueba_hasta=umbral,
         )
         es_anual = self.state.active_trimestre >= 3
         total = calcs["nota_final_total_redondeada"]
@@ -1653,6 +1918,7 @@ class NotasView(ft.Container):
                 value=str(row_val) if row_val is not None else "--",
                 elevated_empty=es_anual,
                 tokens=tok,
+                desaprueba_hasta=umbral,
             )
 
         if id_str in self.promedio_anual_labels:
@@ -1662,7 +1928,9 @@ class NotasView(ft.Container):
 
         if id_str in self.tarjetas_alumnos:
             is_exp = str(self.expanded_student_id) == id_str and not es_anual
-            stripe = self._stripe_color_for_alumno(nota_final_red, total, is_exp, es_anual, tok)
+            stripe = self._stripe_color_for_alumno(
+                nota_final_red, total, is_exp, es_anual, tok, desaprueba_hasta=umbral
+            )
             self.tarjetas_alumnos[id_str].border = ft.Border.only(
                 left=ft.BorderSide(3, stripe),
                 bottom=ft.BorderSide(1, tok.border_hairline),
@@ -2088,19 +2356,82 @@ class NotasView(ft.Container):
         )
         self._mostrar_dialogo_con_dock_oculto(dlg)
 
+    def _abrir_modal_config_curso(self) -> None:
+        colegio = self.state.selected_colegio or ""
+        curso = self.state.selected_curso or ""
+        if not hasattr(self.state, "get_config_evaluativa_curso"):
+            return
+        cfg = self.state.get_config_evaluativa_curso(colegio, curso)
+        cant_recup = (
+            self.state.contar_notas_recuperatorio_curso(colegio, curso)
+            if hasattr(self.state, "contar_notas_recuperatorio_curso")
+            else 0
+        )
+
+        def confirmar_config(nuevo_umbral: int, nuevo_recup: bool) -> None:
+            exito, msg = self.state.update_curso_config(
+                colegio=colegio,
+                curso=curso,
+                desaprueba_hasta=nuevo_umbral,
+                usar_recuperatorio=nuevo_recup,
+            )
+            if exito:
+                self._build_ui()
+                self._safe_update()
+                self._mostrar_snackbar(msg)
+            else:
+                self._mostrar_snackbar(msg, error=True)
+
+        dlg = CursoConfigDialog(
+            nombre_colegio=colegio,
+            nombre_curso=curso,
+            regimen=cfg["regimen"],
+            desaprueba_hasta_actual=cfg["desaprueba_hasta"],
+            usar_recuperatorio_actual=cfg["usar_recuperatorio"],
+            notas_por_periodo=cfg["notas_por_periodo"],
+            cant_notas_recup_cargadas=cant_recup,
+            on_confirm=confirmar_config,
+            page=self.app_page,
+            tokens=self.tokens,
+        )
+        self._mostrar_dialogo_con_dock_oculto(dlg)
+
     def _abrir_modal_columnas(self) -> None:
+        reg, _, _ = self._get_criterio_curso()
         trim_idx = self.state.active_trimestre if 0 <= self.state.active_trimestre < 3 else 0
         nombres_actuales = self.state.get_nombres_columnas(trimestre=trim_idx)
+        periodo_label = obtener_etiqueta_periodo_por_indice(trim_idx, reg)
 
-        def guardar_cols(nuevos):
+        def guardar_cols(nuevos: list[str]) -> None:
             self.state.set_nombres_columnas(nuevos, trimestre=trim_idx)
             self._build_ui()
             self._safe_update()
             self._mostrar_snackbar("Nombres de columnas actualizados.")
 
+        def guardar_cols_detallado(payload: list[dict[str, Any]]) -> None:
+            if hasattr(self.state, "aplicar_cambios_columnas_periodo"):
+                ok, msg = self.state.aplicar_cambios_columnas_periodo(
+                    payload, trimestre=trim_idx
+                )
+                self._build_ui()
+                self._safe_update()
+                self._mostrar_snackbar(msg, error=not ok)
+            else:
+                guardar_cols([str(item.get("nombre", "")) for item in payload])
+
+        def contar_notas_en_col(orig_idx: int) -> int:
+            if hasattr(self.state, "contar_alumnos_con_nota_en_columna"):
+                return self.state.contar_alumnos_con_nota_en_columna(
+                    orig_idx, trimestre=trim_idx
+                )
+            return 0
+
         dlg = CustomizeColumnsDialog(
             nombres_actuales=nombres_actuales,
             on_save=guardar_cols,
+            on_save_detallado=guardar_cols_detallado,
+            contar_notas_en_columna=contar_notas_en_col,
+            periodo_label=periodo_label,
             page=self.app_page,
             tokens=self.tokens,
         )
@@ -2147,6 +2478,7 @@ class NotasView(ft.Container):
             page=self.app_page,
             periodo_activo=self.state.active_trimestre,
             tokens=self.tokens,
+            state=self.state,
         )
         self._mostrar_dialogo_con_dock_oculto(dlg)
 

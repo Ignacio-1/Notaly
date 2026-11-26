@@ -12,6 +12,12 @@ from typing import Any, Callable
 
 import flet as ft
 
+from core.constants import (
+    DESAPRUEBA_HASTA_DEFAULT,
+    REGIMEN_TRIMESTRAL,
+    formatear_criterio_resumen,
+    obtener_nombre_regimen_visible,
+)
 from mobile.components.ledger_primitives import EmptyStateView, NotalyListRow
 from mobile.components.notaly_sheet import (
     NotalySheet,
@@ -26,11 +32,13 @@ from mobile.components.planificaciones_institucion_dialog import (
 from mobile.components.student_dialog import (
     ConfirmDeleteDialog,
     CreateCursoDialog,
+    CursoConfigDialog,
     RenameDialog,
 )
 from mobile.components.ui_header import NotalyTopHeader
 from mobile.state import AppState
 from mobile.theme import (
+    RADIUS_SM,
     SPACE_MD,
     SPACE_SM,
     ThemeTokens,
@@ -133,7 +141,16 @@ class CursosView(ft.Container):
         pw = getattr(self.app_page, "width", None) if self.app_page else None
         gutter = responsive_gutter(pw if isinstance(pw, (int, float)) else None)
 
-        conteo_label = f"{pluralizar(len(cursos), 'curso')} {'activo' if len(cursos) == 1 else 'activos'}"
+        reg_col = (
+            self.state.get_regimen_colegio(colegio)
+            if hasattr(self.state, "get_regimen_colegio")
+            else REGIMEN_TRIMESTRAL
+        )
+        reg_col_lbl = obtener_nombre_regimen_visible(reg_col)
+        conteo_label = (
+            f"{pluralizar(len(cursos), 'curso')} {'activo' if len(cursos) == 1 else 'activos'}"
+            f" · Régimen {reg_col_lbl}"
+        )
         self.summary_count_text = tabular_text(
             conteo_label,
             size=12,
@@ -249,6 +266,30 @@ class CursosView(ft.Container):
                 partes_meta.append(clases_label)
             subtitulo_meta = " · ".join(partes_meta) if partes_meta else None
 
+            umbral_c = (
+                self.state.get_desaprueba_hasta_curso(colegio, nombre)
+                if hasattr(self.state, "get_desaprueba_hasta_curso")
+                else DESAPRUEBA_HASTA_DEFAULT
+            )
+            usar_rec_c = (
+                self.state.get_usar_recuperatorio_curso(colegio, nombre)
+                if hasattr(self.state, "get_usar_recuperatorio_curso")
+                else True
+            )
+            badge_txt = f"Apr. {umbral_c + 1}-10" if usar_rec_c else f"Apr. {umbral_c + 1}-10 · S/Rec"
+            criterio_badge = ft.Container(
+                bgcolor=tok.surface_subtle,
+                border=ft.Border.all(1, tok.border_hairline),
+                border_radius=RADIUS_SM,
+                padding=ft.Padding.symmetric(horizontal=6, vertical=2),
+                content=tabular_text(
+                    badge_txt,
+                    size=10,
+                    weight=ft.FontWeight.W_600,
+                    color=tok.text_secondary,
+                ),
+            )
+
             av_bg, av_fg = get_avatar_palette(idx, is_dark=is_dark)
 
             btn_menu = ft.IconButton(
@@ -270,6 +311,7 @@ class CursosView(ft.Container):
                     monogram_bg=av_bg,
                     monogram_fg=av_fg,
                     trailing=[
+                        criterio_badge,
                         ft.Icon(
                             icon=ft.Icons.CHEVRON_RIGHT,
                             size=18,
@@ -288,6 +330,26 @@ class CursosView(ft.Container):
         tok = resolve_tokens(page=self.app_page, state=self.state)
         colegio = getattr(self.state, "selected_colegio", None) or ""
         num_alumnos = len(self.state.get_alumnos(colegio, cur))
+        reg_c = (
+            self.state.get_regimen_colegio(colegio)
+            if hasattr(self.state, "get_regimen_colegio")
+            else REGIMEN_TRIMESTRAL
+        )
+        umbral_c = (
+            self.state.get_desaprueba_hasta_curso(colegio, cur)
+            if hasattr(self.state, "get_desaprueba_hasta_curso")
+            else DESAPRUEBA_HASTA_DEFAULT
+        )
+        usar_rec_c = (
+            self.state.get_usar_recuperatorio_curso(colegio, cur)
+            if hasattr(self.state, "get_usar_recuperatorio_curso")
+            else True
+        )
+        sub_criterio = formatear_criterio_resumen(
+            regimen=reg_c,
+            desaprueba_hasta=umbral_c,
+            usar_recuperatorio=usar_rec_c,
+        )
 
         def _exec(fn: Callable[[], Any]) -> None:
             sheet.close()
@@ -331,6 +393,12 @@ class CursosView(ft.Container):
                 tokens=tok,
             ),
             sheet_menu_item(
+                ft.Icons.TUNE_OUTLINED,
+                "Configuración e Información del Curso",
+                lambda _e: _exec(lambda: self._abrir_modal_config_curso(cur)),
+                tokens=tok,
+            ),
+            sheet_menu_item(
                 ft.Icons.EDIT_OUTLINED,
                 "Renombrar curso",
                 lambda _e: _exec(lambda: self._abrir_modal_renombrar(cur)),
@@ -349,7 +417,7 @@ class CursosView(ft.Container):
         sheet = NotalySheet(
             page=self.app_page,
             title=cur,
-            subtitle=pluralizar(num_alumnos, "alumno"),
+            subtitle=f"{pluralizar(num_alumnos, 'alumno')} · {sub_criterio}",
             body=ft.Column(items, spacing=0, tight=True),
             tokens=tok,
             state=self.state,
@@ -371,12 +439,33 @@ class CursosView(ft.Container):
         self.on_navigate(pestana)
 
     def _abrir_modal_crear(self, _e: Any = None) -> None:
-        def confirmar_creacion(nuevo_nombre: str, cant_alumnos: int, horario: str = "") -> None:
+        colegio = self.state.selected_colegio or ""
+        reg_col = (
+            self.state.get_regimen_colegio(colegio)
+            if hasattr(self.state, "get_regimen_colegio")
+            else REGIMEN_TRIMESTRAL
+        )
+        umbral_col = (
+            self.state.get_desaprueba_hasta_colegio(colegio)
+            if hasattr(self.state, "get_desaprueba_hasta_colegio")
+            else DESAPRUEBA_HASTA_DEFAULT
+        )
+
+        def confirmar_creacion(
+            nuevo_nombre: str,
+            cant_alumnos: int,
+            horario: str = "",
+            config: dict | None = None,
+        ) -> None:
+            cfg = config or {}
             exito, msg = self.state.add_curso(
                 self.state.selected_colegio,
                 nuevo_nombre,
                 cant_alumnos,
                 horario,
+                cantidad_notas=cfg.get("cantidad_notas", 4),
+                desaprueba_hasta=cfg.get("desaprueba_hasta", umbral_col),
+                usar_recuperatorio=cfg.get("usar_recuperatorio", True),
             )
             if exito:
                 self._build_ui()
@@ -387,6 +476,41 @@ class CursosView(ft.Container):
         dlg = CreateCursoDialog(
             titulo=f"Nuevo Curso en {self.state.selected_colegio}",
             on_confirm=confirmar_creacion,
+            regimen_colegio=reg_col,
+            desaprueba_hasta_default=umbral_col,
+            page=self.app_page,
+            tokens=self.state.tokens,
+        )
+        open_dialog_safe(self.app_page, dlg)
+
+    def _abrir_modal_config_curso(self, nombre_curso: str) -> None:
+        colegio = self.state.selected_colegio or ""
+        cfg = self.state.get_config_evaluativa_curso(colegio, nombre_curso)
+        cant_recup = self.state.contar_notas_recuperatorio_curso(colegio, nombre_curso)
+
+        def confirmar_config(nuevo_umbral: int, nuevo_recup: bool) -> None:
+            exito, msg = self.state.update_curso_config(
+                colegio=colegio,
+                curso=nombre_curso,
+                desaprueba_hasta=nuevo_umbral,
+                usar_recuperatorio=nuevo_recup,
+            )
+            if exito:
+                self._build_ui()
+                self._safe_update()
+                self._mostrar_snackbar(msg)
+            else:
+                self._mostrar_snackbar(msg, error=True)
+
+        dlg = CursoConfigDialog(
+            nombre_colegio=colegio,
+            nombre_curso=nombre_curso,
+            regimen=cfg["regimen"],
+            desaprueba_hasta_actual=cfg["desaprueba_hasta"],
+            usar_recuperatorio_actual=cfg["usar_recuperatorio"],
+            notas_por_periodo=cfg["notas_por_periodo"],
+            cant_notas_recup_cargadas=cant_recup,
+            on_confirm=confirmar_config,
             page=self.app_page,
             tokens=self.state.tokens,
         )
