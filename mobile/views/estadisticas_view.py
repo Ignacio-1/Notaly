@@ -319,6 +319,46 @@ class EstadisticasView(ft.Container):
             self.asistencia_detalle_container.content = self._build_asistencia_detalle_section(
                 stats_asist, nivel
             )
+        elif self.seccion_activa == "intensificacion":
+            es_curso = bool(nivel == "curso" and self.state.selected_curso)
+            self.period_selector_container.visible = es_curso
+            self.kpi_container.visible = True
+            self.donut_container.visible = True
+            self.histograma_container.visible = True
+            self.dynamic_content_container.visible = True
+            self.comportamiento_container.visible = False
+            self.asistencia_filtro_container.visible = False
+            self.asistencia_kpi_container.visible = False
+            self.asistencia_donut_container.visible = False
+            self.asistencia_detalle_container.visible = False
+
+            if es_curso:
+                periodos_curso = self.state.get_periodos_intensificacion(
+                    self.state.selected_colegio, self.state.selected_curso
+                )
+                ids_validos = {"todos"} | {str(p.get("id")) for p in periodos_curso if isinstance(p, dict)}
+                if getattr(self.state, "estadisticas_intensif_periodo_id", "todos") not in ids_validos:
+                    self.state.estadisticas_intensif_periodo_id = "todos"
+                self.period_selector_container.content = self._build_intensificacion_period_selector(
+                    periodos_curso
+                )
+                stats_int = self.state.get_estadisticas_intensificacion_curso(
+                    periodo_id=self.state.estadisticas_intensif_periodo_id
+                )
+            else:
+                stats_int = self.state.get_estadisticas_intensificacion_colegio()
+
+            self.kpi_container.content = self._build_intensificacion_kpi_row(stats_int, nivel)
+            self.donut_container.content = self._build_intensificacion_donut_section(stats_int)
+            self.histograma_container.content = self._build_intensificacion_notas_chart(stats_int)
+            if es_curso:
+                self.dynamic_content_container.content = self._build_intensificacion_curso_detalle(
+                    stats_int
+                )
+            else:
+                self.dynamic_content_container.content = self._build_intensificacion_colegio_cursos(
+                    stats_int
+                )
         else:
             self.period_selector_container.visible = False
             self.kpi_container.visible = False
@@ -335,7 +375,7 @@ class EstadisticasView(ft.Container):
 
     def _al_volver(self) -> None:
         destino = self.state.origen_pantalla or "colegios"
-        if destino not in ("colegios", "cursos", "notas", "asistencias"):
+        if destino not in ("colegios", "cursos", "notas", "asistencias", "grupos", "intensificacion"):
             destino = "colegios"
         self.on_navigate(destino)
 
@@ -408,6 +448,20 @@ class EstadisticasView(ft.Container):
                 stats_comp = self.state.get_estadisticas_comportamiento(
                     colegio=colegio, curso=curso
                 )
+                stats_intensif = (
+                    self.state.get_estadisticas_intensificacion_curso(
+                        colegio=colegio,
+                        curso=curso,
+                        periodo_id=getattr(self.state, "estadisticas_intensif_periodo_id", "todos"),
+                    )
+                    if hasattr(self.state, "get_estadisticas_intensificacion_curso")
+                    else {}
+                )
+                tiene_intensif = (
+                    self.state.tiene_intensificacion_curso(colegio=colegio, curso=curso)
+                    if hasattr(self.state, "tiene_intensificacion_curso")
+                    else False
+                )
             else:
                 stats_rend = self.state.get_estadisticas_colegio(
                     colegio=colegio, periodo_idx=periodo_idx
@@ -415,13 +469,29 @@ class EstadisticasView(ft.Container):
                 stats_comp = self.state.get_estadisticas_comportamiento(
                     colegio=colegio, curso=None
                 )
+                stats_intensif = (
+                    self.state.get_estadisticas_intensificacion_colegio(colegio=colegio)
+                    if hasattr(self.state, "get_estadisticas_intensificacion_colegio")
+                    else {}
+                )
+                tiene_intensif = (
+                    self.state.tiene_intensificacion_colegio(colegio=colegio)
+                    if hasattr(self.state, "tiene_intensificacion_colegio")
+                    else False
+                )
 
             dlg = ExportEstadisticasDialog(
                 colegio_nombre=colegio,
                 curso_nombre=curso,
                 periodo_nombre=periodo_nombre,
-                datos_estadisticas={"rendimiento": stats_rend, "comportamiento": stats_comp},
+                datos_estadisticas={
+                    "rendimiento": stats_rend,
+                    "comportamiento": stats_comp,
+                    "intensificacion": stats_intensif,
+                },
                 tipo_estadistica="academica",
+                tiene_intensificacion=tiene_intensif,
+                incluir_intensif_inicial=(self.seccion_activa == "intensificacion"),
                 on_success=al_terminar,
                 page=self.app_page,
                 state=self.state,
@@ -724,6 +794,7 @@ class EstadisticasView(ft.Container):
                 ("rendimiento", "Rendimiento"),
                 ("comportamiento", "Conducta"),
                 ("asistencias", "Asistencias"),
+                ("intensificacion", "Intensif."),
             ],
             active_key=self.seccion_activa,
             on_change=self._conmutar_seccion,
@@ -2296,6 +2367,477 @@ class EstadisticasView(ft.Container):
         return NotalyListSection(
             rows=curso_rows,
             eyebrow="Asistencia por Curso (toca para desglose)",
+            tokens=tok,
+            page=self.app_page,
+            state=self.state,
+        )
+
+    # -------------------------------------------------------------------------
+    # --- APARTADO PERÍODO DE INTENSIFICACIÓN (SPEC-034) ---
+    # -------------------------------------------------------------------------
+
+    def _conmutar_periodo_intensificacion(self, nuevo_pid: str) -> None:
+        if getattr(self.state, "estadisticas_intensif_periodo_id", "todos") == nuevo_pid:
+            return
+        self.state.estadisticas_intensif_periodo_id = nuevo_pid
+        self._actualizar_datos_ui()
+        for c in (
+            self.fixed_nav_container,
+            self.kpi_container,
+            self.donut_container,
+            self.histograma_container,
+            self.dynamic_content_container,
+        ):
+            self._safe_ctrl_update(c)
+
+    def _build_intensificacion_period_selector(self, periodos: list[dict]) -> UnderlineTabBar:
+        tabs: list[tuple[str, str]] = [("todos", "Todos")]
+        for p in periodos:
+            if isinstance(p, dict):
+                tabs.append((str(p.get("id", "")), str(p.get("nombre") or "Período")))
+        return UnderlineTabBar(
+            tabs=tabs,
+            active_key=getattr(self.state, "estadisticas_intensif_periodo_id", "todos"),
+            on_change=self._conmutar_periodo_intensificacion,
+            tokens=self.tokens,
+            page=self.app_page,
+            state=self.state,
+            scrollable=(len(tabs) > 3),
+            expand_tabs=(len(tabs) <= 3),
+        )
+
+    def _build_intensificacion_kpi_row(self, stats: dict, nivel: str) -> ft.Container:
+        tok = self.tokens
+        pct_int = stats.get("pct_en_intensificacion", 0.0)
+        al_unicos = stats.get("alumnos_unicos", 0)
+        tot_al = (
+            stats.get("total_alumnos_curso", 0)
+            if nivel == "curso"
+            else stats.get("total_alumnos_colegio", 0)
+        )
+        asist_pct = stats.get("asistencia_pct", 0.0)
+        tot_ex = stats.get("total_examenes", 0)
+        ap_pct = stats.get("aprobados_pct", 0.0)
+        ap_c = stats.get("aprobados_cant", 0)
+
+        return self._build_kpi_band(
+            [
+                ("En intensif.", f"{pct_int}%", f"{al_unicos} de {tot_al} al.", tok.accent_primary),
+                ("Asistencia", f"{asist_pct}%", pluralizar(tot_ex, "examen", "exámenes"), tok.justif_fg),
+                ("Aprobados", f"{ap_pct}%", f"{ap_c} aprob.", tok.pass_fg),
+            ]
+        )
+
+    def _build_intensificacion_donut_section(self, stats: dict) -> ft.Container:
+        """Dona vectorial de estados de exámenes (Aprobados, Desaprobados, Ausentes, Pendientes = 100%)."""
+        tok = self.tokens
+        total_ex = stats.get("total_examenes", 0)
+        ap_c, ap_p = stats.get("aprobados_cant", 0), stats.get("aprobados_pct", 0.0)
+        des_c, des_p = stats.get("desaprobados_cant", 0), stats.get("desaprobados_pct", 0.0)
+        aus_c, aus_p = stats.get("ausentes_cant", 0), stats.get("ausentes_pct", 0.0)
+        pen_c, pen_p = stats.get("pendientes_cant", 0), stats.get("pendientes_pct", 0.0)
+
+        shapes: list[Any] = []
+        cx, cy, size, stroke_w = 10, 10, 120, 18
+        if total_ex == 0:
+            shapes.append(
+                cv.Arc(
+                    cx,
+                    cy,
+                    size,
+                    size,
+                    0,
+                    2 * math.pi,
+                    paint=ft.Paint(
+                        style=ft.PaintingStyle.STROKE,
+                        stroke_width=stroke_w,
+                        color=tok.chart_empty,
+                    ),
+                )
+            )
+            centro_txt = "0"
+            centro_sub = "exámenes"
+        else:
+            start_ang = -math.pi / 2
+            for cant, color in (
+                (ap_c, tok.chart_pass),
+                (des_c, tok.chart_fail),
+                (aus_c, tok.chart_warn),
+                (pen_c, tok.text_placeholder),
+            ):
+                if cant > 0:
+                    sweep = (cant / total_ex) * 2 * math.pi
+                    shapes.append(
+                        cv.Arc(
+                            cx,
+                            cy,
+                            size,
+                            size,
+                            start_ang,
+                            sweep,
+                            paint=ft.Paint(
+                                style=ft.PaintingStyle.STROKE,
+                                stroke_width=stroke_w,
+                                color=color,
+                            ),
+                        )
+                    )
+                    start_ang += sweep
+            centro_txt = f"{ap_p}%"
+            centro_sub = "Aprobados"
+
+        donut_stack = ft.Stack(
+            width=140,
+            height=140,
+            alignment=ft.Alignment.CENTER,
+            controls=[
+                cv.Canvas(shapes=shapes, width=140, height=140),
+                ft.Container(
+                    width=140,
+                    height=140,
+                    alignment=ft.Alignment.CENTER,
+                    content=ft.Column(
+                        alignment=ft.MainAxisAlignment.CENTER,
+                        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                        spacing=0,
+                        controls=[
+                            tabular_text(centro_txt, size=18, weight=ft.FontWeight.BOLD, color=tok.text_primary),
+                            ft.Text(centro_sub, size=10, color=tok.text_secondary),
+                        ],
+                    ),
+                ),
+            ],
+        )
+
+        def _leg(color: str, lbl: str, cant: int, pct: float) -> ft.Row:
+            return ft.Row(
+                spacing=SPACE_SM,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                controls=[
+                    ft.Container(width=10, height=10, border_radius=2, bgcolor=color),
+                    ft.Text(lbl, size=12, color=tok.text_primary, expand=True),
+                    tabular_text(f"{cant} ({pct}%)", size=12, weight=ft.FontWeight.BOLD, color=tok.text_primary),
+                ],
+            )
+
+        legend_rows = [
+            _leg(tok.chart_pass, "Aprobados", ap_c, ap_p),
+            _leg(tok.chart_fail, "Desaprobados", des_c, des_p),
+            _leg(tok.chart_warn, "Ausentes", aus_c, aus_p),
+        ]
+        if pen_c > 0 or total_ex == 0:
+            legend_rows.append(_leg(tok.text_placeholder, "Pendientes", pen_c, pen_p))
+
+        return ft.Container(
+            bgcolor=tok.surface_primary,
+            border=ft.Border.all(1, tok.border_hairline),
+            border_radius=RADIUS_MD,
+            padding=ft.Padding.all(SPACE_LG),
+            content=ft.Column(
+                spacing=SPACE_MD,
+                controls=[
+                    ft.Text(
+                        "Resultados de Exámenes",
+                        size=14,
+                        weight=ft.FontWeight.BOLD,
+                        color=tok.text_primary,
+                    ),
+                    ft.Row(
+                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                        spacing=SPACE_MD,
+                        controls=[donut_stack, ft.Column(spacing=SPACE_SM, expand=True, controls=legend_rows)],
+                    ),
+                ],
+            ),
+        )
+
+    def _build_intensificacion_notas_chart(self, stats: dict) -> ft.Container:
+        """
+        Gráfico vectorial nativo de distribución de notas 1–10:
+        1–5 en rojo (desaprobados) y 6–10 en verde (aprobados), con cantidades y porcentajes.
+        """
+        tok = self.tokens
+        dist = stats.get("distribucion_notas", {}) or {}
+        total_calif = int(dist.get("total_calificados", 0) or 0)
+        por_nota = dist.get("por_nota", {i: 0 for i in range(1, 11)})
+        pct_nota = dist.get("porcentajes_nota", {i: 0.0 for i in range(1, 11)})
+        max_frec = int(dist.get("max_frecuencia_nota", 0) or 0)
+
+        if total_calif == 0:
+            cuerpo: ft.Control = ft.Container(
+                padding=ft.Padding.symmetric(vertical=SPACE_LG, horizontal=SPACE_MD),
+                alignment=ft.Alignment.CENTER,
+                content=ft.Column(
+                    spacing=SPACE_XS,
+                    horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                    controls=[
+                        ft.Icon(ft.Icons.BAR_CHART_OUTLINED, size=32, color=tok.text_placeholder),
+                        ft.Text("Sin notas de intensificación", size=13, weight=ft.FontWeight.W_600, color=tok.text_primary),
+                        ft.Text("Califica exámenes presentes (1-10) para visualizar la distribución.", size=11, color=tok.text_secondary),
+                    ],
+                ),
+            )
+        else:
+            bar_max_h = 96
+            bar_radius = ft.BorderRadius(top_left=2, top_right=2, bottom_left=0, bottom_right=0)
+            cols: list[ft.Control] = []
+            denom = max_frec if max_frec > 0 else 1
+            for nota_i in range(1, 11):
+                cant = int(por_nota.get(nota_i, 0) or 0)
+                pct = float(pct_nota.get(nota_i, 0.0) or 0.0)
+                bar_h = max(6, int((cant / denom) * bar_max_h)) if cant > 0 else 3
+                bar_color = (
+                    (tok.chart_fail if nota_i <= 5 else tok.chart_pass)
+                    if cant > 0
+                    else tok.border_hairline
+                )
+                cols.append(
+                    ft.Column(
+                        expand=True,
+                        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                        alignment=ft.MainAxisAlignment.END,
+                        spacing=2,
+                        controls=[
+                            tabular_text(
+                                f"{cant}",
+                                size=10,
+                                weight=ft.FontWeight.BOLD if cant > 0 else ft.FontWeight.NORMAL,
+                                color=tok.text_primary if cant > 0 else tok.text_secondary,
+                            ),
+                            tabular_text(
+                                f"{pct:.0f}%" if cant > 0 else "",
+                                size=9,
+                                color=tok.text_secondary,
+                            ),
+                            ft.Container(width=16, height=bar_h, bgcolor=bar_color, border_radius=bar_radius),
+                            ft.Container(height=1, bgcolor=tok.border_hairline),
+                            tabular_text(
+                                str(nota_i),
+                                size=11,
+                                weight=ft.FontWeight.BOLD,
+                                color=tok.fail_fg if nota_i <= 5 else tok.pass_fg,
+                            ),
+                        ],
+                    )
+                )
+
+            cuerpo = ft.Container(
+                height=196,
+                padding=ft.Padding(top=SPACE_SM, bottom=SPACE_SM, left=SPACE_XS, right=SPACE_XS),
+                content=ft.Row(
+                    expand=True,
+                    alignment=ft.MainAxisAlignment.SPACE_EVENLY,
+                    vertical_alignment=ft.CrossAxisAlignment.END,
+                    spacing=2,
+                    controls=cols,
+                ),
+            )
+
+        leyenda = ft.Row(
+            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            controls=[
+                ft.Row(
+                    spacing=SPACE_MD,
+                    controls=[
+                        ft.Row(
+                            spacing=SPACE_XS,
+                            controls=[
+                                ft.Container(width=10, height=10, border_radius=2, bgcolor=tok.chart_fail),
+                                ft.Text("Desaprobado (1-5)", size=11, color=tok.text_secondary),
+                            ],
+                        ),
+                        ft.Row(
+                            spacing=SPACE_XS,
+                            controls=[
+                                ft.Container(width=10, height=10, border_radius=2, bgcolor=tok.chart_pass),
+                                ft.Text("Aprobado (6-10)", size=11, color=tok.text_secondary),
+                            ],
+                        ),
+                    ],
+                ),
+                tabular_text(f"{total_calif} notas", size=11, color=tok.text_secondary),
+            ],
+        )
+
+        return ft.Container(
+            bgcolor=tok.surface_primary,
+            border=ft.Border.all(1, tok.border_hairline),
+            border_radius=RADIUS_MD,
+            padding=ft.Padding.all(SPACE_LG),
+            content=ft.Column(
+                spacing=SPACE_MD,
+                controls=[
+                    ft.Row(
+                        spacing=SPACE_XS,
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                        controls=[
+                            ft.Icon(ft.Icons.BAR_CHART_ROUNDED, size=18, color=tok.accent_primary),
+                            ft.Text(
+                                "Distribución de Notas (1-10)",
+                                size=14,
+                                weight=ft.FontWeight.BOLD,
+                                color=tok.text_primary,
+                            ),
+                        ],
+                    ),
+                    cuerpo,
+                    ft.Container(height=1, bgcolor=tok.border_hairline),
+                    leyenda,
+                ],
+            ),
+        )
+
+    def _build_intensificacion_curso_detalle(self, stats: dict) -> ft.Container:
+        tok = self.tokens
+        examenes = stats.get("examenes_detalle", []) or []
+        if not examenes:
+            return ft.Container(
+                bgcolor=tok.surface_primary,
+                border=ft.Border.all(1, tok.border_hairline),
+                border_radius=RADIUS_MD,
+                padding=SPACE_LG,
+                content=EmptyStateView(
+                    icon=ft.Icons.SCHOOL_OUTLINED,
+                    title="Sin exámenes de intensificación",
+                    description="Carga períodos y exámenes en la pestaña Intensif. del curso para ver el detalle aquí.",
+                    tokens=tok,
+                    state=self.state,
+                    page=self.app_page,
+                ),
+            )
+
+        rows: list[ft.Control] = []
+        for idx, ex in enumerate(examenes):
+            res = str(ex.get("resultado", "pendiente"))
+            nota = ex.get("nota")
+            if res == "aprobado":
+                stripe, sub_est = tok.pass_fg, "Aprobado"
+            elif res == "desaprobado":
+                stripe, sub_est = tok.fail_fg, "Desaprobado"
+            elif res == "ausente":
+                stripe, sub_est = tok.warn_fg, "Ausente"
+            else:
+                stripe, sub_est = tok.border_hairline, "Pendiente"
+
+            subtitulo = f"{ex.get('periodo_nombre', '')} · {ex.get('fecha_examen', '')} · {sub_est}".strip(" ·")
+            nota_str = str(nota) if nota is not None else ("Aus" if res == "ausente" else "--")
+            rows.append(
+                NotalyListRow(
+                    title=str(ex.get("alumno_nombre") or "Sin nombre"),
+                    subtitle=subtitulo,
+                    initials=None,
+                    title_size=15,
+                    stripe_color=stripe,
+                    show_divider=(idx < len(examenes) - 1),
+                    trailing=GradeCell(
+                        value=nota_str,
+                        tokens=tok,
+                        dominant=False,
+                        width=46,
+                        height=36,
+                    ),
+                    tokens=tok,
+                )
+            )
+        return NotalyListSection(
+            rows=rows,
+            eyebrow=f"Detalle de Exámenes ({len(examenes)})",
+            tokens=tok,
+            page=self.app_page,
+            state=self.state,
+        )
+
+    def _build_intensificacion_colegio_cursos(self, stats: dict) -> ft.Container:
+        tok = self.tokens
+        por_curso = stats.get("por_curso", {}) or {}
+        if not por_curso:
+            return ft.Container(
+                bgcolor=tok.surface_primary,
+                border=ft.Border.all(1, tok.border_hairline),
+                border_radius=RADIUS_MD,
+                padding=SPACE_LG,
+                content=EmptyStateView(
+                    icon=ft.Icons.SCHOOL_OUTLINED,
+                    title="Sin cursos registrados",
+                    description="Agrega cursos para ver la comparativa de intensificación.",
+                    tokens=tok,
+                    state=self.state,
+                    page=self.app_page,
+                ),
+            )
+
+        rows: list[ft.Control] = []
+        total_c = len(por_curso)
+        for idx, (c_nom, c_st) in enumerate(por_curso.items()):
+            ap_p = float(c_st.get("aprobados_pct", 0.0) or 0.0)
+            tot_ex = int(c_st.get("total_examenes", 0) or 0)
+            pct_int = float(c_st.get("pct_en_intensificacion", 0.0) or 0.0)
+            asist_p = float(c_st.get("asistencia_pct", 0.0) or 0.0)
+            es_ok = ap_p >= 50.0 if tot_ex > 0 else True
+            stripe = tok.pass_fg if (tot_ex > 0 and es_ok) else (tok.fail_fg if tot_ex > 0 else tok.border_hairline)
+            rows.append(
+                ft.Container(
+                    bgcolor=tok.surface_primary,
+                    border_radius=RADIUS_NONE,
+                    border=ft.Border.only(
+                        left=ft.BorderSide(3, stripe),
+                        bottom=ft.BorderSide(1, tok.border_hairline) if idx < total_c - 1 else None,
+                    ),
+                    padding=ft.Padding.symmetric(horizontal=SPACE_LG, vertical=SPACE_MD),
+                    ink=True,
+                    on_click=lambda _e, cur=c_nom: self._conmutar_nivel("curso", cur),
+                    content=ft.Column(
+                        spacing=SPACE_XS,
+                        controls=[
+                            ft.Row(
+                                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                                controls=[
+                                    ft.Text(
+                                        c_nom,
+                                        size=14,
+                                        weight=ft.FontWeight.W_600,
+                                        color=tok.text_primary,
+                                        expand=True,
+                                        max_lines=1,
+                                        overflow=ft.TextOverflow.ELLIPSIS,
+                                    ),
+                                    ft.Container(
+                                        bgcolor=tok.pass_bg if (tot_ex > 0 and es_ok) else tok.surface_subtle,
+                                        border_radius=RADIUS_SM,
+                                        padding=ft.Padding.symmetric(horizontal=6, vertical=2),
+                                        content=tabular_text(
+                                            f"{ap_p}% aprob." if tot_ex > 0 else "Sin registros",
+                                            size=11,
+                                            weight=ft.FontWeight.BOLD,
+                                            color=tok.pass_fg if (tot_ex > 0 and es_ok) else tok.text_secondary,
+                                        ),
+                                    ),
+                                ],
+                            ),
+                            tabular_text(
+                                f"En intensif.: {pct_int}% ({c_st.get('alumnos_unicos', 0)}) · "
+                                f"{pluralizar(tot_ex, 'examen', 'exámenes')} · Asist.: {asist_p}% · "
+                                f"Desap.: {c_st.get('desaprobados_pct', 0.0)}% · Aus.: {c_st.get('ausentes_pct', 0.0)}%",
+                                size=11,
+                                color=tok.text_secondary,
+                            ),
+                            ft.ProgressBar(
+                                value=(ap_p / 100.0) if tot_ex > 0 else 0.0,
+                                color=tok.chart_pass if es_ok else tok.chart_fail,
+                                bgcolor=tok.border_hairline,
+                                height=6,
+                                border_radius=2,
+                            ),
+                        ],
+                    ),
+                )
+            )
+        return NotalyListSection(
+            rows=rows,
+            eyebrow="Intensificación por Curso (toca para desglose)",
             tokens=tok,
             page=self.app_page,
             state=self.state,

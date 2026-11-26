@@ -327,13 +327,16 @@ class UnderlineTabBar(ft.Container):
         self._tab_containers: list[ft.Container] = []
         self._tab_keys: dict[str, Any] = {}
 
+        tab_h_pad = SPACE_XS if (not scrollable and len(self._tabs) >= 4) else SPACE_MD
+        tab_font_size = 12 if (not scrollable and len(self._tabs) >= 5) else 13
+
         for key, label in self._tabs:
             is_active = key == self._active_key
             tab_key = build_scroll_key(f"tab_{key}")
             self._tab_keys[key] = tab_key
             lbl = ft.Text(
                 label,
-                size=13,
+                size=tab_font_size,
                 weight=ft.FontWeight.W_600 if is_active else ft.FontWeight.W_500,
                 color=self.tokens.accent_primary if is_active else self.tokens.text_secondary,
                 max_lines=1,
@@ -346,7 +349,7 @@ class UnderlineTabBar(ft.Container):
                 data=key,
                 height=44,
                 expand=(not scrollable and expand_tabs),
-                padding=ft.Padding.symmetric(horizontal=SPACE_MD, vertical=0),
+                padding=ft.Padding.symmetric(horizontal=tab_h_pad, vertical=0),
                 alignment=ft.Alignment.CENTER,
                 border_radius=RADIUS_NONE,
                 border=(
@@ -451,12 +454,13 @@ def build_module_tabs(
     page: ft.Page | None = None,
     state: Any = None,
 ) -> UnderlineTabBar:
-    """Selector subrayado editorial de módulos del curso (Notas / Asistencia / Grupos)."""
+    """Selector subrayado editorial de módulos del curso (Notas / Asistencia / Grupos / Intensif.)."""
     return UnderlineTabBar(
         tabs=[
             ("notas", "Notas"),
             ("asistencias", "Asistencia"),
             ("grupos", "Grupos"),
+            ("intensificacion", "Intensif."),
         ],
         active_key=active_tab,
         on_change=on_change,

@@ -1472,15 +1472,21 @@ def test_cursos_view_cabecera_dos_niveles_y_boton_planificaciones(isolated_app_s
     assert isinstance(header, ft.Column)
     assert len(header.controls) == 2
 
+    fila_titulo = header.controls[0]
+    assert isinstance(fila_titulo, ft.Row)
+    btn_crear = fila_titulo.controls[1]
+    assert btn_crear.height == 48
+    assert btn_crear.content.value == "Curso"
+
     fila_acciones = header.controls[1]
     assert isinstance(fila_acciones, ft.Row)
     assert len(fila_acciones.controls) == 2
     btn_planif = fila_acciones.controls[0]
-    btn_crear = fila_acciones.controls[1]
+    btn_intensif = fila_acciones.controls[1]
     assert btn_planif.height == 48
-    assert btn_crear.height == 48
+    assert btn_intensif.height == 48
     assert btn_planif.content.value == "Planificaciones"
-    assert btn_crear.content.value == "Curso"
+    assert btn_intensif.content.value == "Intensificación"
 
     view._abrir_planificaciones_institucion()
     assert isinstance(mock_page_mobile.active_dialog, PlanificacionesInstitucionDialog)

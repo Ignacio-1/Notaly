@@ -274,9 +274,9 @@ def test_estadisticas_view_pestana_asistencias_inicializacion(populated_app_stat
     assert view.asistencia_donut_container in view.list_view.controls
     assert view.asistencia_detalle_container in view.list_view.controls
 
-    # 3. Selector de sección tiene 3 opciones
+    # 3. Selector de sección tiene 4 opciones (Rendimiento, Conducta, Asistencias, Intensif. - SPEC-034)
     seccion_row = view.seccion_selector_container.content.content
-    assert len(seccion_row.controls) == 3
+    assert len(seccion_row.controls) == 4
 
 
 def test_estadisticas_view_conmutar_seccion_asistencias(populated_app_state):

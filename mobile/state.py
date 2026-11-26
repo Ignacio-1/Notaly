@@ -69,6 +69,23 @@ from core.constants import (
     K_NOTA_GRUPO,
     K_TEMAS,
     K_CON_TEMAS,
+    K_PERIODOS_INTENSIFICACION,
+    INTENSIF_ASIST_PRESENTE,
+    INTENSIF_ASIST_AUSENTE,
+    INTENSIF_RES_PENDIENTE,
+)
+from core.intensificacion import (
+    calcular_estadisticas_intensificacion_colegio,
+    calcular_estadisticas_intensificacion_curso,
+    calcular_resultado_evaluacion,
+    obtener_alumnos_desaprobados_anual,
+    obtener_candidatos_importacion,
+    obtener_nombre_alumno_intensificacion,
+    resumen_conteo_intensificacion_curso,
+    tiene_datos_intensificacion_colegio,
+    tiene_datos_intensificacion_curso,
+    validar_fecha_intensificacion,
+    validar_nota_intensificacion,
 )
 from core.calculos import (
     procesar_calificaciones_alumno,
@@ -126,6 +143,7 @@ class AppState:
         self.estadisticas_asistencia_fecha_desde: str | None = None
         self.estadisticas_asistencia_fecha_hasta: str | None = None
         self.estadisticas_asistencia_todas_fechas: bool = True
+        self.estadisticas_intensif_periodo_id: str = "todos"
 
         # Pila LIFO de historial de navegación (SPEC-020 / PLAN-020)
         self.navigation_history: list[dict] = []
@@ -349,7 +367,7 @@ class AppState:
                 frame["screen"] = "cursos"
                 frame["selected_curso"] = None
                 frame["selected_alumno_id"] = None
-        elif col and not cur and frame.get("screen") in ("notas", "asistencias", "grupos"):
+        elif col and not cur and frame.get("screen") in ("notas", "asistencias", "grupos", "intensificacion"):
             if col in colegios_existentes:
                 frame["screen"] = "cursos"
                 frame["selected_curso"] = None
@@ -1233,6 +1251,7 @@ class AppState:
                         nuevos_registros[mapa_ids[str(viejo_id)]] = estado
             nuevas_asistencias[fecha] = nuevos_registros
         curso_dict[K_ASISTENCIAS] = nuevas_asistencias
+        self._remapear_intensificacion(curso_dict, mapa_ids, conservar_eliminados=True)
 
         self.curso_roster_version += 1
         self.save_data()
@@ -1277,6 +1296,35 @@ class AppState:
                             for aid in integrantes
                             if str(aid) in mapa_ids
                         ]
+        self._remapear_intensificacion(curso_dict, mapa_ids, conservar_eliminados=False)
+
+    def _remapear_intensificacion(
+        self,
+        curso_dict: dict,
+        mapa_ids: dict[str, str],
+        *,
+        conservar_eliminados: bool = True,
+    ) -> None:
+        """Actualiza referencias de alumno_id en periodos_intensificacion al reordenar o eliminar alumnos."""
+        periodos = curso_dict.get(K_PERIODOS_INTENSIFICACION, [])
+        if not isinstance(periodos, list):
+            return
+        for per in periodos:
+            if not isinstance(per, dict):
+                continue
+            for blq in per.get("bloques", []) or []:
+                if not isinstance(blq, dict):
+                    continue
+                for ev in blq.get("evaluaciones", []) or []:
+                    if not isinstance(ev, dict):
+                        continue
+                    aid = str(ev.get("alumno_id") or "")
+                    if not aid:
+                        continue
+                    if aid in mapa_ids:
+                        ev["alumno_id"] = mapa_ids[aid]
+                    elif conservar_eliminados:
+                        ev["alumno_id"] = ""
 
     def order_alumnos_alphabetically(
         self,
@@ -2333,6 +2381,486 @@ class AppState:
         if huerfanos > 0:
             self.notify()
         return huerfanos
+
+    # =========================================================================
+    # --- MÓDULO PERÍODO DE INTENSIFICACIÓN (SPEC-034) ---
+    # =========================================================================
+
+    def get_periodos_intensificacion(
+        self,
+        colegio: str | None = None,
+        curso: str | None = None,
+    ) -> list[dict]:
+        """Retorna la lista de períodos de intensificación del curso (aislada del resto de módulos)."""
+        c_col = colegio or self.selected_colegio
+        c_cur = curso or self.selected_curso
+        curso_dict = self.get_curso_data(c_col, c_cur)
+        if not curso_dict:
+            return []
+        periodos = curso_dict.setdefault(K_PERIODOS_INTENSIFICACION, [])
+        if not isinstance(periodos, list):
+            periodos = []
+            curso_dict[K_PERIODOS_INTENSIFICACION] = periodos
+        return periodos
+
+    def get_periodo_intensificacion(
+        self,
+        periodo_id: str,
+        colegio: str | None = None,
+        curso: str | None = None,
+    ) -> dict | None:
+        """Retorna un período de intensificación específico por su ID."""
+        pid = str(periodo_id or "")
+        for p in self.get_periodos_intensificacion(colegio, curso):
+            if isinstance(p, dict) and str(p.get("id", "")) == pid:
+                return p
+        return None
+
+    def create_periodo_intensificacion(
+        self,
+        nombre: str,
+        colegio: str | None = None,
+        curso: str | None = None,
+    ) -> tuple[bool, str, dict | None]:
+        """Crea un nuevo período de intensificación con nombre libre no vacío."""
+        import uuid
+
+        nom = (nombre or "").strip()
+        if not nom:
+            return False, "El nombre del período no puede estar vacío.", None
+
+        c_col = colegio or self.selected_colegio
+        c_cur = curso or self.selected_curso
+        curso_dict = self.get_curso_data(c_col, c_cur)
+        if not curso_dict:
+            return False, "Curso no encontrado.", None
+
+        periodos = self.get_periodos_intensificacion(c_col, c_cur)
+        nuevo = {
+            "id": f"pi_{uuid.uuid4().hex[:8]}",
+            "nombre": nom,
+            "fecha_creacion": datetime.now().strftime(FORMATO_FECHA),
+            "bloques": [],
+        }
+        periodos.append(nuevo)
+        self.save_data()
+        return True, "Período creado exitosamente.", nuevo
+
+    def rename_periodo_intensificacion(
+        self,
+        periodo_id: str,
+        nuevo_nombre: str,
+        colegio: str | None = None,
+        curso: str | None = None,
+    ) -> tuple[bool, str]:
+        """Renombra un período de intensificación existente."""
+        nom = (nuevo_nombre or "").strip()
+        if not nom:
+            return False, "El nombre del período no puede estar vacío."
+        per = self.get_periodo_intensificacion(periodo_id, colegio, curso)
+        if not per:
+            return False, "Período no encontrado."
+        per["nombre"] = nom
+        self.save_data()
+        return True, "Período renombrado exitosamente."
+
+    def delete_periodo_intensificacion(
+        self,
+        periodo_id: str,
+        colegio: str | None = None,
+        curso: str | None = None,
+    ) -> tuple[bool, str]:
+        """Elimina un período de intensificación y sus bloques asociados."""
+        c_col = colegio or self.selected_colegio
+        c_cur = curso or self.selected_curso
+        periodos = self.get_periodos_intensificacion(c_col, c_cur)
+        pid = str(periodo_id or "")
+        for idx, p in enumerate(periodos):
+            if isinstance(p, dict) and str(p.get("id", "")) == pid:
+                periodos.pop(idx)
+                self.save_data()
+                return True, "Período eliminado exitosamente."
+        return False, "Período no encontrado."
+
+    def _crear_evaluacion_inicial(
+        self,
+        alumno_id: str,
+        alumnos_curso: dict,
+    ) -> dict:
+        import uuid
+
+        al_id_str = str(alumno_id)
+        nombre = obtener_nombre_alumno_intensificacion(al_id_str, alumnos_curso)
+        return {
+            "id": f"ev_{uuid.uuid4().hex[:8]}",
+            "alumno_id": al_id_str,
+            "alumno_nombre": nombre,
+            "asistencia": None,
+            "nota": None,
+            "resultado": INTENSIF_RES_PENDIENTE,
+            "observaciones": "",
+        }
+
+    def add_bloque_intensificacion(
+        self,
+        periodo_id: str,
+        tipo: str,
+        fecha_examen: str,
+        alumno_ids: list[str],
+        temas: str = "",
+        nombre_grupo: str = "",
+        colegio: str | None = None,
+        curso: str | None = None,
+    ) -> tuple[bool, str, dict | None]:
+        """
+        Agrega un bloque 'individual' o 'grupo' al período indicado.
+        Exige fecha obligatoria en formato dd-mm-aaaa y al menos un alumno.
+        """
+        import uuid
+
+        per = self.get_periodo_intensificacion(periodo_id, colegio, curso)
+        if not per:
+            return False, "Debes crear o seleccionar un período primero.", None
+
+        ok_fec, fec_o_err = validar_fecha_intensificacion(fecha_examen)
+        if not ok_fec:
+            return False, fec_o_err, None
+
+        ids_limpios = [str(aid).strip() for aid in (alumno_ids or []) if str(aid).strip()]
+        if not ids_limpios:
+            return False, "Selecciona al menos un alumno.", None
+
+        tipo_norm = "grupo" if str(tipo).strip().lower() == "grupo" else "individual"
+        if tipo_norm == "individual":
+            ids_limpios = [ids_limpios[0]]
+
+        c_col = colegio or self.selected_colegio
+        c_cur = curso or self.selected_curso
+        alumnos_curso = self.get_alumnos(c_col, c_cur)
+
+        evaluaciones = [self._crear_evaluacion_inicial(aid, alumnos_curso) for aid in ids_limpios]
+        bloque = {
+            "id": f"blq_{uuid.uuid4().hex[:8]}",
+            "tipo": tipo_norm,
+            "nombre_grupo": (nombre_grupo or "").strip() if tipo_norm == "grupo" else "",
+            "fecha_examen": fec_o_err,
+            "temas": (temas or "").strip(),
+            "evaluaciones": evaluaciones,
+        }
+        per.setdefault("bloques", []).append(bloque)
+        self.save_data()
+        return True, "Bloque agregado exitosamente.", bloque
+
+    def update_bloque_intensificacion(
+        self,
+        periodo_id: str,
+        bloque_id: str,
+        fecha_examen: str,
+        temas: str = "",
+        nombre_grupo: str = "",
+        alumno_ids: list[str] | None = None,
+        colegio: str | None = None,
+        curso: str | None = None,
+    ) -> tuple[bool, str]:
+        """
+        Actualiza fecha, temas, nombre de grupo e integrantes de un bloque existente.
+        Preserva íntegramente las evaluaciones previas de los integrantes que permanecen.
+        """
+        per = self.get_periodo_intensificacion(periodo_id, colegio, curso)
+        if not per:
+            return False, "Período no encontrado."
+
+        ok_fec, fec_o_err = validar_fecha_intensificacion(fecha_examen)
+        if not ok_fec:
+            return False, fec_o_err
+
+        bid = str(bloque_id or "")
+        bloque_obj = None
+        for b in per.get("bloques", []) or []:
+            if isinstance(b, dict) and str(b.get("id", "")) == bid:
+                bloque_obj = b
+                break
+        if bloque_obj is None:
+            return False, "Bloque no encontrado."
+
+        bloque_obj["fecha_examen"] = fec_o_err
+        bloque_obj["temas"] = (temas or "").strip()
+        if bloque_obj.get("tipo") == "grupo":
+            bloque_obj["nombre_grupo"] = (nombre_grupo or "").strip()
+
+        if alumno_ids is not None:
+            ids_nuevos = [str(aid).strip() for aid in alumno_ids if str(aid).strip()]
+            if not ids_nuevos:
+                return False, "El bloque debe contener al menos un alumno."
+            if bloque_obj.get("tipo") == "individual":
+                ids_nuevos = [ids_nuevos[0]]
+
+            c_col = colegio or self.selected_colegio
+            c_cur = curso or self.selected_curso
+            alumnos_curso = self.get_alumnos(c_col, c_cur)
+
+            # Preservar evaluaciones previas por alumno_id (FIFO si hubiera duplicados)
+            prev_por_alumno: dict[str, list[dict]] = {}
+            for ev in bloque_obj.get("evaluaciones", []) or []:
+                if isinstance(ev, dict):
+                    prev_por_alumno.setdefault(str(ev.get("alumno_id", "")), []).append(ev)
+
+            nuevas_evals: list[dict] = []
+            for aid in ids_nuevos:
+                cola = prev_por_alumno.get(aid)
+                if cola:
+                    ev_prev = cola.pop(0)
+                    ev_prev["alumno_nombre"] = obtener_nombre_alumno_intensificacion(
+                        aid, alumnos_curso, fallback=str(ev_prev.get("alumno_nombre") or "")
+                    )
+                    nuevas_evals.append(ev_prev)
+                else:
+                    nuevas_evals.append(self._crear_evaluacion_inicial(aid, alumnos_curso))
+            bloque_obj["evaluaciones"] = nuevas_evals
+
+        self.save_data()
+        return True, "Bloque actualizado exitosamente."
+
+    def delete_bloque_intensificacion(
+        self,
+        periodo_id: str,
+        bloque_id: str,
+        colegio: str | None = None,
+        curso: str | None = None,
+    ) -> tuple[bool, str]:
+        """Elimina un bloque completo de un período de intensificación."""
+        per = self.get_periodo_intensificacion(periodo_id, colegio, curso)
+        if not per:
+            return False, "Período no encontrado."
+        bloques = per.get("bloques", [])
+        bid = str(bloque_id or "")
+        for idx, b in enumerate(bloques):
+            if isinstance(b, dict) and str(b.get("id", "")) == bid:
+                bloques.pop(idx)
+                self.save_data()
+                return True, "Bloque eliminado."
+        return False, "Bloque no encontrado."
+
+    def delete_evaluacion_intensificacion(
+        self,
+        periodo_id: str,
+        bloque_id: str,
+        evaluacion_id: str,
+        colegio: str | None = None,
+        curso: str | None = None,
+    ) -> tuple[bool, str]:
+        """Elimina una evaluación individual de un bloque; si queda vacío, elimina el bloque."""
+        per = self.get_periodo_intensificacion(periodo_id, colegio, curso)
+        if not per:
+            return False, "Período no encontrado."
+        bloques = per.get("bloques", [])
+        bid = str(bloque_id or "")
+        eid = str(evaluacion_id or "")
+        for b_idx, b in enumerate(bloques):
+            if isinstance(b, dict) and str(b.get("id", "")) == bid:
+                evs = b.get("evaluaciones", [])
+                for e_idx, ev in enumerate(evs):
+                    if isinstance(ev, dict) and str(ev.get("id", "")) == eid:
+                        evs.pop(e_idx)
+                        if not evs:
+                            bloques.pop(b_idx)
+                        self.save_data()
+                        return True, "Registro eliminado."
+        return False, "Registro no encontrado."
+
+    def update_evaluacion_intensificacion(
+        self,
+        periodo_id: str,
+        bloque_id: str,
+        evaluacion_id: str,
+        *,
+        asistencia: Any = ...,
+        nota: Any = ...,
+        observaciones: Any = ...,
+        auto_save: bool = True,
+        colegio: str | None = None,
+        curso: str | None = None,
+    ) -> tuple[bool, str, dict | None]:
+        """
+        Actualiza asistencia ('P', 'A' o None), nota entera 1–10 u observaciones
+        de una evaluación de intensificación con autoguardado debounced.
+        """
+        per = self.get_periodo_intensificacion(periodo_id, colegio, curso)
+        if not per:
+            return False, "Período no encontrado.", None
+
+        ev_obj = None
+        for b in per.get("bloques", []) or []:
+            if isinstance(b, dict) and str(b.get("id", "")) == str(bloque_id):
+                for ev in b.get("evaluaciones", []) or []:
+                    if isinstance(ev, dict) and str(ev.get("id", "")) == str(evaluacion_id):
+                        ev_obj = ev
+                        break
+                break
+        if ev_obj is None:
+            return False, "Evaluación no encontrada.", None
+
+        if asistencia is not ...:
+            if asistencia is None or str(asistencia).strip() == "":
+                ev_obj["asistencia"] = None
+                ev_obj["nota"] = None
+            else:
+                asist_norm = str(asistencia).strip().upper()
+                if asist_norm not in (INTENSIF_ASIST_PRESENTE, INTENSIF_ASIST_AUSENTE):
+                    return False, "Asistencia inválida.", None
+                ev_obj["asistencia"] = asist_norm
+                if asist_norm == INTENSIF_ASIST_AUSENTE:
+                    ev_obj["nota"] = None
+
+        if nota is not ...:
+            if ev_obj.get("asistencia") != INTENSIF_ASIST_PRESENTE:
+                if nota is None or (isinstance(nota, str) and not nota.strip()):
+                    ev_obj["nota"] = None
+                else:
+                    return False, "Solo se puede calificar si el alumno está Presente.", None
+            else:
+                try:
+                    ev_obj["nota"] = validar_nota_intensificacion(nota)
+                except ValueError as err:
+                    return False, str(err), None
+
+        if observaciones is not ...:
+            ev_obj["observaciones"] = str(observaciones or "")
+
+        ev_obj["resultado"] = calcular_resultado_evaluacion(
+            ev_obj.get("asistencia"),
+            ev_obj.get("nota"),
+        )
+
+        if auto_save:
+            self.trigger_auto_save(delay=0.35)
+        else:
+            self.save_data()
+        return True, "Evaluación actualizada.", ev_obj
+
+    def get_alumnos_desaprobados_curso(
+        self,
+        colegio: str | None = None,
+        curso: str | None = None,
+    ) -> set[str]:
+        """Retorna el conjunto de IDs de alumnos con promedio anual < 6 (solo lectura)."""
+        c_col = colegio or self.selected_colegio
+        c_cur = curso or self.selected_curso
+        return obtener_alumnos_desaprobados_anual(self.get_curso_data(c_col, c_cur))
+
+    def get_candidatos_importacion_intensificacion(
+        self,
+        periodo_origen_id: str,
+        colegio: str | None = None,
+        curso: str | None = None,
+    ) -> list[dict]:
+        """Retorna candidatos (desaprobados, ausentes o pendientes) de un período origen."""
+        c_col = colegio or self.selected_colegio
+        c_cur = curso or self.selected_curso
+        per = self.get_periodo_intensificacion(periodo_origen_id, c_col, c_cur)
+        alumnos = self.get_alumnos(c_col, c_cur)
+        return obtener_candidatos_importacion(per, alumnos)
+
+    def importar_desde_periodo_intensificacion(
+        self,
+        periodo_destino_id: str,
+        alumno_ids: list[str],
+        fecha_examen: str,
+        temas: str = "",
+        tipo: str = "grupo",
+        nombre_grupo: str = "",
+        colegio: str | None = None,
+        curso: str | None = None,
+    ) -> tuple[bool, str, list[dict]]:
+        """
+        Importa alumnos seleccionados al período destino con fecha obligatoria dd-mm-aaaa
+        y estado evaluativo inicial limpio (pendiente, sin nota, sin asistencia).
+        """
+        ok_fec, fec_o_err = validar_fecha_intensificacion(fecha_examen)
+        if not ok_fec:
+            return False, fec_o_err, []
+
+        ids_limpios = [str(aid).strip() for aid in (alumno_ids or []) if str(aid).strip()]
+        if not ids_limpios:
+            return False, "Selecciona al menos un alumno para importar.", []
+
+        creados: list[dict] = []
+        if str(tipo).strip().lower() == "individual":
+            for aid in ids_limpios:
+                ok, msg, blq = self.add_bloque_intensificacion(
+                    periodo_id=periodo_destino_id,
+                    tipo="individual",
+                    fecha_examen=fec_o_err,
+                    alumno_ids=[aid],
+                    temas=temas,
+                    colegio=colegio,
+                    curso=curso,
+                )
+                if not ok:
+                    return False, msg, creados
+                if blq:
+                    creados.append(blq)
+        else:
+            ok, msg, blq = self.add_bloque_intensificacion(
+                periodo_id=periodo_destino_id,
+                tipo="grupo",
+                fecha_examen=fec_o_err,
+                alumno_ids=ids_limpios,
+                temas=temas,
+                nombre_grupo=nombre_grupo,
+                colegio=colegio,
+                curso=curso,
+            )
+            if not ok:
+                return False, msg, []
+            if blq:
+                creados.append(blq)
+
+        return True, f"Se importaron {len(ids_limpios)} alumno(s).", creados
+
+    def get_resumen_intensificacion_curso(
+        self,
+        colegio: str | None = None,
+        curso: str | None = None,
+    ) -> tuple[int, int]:
+        """Retorna (cantidad_periodos, total_examenes) de un curso."""
+        c_col = colegio or self.selected_colegio
+        c_cur = curso or self.selected_curso
+        return resumen_conteo_intensificacion_curso(self.get_curso_data(c_col, c_cur))
+
+    def tiene_intensificacion_curso(
+        self,
+        colegio: str | None = None,
+        curso: str | None = None,
+    ) -> bool:
+        c_col = colegio or self.selected_colegio
+        c_cur = curso or self.selected_curso
+        return tiene_datos_intensificacion_curso(self.get_curso_data(c_col, c_cur))
+
+    def tiene_intensificacion_colegio(self, colegio: str | None = None) -> bool:
+        c_col = colegio or self.selected_colegio
+        return tiene_datos_intensificacion_colegio(self.get_colegio_data(c_col))
+
+    def get_estadisticas_intensificacion_curso(
+        self,
+        colegio: str | None = None,
+        curso: str | None = None,
+        periodo_id: str | None = None,
+    ) -> dict:
+        c_col = colegio or self.selected_colegio
+        c_cur = curso or self.selected_curso
+        pid = periodo_id if periodo_id is not None else self.estadisticas_intensif_periodo_id
+        return calcular_estadisticas_intensificacion_curso(
+            self.get_curso_data(c_col, c_cur),
+            periodo_id=pid,
+        )
+
+    def get_estadisticas_intensificacion_colegio(
+        self,
+        colegio: str | None = None,
+    ) -> dict:
+        c_col = colegio or self.selected_colegio
+        return calcular_estadisticas_intensificacion_colegio(self.get_colegio_data(c_col))
 
 
 

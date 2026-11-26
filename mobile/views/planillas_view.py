@@ -152,12 +152,13 @@ class PlanillasView(ft.Container):
         )
 
     def _build_filter_bar(self, tok: ThemeTokens) -> UnderlineTabBar:
-        """Barra subrayada plana de filtrado (Todas | Notas | Asist. | Stats)."""
+        """Barra subrayada plana de filtrado (Todas | Notas | Asist. | Intensif. | Stats)."""
         return UnderlineTabBar(
             tabs=[
                 ("todas", "Todas"),
                 ("notas", "Notas"),
                 ("asistencias", "Asist."),
+                ("intensificacion", "Intensif."),
                 ("estadisticas", "Stats"),
             ],
             active_key=self.filtro_tipo,
@@ -312,6 +313,7 @@ class PlanillasView(ft.Container):
         es_asistencia = tipo == "asistencias"
         es_estadistica = tipo == "estadisticas"
         es_estadistica_asistencia = tipo == "estadisticas_asistencia"
+        es_intensificacion = tipo == "intensificacion"
 
         if not cur_raw:
             scope_lbl = (
@@ -330,6 +332,11 @@ class PlanillasView(ft.Container):
             icono_color = tok.justif_fg
             icono = ft.Icons.BAR_CHART
             stripe = tok.justif_fg
+        elif es_intensificacion:
+            tipo_label = "Intensificación"
+            icono_color = tok.warn_fg
+            icono = ft.Icons.SCHOOL_OUTLINED
+            stripe = tok.warn_fg
         elif es_asistencia:
             tipo_label = "Asistencias"
             icono_color = (
@@ -549,6 +556,7 @@ class PlanillasView(ft.Container):
             tipo_map = {
                 "notas": "de Notas",
                 "asistencias": "de Asistencias",
+                "intensificacion": "de Intensificación",
                 "estadisticas": "de Estadísticas",
             }
             tipo_label = tipo_map.get(self.filtro_tipo, self.filtro_tipo)
@@ -572,7 +580,7 @@ class PlanillasView(ft.Container):
             icon=ft.Icons.FOLDER_OFF_OUTLINED,
             title="No hay planillas generadas",
             description=(
-                "Las planillas que exportes desde Notas, Asistencias o Estadísticas "
+                "Las planillas que exportes desde Notas, Asistencias, Intensificación o Estadísticas "
                 "se guardarán aquí para abrirlas o compartirlas."
             ),
             cta_label="Ir a Cursos",

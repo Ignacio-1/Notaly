@@ -218,12 +218,12 @@ def test_build_module_tabs_con_grupos():
     tabs_widget = build_module_tabs(active_tab="grupos", on_change=lambda t: tabs_disparados.append(t))
 
     row = tabs_widget.content
-    assert len(row.controls) == 3
-    # Simular clicks en las 3 pestañas
+    assert len(row.controls) == 4
+    # Simular clicks en las 4 pestañas (Notas, Asistencia, Grupos, Intensif. - SPEC-034)
     for c in row.controls:
         c.on_click(None)
 
-    assert tabs_disparados == ["notas", "asistencias", "grupos"]
+    assert tabs_disparados == ["notas", "asistencias", "grupos", "intensificacion"]
 
 
 def test_grupos_view_editorial_geometry_and_copiar_visibility(mock_state):

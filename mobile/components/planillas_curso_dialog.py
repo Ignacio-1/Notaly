@@ -125,7 +125,13 @@ class PlanillasCursoDialog(NotalySheet):
         nombre = planilla.get("nombre_archivo", "Sin nombre")
         ruta = planilla.get("ruta", "")
         formato = str(planilla.get("formato", "")).lower()
-        tipo = str(planilla.get("tipo", "")).capitalize()
+        tipo_raw = str(planilla.get("tipo", "")).lower()
+        tipo_labels = {
+            "intensificacion": "Intensificación",
+            "estadisticas": "Estadísticas",
+            "estadisticas_asistencia": "Estadísticas Asistencias",
+        }
+        tipo = tipo_labels.get(tipo_raw, tipo_raw.capitalize())
         fecha = planilla.get("fecha", "")
         hora = planilla.get("hora", "")
         pid = planilla.get("id", "")

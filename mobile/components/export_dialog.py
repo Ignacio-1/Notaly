@@ -20,7 +20,8 @@ from core.calculos import (
     obtener_estadisticas_asistencia_curso,
     ordenar_fechas_cronologicamente,
 )
-from core.constants import K_ALUMNOS, K_ASISTENCIAS
+from core.constants import K_ALUMNOS, K_ASISTENCIAS, K_PERIODOS_INTENSIFICACION
+from core.intensificacion import tiene_datos_intensificacion_curso
 from core.exportador import (
     exportar_a_csv,
     exportar_a_pdf,
@@ -240,6 +241,55 @@ class ExportDialog(NotalySheet):
             self.dd_hasta = None
             self.fechas_row = None
 
+        # --- Anexo opcional de Período de Intensificación (solo PDF de Notas si hay datos) ---
+        self.chk_incluir_intensificacion: ft.Checkbox | None = None
+        self.intensif_periodos_container: ft.Container | None = None
+        self.intensif_periodos_checks: dict[str, ft.Checkbox] = {}
+        if tipo_exportacion == "notas" and tiene_datos_intensificacion_curso(self.curso_data):
+            periodos_int = [
+                p
+                for p in (self.curso_data.get(K_PERIODOS_INTENSIFICACION, []) or [])
+                if isinstance(p, dict)
+            ]
+            self.chk_incluir_intensificacion = ft.Checkbox(
+                label="Añadir período de intensificación",
+                value=False,
+                active_color=tok.accent_primary,
+                check_color=tok.accent_on_primary,
+                on_change=self._al_cambiar_incluir_intensificacion,
+            )
+            checks_ctrl: list[ft.Control] = []
+            for per in periodos_int:
+                pid = str(per.get("id", ""))
+                pnom = str(per.get("nombre") or "Período")
+                chk_p = ft.Checkbox(
+                    label=pnom,
+                    value=True,
+                    active_color=tok.accent_primary,
+                    check_color=tok.accent_on_primary,
+                )
+                self.intensif_periodos_checks[pid] = chk_p
+                checks_ctrl.append(chk_p)
+
+            self.intensif_periodos_container = ft.Container(
+                visible=False,
+                padding=ft.Padding(left=SPACE_MD, top=0, right=0, bottom=0),
+                content=ft.Column(checks_ctrl, spacing=2, tight=True),
+            )
+            pdf_controls.extend(
+                [
+                    ft.Divider(height=1, thickness=1, color=tok.border_hairline),
+                    ft.Text(
+                        "Anexo de Intensificación",
+                        size=12,
+                        weight=ft.FontWeight.BOLD,
+                        color=tok.text_secondary,
+                    ),
+                    self.chk_incluir_intensificacion,
+                    self.intensif_periodos_container,
+                ]
+            )
+
         self.pdf_opciones_container = ft.Container(
             visible=True,
             content=ft.Column(pdf_controls, spacing=SPACE_SM, tight=True),
@@ -397,6 +447,11 @@ class ExportDialog(NotalySheet):
         self.banner_advertencia.visible = self.modo_pdf_selector.value == "una_pagina"
         self._safe_update()
 
+    def _al_cambiar_incluir_intensificacion(self, _e: Any) -> None:
+        if self.intensif_periodos_container is not None and self.chk_incluir_intensificacion is not None:
+            self.intensif_periodos_container.visible = bool(self.chk_incluir_intensificacion.value)
+        self._safe_update()
+
     def _al_cambiar_todas_fechas(self, _e: Any) -> None:
         todas = bool(self.chk_todas_fechas.value)
         if self.dd_desde:
@@ -548,12 +603,23 @@ class ExportDialog(NotalySheet):
             if self.tipo_exportacion == "notas":
                 if formato == "pdf":
                     titulo_pdf = f"{self.colegio_nombre} - {self.curso_nombre}"
+                    periodos_anexo: list[str] | None = None
+                    if (
+                        self.chk_incluir_intensificacion is not None
+                        and self.chk_incluir_intensificacion.value
+                    ):
+                        periodos_anexo = [
+                            pid
+                            for pid, chk in self.intensif_periodos_checks.items()
+                            if chk.value
+                        ] or None
                     exito, error_msg = exportar_a_pdf(
                         self.curso_data,
                         ruta_str,
                         titulo_pdf,
                         nombre_colegio=self.colegio_nombre,
                         paginado=es_paginado,
+                        periodos_intensificacion_ids=periodos_anexo,
                     )
                 elif formato == "csv":
                     exito, error_msg = exportar_a_csv(self.curso_data, ruta_str)

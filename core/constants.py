@@ -34,6 +34,15 @@ K_INTEGRANTES = "integrantes"
 K_NOTA_GRUPO = "nota"
 K_TEMAS = "temas"
 K_CON_TEMAS = "con_temas"
+K_PERIODOS_INTENSIFICACION = "periodos_intensificacion"
+
+# --- Estados y resultados de Período de Intensificación (SPEC-034) ---
+INTENSIF_ASIST_PRESENTE = "P"
+INTENSIF_ASIST_AUSENTE = "A"
+INTENSIF_RES_APROBADO = "aprobado"
+INTENSIF_RES_DESAPROBADO = "desaprobado"
+INTENSIF_RES_AUSENTE = "ausente"
+INTENSIF_RES_PENDIENTE = "pendiente"
 
 # --- Comportamientos de alumnos ---
 COMPORTAMIENTO_POSITIVO = "positivo"

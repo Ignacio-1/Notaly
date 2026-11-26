@@ -69,6 +69,7 @@ class CursosView(ft.Container):
         self.summary_header: ft.Column = ft.Column(spacing=SPACE_SM, tight=True)
         self.summary_count_text: ft.Text = tabular_text("", size=12)
         self.btn_planificaciones: ft.Control | None = None
+        self.btn_intensificacion: ft.Control | None = None
 
         super().__init__(
             expand=True,
@@ -145,10 +146,33 @@ class CursosView(ft.Container):
             tokens=tok,
             primary=True,
             icon=ft.Icons.ADD,
-            expand=True,
+            expand=False,
         )
 
-        action_controls: list[ft.Control] = []
+        summary_rows: list[ft.Control] = [
+            ft.Row(
+                spacing=SPACE_SM,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                controls=[
+                    ft.Column(
+                        spacing=2,
+                        tight=True,
+                        expand=True,
+                        controls=[
+                            ft.Text(
+                                "Mis cursos",
+                                size=16,
+                                weight=ft.FontWeight.BOLD,
+                                color=tok.text_primary,
+                            ),
+                            self.summary_count_text,
+                        ],
+                    ),
+                    btn_crear,
+                ],
+            ),
+        ]
+
         if len(cursos) > 0:
             self.btn_planificaciones = sheet_action_button(
                 "Planificaciones",
@@ -158,37 +182,28 @@ class CursosView(ft.Container):
                 icon=ft.Icons.EVENT_NOTE,
                 expand=True,
             )
-            action_controls.append(self.btn_planificaciones)
+            self.btn_intensificacion = sheet_action_button(
+                "Intensificación",
+                lambda _e: self._abrir_selector_intensificacion(),
+                tokens=tok,
+                primary=False,
+                icon=ft.Icons.SCHOOL_OUTLINED,
+                expand=True,
+            )
+            summary_rows.append(
+                ft.Row(
+                    spacing=SPACE_SM,
+                    controls=[self.btn_planificaciones, self.btn_intensificacion],
+                )
+            )
         else:
             self.btn_planificaciones = None
-        action_controls.append(btn_crear)
+            self.btn_intensificacion = None
 
         self.summary_header = ft.Column(
             spacing=SPACE_MD,
             tight=True,
-            controls=[
-                ft.Row(
-                    spacing=SPACE_SM,
-                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                    controls=[
-                        ft.Column(
-                            spacing=2,
-                            tight=True,
-                            expand=True,
-                            controls=[
-                                ft.Text(
-                                    "Mis cursos",
-                                    size=16,
-                                    weight=ft.FontWeight.BOLD,
-                                    color=tok.text_primary,
-                                ),
-                                self.summary_count_text,
-                            ],
-                        ),
-                    ],
-                ),
-                ft.Row(spacing=SPACE_SM, controls=action_controls),
-            ],
+            controls=summary_rows,
         )
 
         header_section = ft.Container(
@@ -295,6 +310,12 @@ class CursosView(ft.Container):
                 ft.Icons.GROUPS_OUTLINED,
                 "Trabajos en Grupo",
                 lambda _e: _exec(lambda: self._abrir_curso(cur, "grupos")),
+                tokens=tok,
+            ),
+            sheet_menu_item(
+                ft.Icons.SCHOOL_OUTLINED,
+                "Período de Intensificación",
+                lambda _e: _exec(lambda: self._abrir_curso(cur, "intensificacion")),
                 tokens=tok,
             ),
             sheet_menu_item(
@@ -481,3 +502,52 @@ class CursosView(ft.Container):
         self.state.selected_curso = cur
         self.state.estadisticas_nivel = "curso"
         self.on_navigate("estadisticas")
+
+    def _abrir_selector_intensificacion(self) -> None:
+        """Abre un NotalySheet con todos los cursos del colegio para entrar directo a Intensificación."""
+        tok = resolve_tokens(page=self.app_page, state=self.state)
+        colegio = getattr(self.state, "selected_colegio", None) or ""
+        cursos = self.state.get_cursos(colegio)
+        if not cursos:
+            return
+
+        rows: list[ft.Control] = []
+
+        def _ir_a_intensif(nombre_curso: str) -> None:
+            sheet.close()
+            self._abrir_curso(nombre_curso, "intensificacion")
+
+        for idx, cur in enumerate(cursos):
+            if hasattr(self.state, "get_resumen_intensificacion_curso"):
+                n_per, n_reg = self.state.get_resumen_intensificacion_curso(colegio, cur)
+            else:
+                n_per, n_reg = (0, 0)
+            if n_per == 0:
+                sub = "Sin períodos creados"
+            else:
+                sub = f"{pluralizar(n_per, 'período')} · {pluralizar(n_reg, 'registro')}"
+            rows.append(
+                sheet_menu_item(
+                    ft.Icons.SCHOOL_OUTLINED,
+                    cur,
+                    lambda _e, c=cur: _ir_a_intensif(c),
+                    tokens=tok,
+                    subtitle=sub,
+                    trailing=ft.Icon(
+                        icon=ft.Icons.CHEVRON_RIGHT,
+                        size=18,
+                        color=tok.text_secondary,
+                    ),
+                    show_divider=(idx < len(cursos) - 1),
+                )
+            )
+
+        sheet = NotalySheet(
+            page=self.app_page,
+            title="Período de Intensificación",
+            subtitle=f"Selecciona un curso de {colegio}",
+            body=ft.Column(rows, spacing=0, tight=True),
+            tokens=tok,
+            state=self.state,
+        )
+        open_dialog_safe(self.app_page, sheet)

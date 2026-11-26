@@ -46,6 +46,8 @@ class ExportEstadisticasDialog(NotalySheet):
         tokens: ThemeTokens | None = None,
         tipo_estadistica: str = "calificaciones",
         rango_fechas_str: str = "Todas las fechas",
+        tiene_intensificacion: bool | None = None,
+        incluir_intensif_inicial: bool = False,
     ) -> None:
         self.colegio_nombre = colegio_nombre
         self.curso_nombre = curso_nombre
@@ -58,6 +60,14 @@ class ExportEstadisticasDialog(NotalySheet):
         self.tipo_estadistica = tipo_estadistica
         self.rango_fechas_str = rango_fechas_str
         tok = self.tokens
+
+        if tiene_intensificacion is None:
+            stats_int = self.datos_estadisticas.get("intensificacion", {})
+            self.tiene_intensificacion = bool(
+                isinstance(stats_int, dict) and int(stats_int.get("total_examenes", 0) or 0) > 0
+            )
+        else:
+            self.tiene_intensificacion = bool(tiene_intensificacion)
 
         self.chk_calificaciones = ft.Checkbox(
             label="Rendimiento académico y distribución",
@@ -72,6 +82,17 @@ class ExportEstadisticasDialog(NotalySheet):
             active_color=tok.accent_primary,
             check_color=tok.accent_on_primary,
             on_change=self._al_cambiar_seccion,
+        )
+        self.chk_intensificacion: ft.Checkbox | None = (
+            ft.Checkbox(
+                label="Período de Intensificación",
+                value=bool(incluir_intensif_inicial),
+                active_color=tok.accent_primary,
+                check_color=tok.accent_on_primary,
+                on_change=self._al_cambiar_seccion,
+            )
+            if self.tiene_intensificacion
+            else None
         )
         self.lbl_error = ft.Text(
             "Selecciona al menos una sección para exportar.",
@@ -183,16 +204,19 @@ class ExportEstadisticasDialog(NotalySheet):
             )
         else:
             titulo_texto = "Exportar Estadísticas"
+            checks_secciones: list[ft.Control] = [
+                self.chk_calificaciones,
+                self.chk_comportamiento,
+            ]
+            if self.chk_intensificacion is not None:
+                checks_secciones.append(self.chk_intensificacion)
+            checks_secciones.append(self.lbl_error)
             seccion_selector = ft.Container(
                 padding=ft.Padding.symmetric(horizontal=SPACE_XS, vertical=2),
                 content=ft.Column(
                     spacing=SPACE_XS,
                     tight=True,
-                    controls=[
-                        self.chk_calificaciones,
-                        self.chk_comportamiento,
-                        self.lbl_error,
-                    ],
+                    controls=checks_secciones,
                 ),
             )
 
@@ -238,7 +262,8 @@ class ExportEstadisticasDialog(NotalySheet):
     def _al_cambiar_seccion(self, _e: Any = None) -> None:
         inc_calif = bool(self.chk_calificaciones.value)
         inc_comp = bool(self.chk_comportamiento.value)
-        valido = inc_calif or inc_comp
+        inc_int = bool(self.chk_intensificacion.value) if self.chk_intensificacion is not None else False
+        valido = inc_calif or inc_comp or inc_int
         self.lbl_error.visible = not valido
         self.btn_exportar.disabled = not valido
         try:
@@ -318,7 +343,8 @@ class ExportEstadisticasDialog(NotalySheet):
 
         inc_calif = bool(self.chk_calificaciones.value)
         inc_comp = bool(self.chk_comportamiento.value)
-        if not inc_calif and not inc_comp:
+        inc_int = bool(self.chk_intensificacion.value) if self.chk_intensificacion is not None else False
+        if not inc_calif and not inc_comp and not inc_int:
             return
 
         try:
@@ -341,6 +367,7 @@ class ExportEstadisticasDialog(NotalySheet):
                 periodo_nombre=self.periodo_nombre,
                 incluir_calificaciones=inc_calif,
                 incluir_comportamiento=inc_comp,
+                incluir_intensificacion=inc_int,
             )
 
             if not exito:

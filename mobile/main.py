@@ -44,6 +44,7 @@ from mobile.views.colegios_view import ColegiosView
 from mobile.views.cursos_view import CursosView
 from mobile.views.estadisticas_view import EstadisticasView
 from mobile.views.grupos_view import GruposView
+from mobile.views.intensificacion_view import IntensificacionView
 from mobile.views.notas_view import NotasView
 from mobile.views.planillas_view import PlanillasView
 
@@ -225,7 +226,7 @@ def main(page: ft.Page):
             _in_transition = True
             try:
                 state.flush_auto_save()
-                if state.current_screen in ("notas", "asistencias", "grupos"):
+                if state.current_screen in ("notas", "asistencias", "grupos", "intensificacion"):
                     navigate("cursos", push_history=False)
                 else:
                     navigate("colegios", push_history=False)
@@ -325,6 +326,17 @@ def main(page: ft.Page):
             if getattr(vista_curso, "module_tabs", None) is not None:
                 vista_curso.module_tabs.set_active("grupos", update=False)
             main_container.content = vista_curso
+        elif view_name == "intensificacion":
+            if (
+                "intensificacion" not in _curso_views
+                or _curso_views_versions.get("intensificacion") != roster_ver
+            ):
+                _curso_views["intensificacion"] = IntensificacionView(state, page, on_navigate=navigate)
+                _curso_views_versions["intensificacion"] = roster_ver
+            vista_curso = _curso_views["intensificacion"]
+            if getattr(vista_curso, "module_tabs", None) is not None:
+                vista_curso.module_tabs.set_active("intensificacion", update=False)
+            main_container.content = vista_curso
         elif view_name == "estadisticas":
             main_container.content = EstadisticasView(state, page, on_navigate=navigate)
         elif view_name == "planillas":
@@ -336,6 +348,8 @@ def main(page: ft.Page):
 
         if view_name == "grupos" and getattr(main_container.content, "trabajos_tabs", None) is not None:
             main_container.content.trabajos_tabs.scroll_to_active()
+        if view_name == "intensificacion" and getattr(main_container.content, "periodos_tabs", None) is not None:
+            main_container.content.periodos_tabs.scroll_to_active()
 
         if (
             view_name == "notas"

@@ -122,6 +122,9 @@ def generar_nombre_planilla(
     if tipo == "notas":
         curso_sanitizado = sanitizar_nombre_curso(curso)
         base = f"Planilla {curso_sanitizado} - {fecha_str}"
+    elif tipo == "intensificacion":
+        curso_sanitizado = sanitizar_nombre_curso(curso)
+        base = f"Planilla Intensificacion {curso_sanitizado} - {fecha_str}"
     elif tipo == "estadisticas":
         colegio_sanitizado = sanitizar_nombre(colegio, default="Colegio")
         tiene_curso = bool(curso and str(curso).strip())

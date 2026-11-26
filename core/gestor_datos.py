@@ -40,6 +40,7 @@ from .constants import (
     K_CLASES,
     K_COMPORTAMIENTOS,
     K_TRABAJOS_GRUPO,
+    K_PERIODOS_INTENSIFICACION,
 )
 
 logger = logging.getLogger(__name__)
@@ -457,6 +458,68 @@ def fusionar_datos(datos_destino: dict, datos_origen: dict) -> dict:
                                     trabajos_destino.append(tr_origen)
                                     if tr_id:
                                         ids_trabajos_existentes.add(tr_id)
+
+                    # Fusionar períodos de intensificación de forma no destructiva por ID (SPEC-034)
+                    periodos_origen = curso_data.get(K_PERIODOS_INTENSIFICACION, [])
+                    if isinstance(periodos_origen, list) and periodos_origen:
+                        periodos_destino = cursos_destino[nombre_curso].setdefault(
+                            K_PERIODOS_INTENSIFICACION, []
+                        )
+                        if not isinstance(periodos_destino, list):
+                            periodos_destino = []
+                            cursos_destino[nombre_curso][K_PERIODOS_INTENSIFICACION] = periodos_destino
+
+                        mapa_periodos_dest = {
+                            str(p.get("id")): p
+                            for p in periodos_destino
+                            if isinstance(p, dict) and p.get("id")
+                        }
+                        for per_orig in periodos_origen:
+                            if not isinstance(per_orig, dict):
+                                continue
+                            pid = str(per_orig.get("id") or "")
+                            if not pid or pid not in mapa_periodos_dest:
+                                periodos_destino.append(per_orig)
+                                if pid:
+                                    mapa_periodos_dest[pid] = per_orig
+                            else:
+                                per_dest = mapa_periodos_dest[pid]
+                                bloq_dest = per_dest.setdefault("bloques", [])
+                                if not isinstance(bloq_dest, list):
+                                    bloq_dest = []
+                                    per_dest["bloques"] = bloq_dest
+                                mapa_bloq_dest = {
+                                    str(b.get("id")): b
+                                    for b in bloq_dest
+                                    if isinstance(b, dict) and b.get("id")
+                                }
+                                for b_orig in per_orig.get("bloques", []) or []:
+                                    if not isinstance(b_orig, dict):
+                                        continue
+                                    bid = str(b_orig.get("id") or "")
+                                    if not bid or bid not in mapa_bloq_dest:
+                                        bloq_dest.append(b_orig)
+                                        if bid:
+                                            mapa_bloq_dest[bid] = b_orig
+                                    else:
+                                        b_dest = mapa_bloq_dest[bid]
+                                        evs_dest = b_dest.setdefault("evaluaciones", [])
+                                        if not isinstance(evs_dest, list):
+                                            evs_dest = []
+                                            b_dest["evaluaciones"] = evs_dest
+                                        ids_evs_dest = {
+                                            str(ev.get("id"))
+                                            for ev in evs_dest
+                                            if isinstance(ev, dict) and ev.get("id")
+                                        }
+                                        for ev_orig in b_orig.get("evaluaciones", []) or []:
+                                            if not isinstance(ev_orig, dict):
+                                                continue
+                                            eid = str(ev_orig.get("id") or "")
+                                            if not eid or eid not in ids_evs_dest:
+                                                evs_dest.append(ev_orig)
+                                                if eid:
+                                                    ids_evs_dest.add(eid)
 
                     # Curso ya existe: fusionar alumnos nuevos
                     alumnos_destino = cursos_destino[nombre_curso].setdefault(K_ALUMNOS, {})
