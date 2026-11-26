@@ -54,6 +54,7 @@ from core.constants import (
     MAX_NOTAS_PERIODO,
     DEFAULT_NOTAS_PERIODO,
     TRIM_3,
+    VERSION_NOVEDADES_ACTUAL,
     crear_nombres_columnas_default,
     crear_trimestre_vacio,
     crear_trimestres_vacios,
@@ -3175,6 +3176,27 @@ class AppState:
     ) -> dict:
         c_col = colegio or self.selected_colegio
         return calcular_estadisticas_intensificacion_colegio(self.get_colegio_data(c_col))
+
+    # =========================================================================
+    # --- Novedades post-actualización (SPEC-036) ---
+    # =========================================================================
+
+    def debe_mostrar_novedades(self) -> bool:
+        """
+        Retorna True únicamente la primera vez que un usuario con datos previos
+        abre la aplicación tras actualizar a VERSION_NOVEDADES_ACTUAL.
+        En instalaciones nuevas (base vacía), registra la versión silenciosamente.
+        """
+        if self.is_database_empty():
+            gestor_datos.guardar_ultima_version_novedades(VERSION_NOVEDADES_ACTUAL)
+            return False
+        ultima_vista = gestor_datos.leer_ultima_version_novedades()
+        return ultima_vista != VERSION_NOVEDADES_ACTUAL
+
+    def marcar_novedades_vistas(self) -> bool:
+        """Marca como vistas las novedades de VERSION_NOVEDADES_ACTUAL."""
+        return gestor_datos.guardar_ultima_version_novedades(VERSION_NOVEDADES_ACTUAL)
+
 
 
 

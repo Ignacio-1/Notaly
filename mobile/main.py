@@ -22,6 +22,7 @@ import flet as ft
 from mobile.components.footer import AppFooter
 from mobile.components.global_search import GlobalSearchOverlay
 from mobile.components.local_backup_dialog import LocalBackupDialog
+from mobile.components.novedades_dialog import NovedadesActualizacionDialog
 from mobile.components.notaly_sheet import (
     NotalyCompactDialog,
     NotalySheet,
@@ -622,8 +623,23 @@ def main(page: ft.Page):
                         modal=True,
                     )
                     open_dialog_safe(page, dlg_onboarding)
+                    return
+
+            if (
+                (not os.getenv("PYTEST_CURRENT_TEST") or os.getenv("NOTALY_FORZAR_NOVEDADES_TEST"))
+                and hasattr(state, "debe_mostrar_novedades")
+                and state.debe_mostrar_novedades()
+            ):
+                t = resolve_tokens(page=page, state=state)
+                dlg_novedades = NovedadesActualizacionDialog(
+                    page=page,
+                    on_acknowledge=state.marcar_novedades_vistas,
+                    tokens=t,
+                    state=state,
+                )
+                open_dialog_safe(page, dlg_novedades)
         except Exception as err:
-            logger.warning("Error al verificar copias en primer inicio: %s", err)
+            logger.warning("Error al verificar copias o novedades en primer inicio: %s", err)
 
     _verificar_primer_inicio()
 

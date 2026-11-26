@@ -44,6 +44,7 @@ from .constants import (
     K_REGIMEN,
     K_DESAPRUEBA_HASTA,
     K_USAR_RECUPERATORIO,
+    K_ULTIMA_VERSION_NOVEDADES,
 )
 
 logger = logging.getLogger(__name__)
@@ -924,3 +925,49 @@ def guardar_archivo_auto_backup(ruta_destino: Path, datos: dict) -> tuple[bool, 
     except Exception as e:
         logger.error("Error al guardar archivo de auto backup en '%s': %s", ruta_destino, e)
         return False, 0.0, str(e)
+
+
+def leer_ultima_version_novedades() -> str | None:
+    """
+    Lee de PREFERENCIAS_FILE la última versión cuyo cartel de novedades ya fue visto.
+    Retorna None si nunca se registró (usuario previo a SPEC-036 o primer inicio).
+    """
+    if not PREFERENCIAS_FILE.exists():
+        return None
+    try:
+        with open(PREFERENCIAS_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data, dict):
+            val = data.get(K_ULTIMA_VERSION_NOVEDADES)
+            if isinstance(val, str) and val.strip():
+                return val.strip()
+    except Exception as e:
+        logger.warning("Error al leer versión de novedades vistas: %s", e)
+    return None
+
+
+def guardar_ultima_version_novedades(version: str) -> bool:
+    """
+    Persiste de forma atómica la versión de novedades vista en PREFERENCIAS_FILE,
+    preservando 'tema', 'auto_backup' y demás preferencias del usuario.
+    """
+    ver = (version or "").strip()
+    if not ver:
+        return False
+    try:
+        data: dict = {}
+        if PREFERENCIAS_FILE.exists():
+            try:
+                with open(PREFERENCIAS_FILE, "r", encoding="utf-8") as f:
+                    contenido_actual = json.load(f)
+                if isinstance(contenido_actual, dict):
+                    data = contenido_actual
+            except Exception:
+                data = {}
+        data[K_ULTIMA_VERSION_NOVEDADES] = ver
+        contenido = json.dumps(data, indent=2, ensure_ascii=False)
+        _escribir_archivo_seguro(PREFERENCIAS_FILE, contenido)
+        return True
+    except Exception as e:
+        logger.error("Error al guardar versión de novedades vistas: %s", e)
+        return False

@@ -413,3 +413,51 @@ def parsear_fecha_para_orden(fecha_str: str) -> tuple[int, int, int]:
     except Exception:
         pass
     return (0, 0, 0)
+
+
+# --- Novedades de actualización (SPEC-036) ---
+VERSION_NOVEDADES_ACTUAL = "2.1.0"
+K_ULTIMA_VERSION_NOVEDADES = "ultima_version_novedades_vista"
+
+NOVEDADES_VERSION_ACTUAL = [
+    {
+        "icono": "calendar",
+        "titulo": "Régimen Trimestral o Cuatrimestral",
+        "descripcion": (
+            "Configura cada colegio como Trimestral (3 períodos) o Cuatrimestral (2 períodos). "
+            "Si cambias de régimen, tus notas previas quedan resguardadas sin borrarse."
+        ),
+    },
+    {
+        "icono": "tune",
+        "titulo": "1 a 8 notas dinámicas por período",
+        "descripcion": (
+            "En Notas, toca Configurar notas para renombrar, añadir (hasta 8) o quitar "
+            "casilleros por período de forma independiente."
+        ),
+    },
+    {
+        "icono": "rule",
+        "titulo": "Umbral y Recuperatorio por curso",
+        "descripcion": (
+            "Elige desde qué nota se desaprueba (1 a 9) y si el curso utiliza instancia de "
+            "Recuperatorio al crearlo o desde su configuración."
+        ),
+    },
+    {
+        "icono": "school",
+        "titulo": "Intensificación con umbral propio",
+        "descripcion": (
+            "Cada bloque individual o grupal en Período de Intensificación permite definir su "
+            "propia nota de aprobación sin alterar las notas regulares."
+        ),
+    },
+    {
+        "icono": "pdf",
+        "titulo": "PDFs y Estadísticas renovados",
+        "descripcion": (
+            "Todos los reportes PDF incluyen el criterio de evaluación vigente, marca de agua "
+            "institucional NOTALY y división automática legible en planillas amplias."
+        ),
+    },
+]
