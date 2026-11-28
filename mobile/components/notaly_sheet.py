@@ -381,11 +381,29 @@ class NotalySheet(ft.BottomSheet):
             outer_controls.append(
                 ft.Container(
                     content=self.actions_container,
-                    padding=ft.Padding(top=SPACE_SM, left=0, right=0, bottom=0),
+                    padding=ft.Padding(top=SPACE_SM, left=0, right=0, bottom=SPACE_SM),
                 )
             )
 
-        inner_wrapper = ft.Container(
+        # En Flutter/Flet, BottomSheet(use_safe_area=True) solo protege el borde
+        # superior (status bar / notch) y maintain_bottom_view_insets_padding solo
+        # compensa el teclado virtual (viewInsets). Envolver la columna principal
+        # directamente en ft.SafeArea con protección inferior evita que la barra
+        # de navegación de 3 botones o la barra de gestos de Android se superpongan
+        # a los botones de acción del modal, preservando `sheet.content.content`
+        # como la columna scrollable.
+        safe_wrapper = ft.SafeArea(
+            avoid_intrusions_top=False,
+            avoid_intrusions_bottom=True,
+            avoid_intrusions_left=True,
+            avoid_intrusions_right=True,
+            maintain_bottom_view_padding=True,
+            minimum_padding=ft.Padding(
+                left=gutter,
+                top=SPACE_SM,
+                right=gutter,
+                bottom=SPACE_LG,
+            ),
             content=ft.Column(
                 outer_controls,
                 spacing=SPACE_MD,
@@ -393,8 +411,6 @@ class NotalySheet(ft.BottomSheet):
                 scroll=ft.ScrollMode.AUTO,
                 horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
             ),
-            padding=ft.Padding(left=gutter, top=SPACE_SM, right=gutter, bottom=SPACE_LG),
-            bgcolor=self._tok.surface_primary,
         )
 
         max_w = 480.0 if pw >= 600 else float("inf")
@@ -404,7 +420,7 @@ class NotalySheet(ft.BottomSheet):
         )
 
         super().__init__(
-            content=inner_wrapper,
+            content=safe_wrapper,
             elevation=0,
             bgcolor=self._tok.surface_primary,
             dismissible=dismissible,
